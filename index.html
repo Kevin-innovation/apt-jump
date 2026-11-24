@@ -15,7 +15,7 @@
   <div id="hud" hidden>
     <div class="left">
       <div class="score"><span id="score">0</span><small>점</small></div>
-      <div class="sub"><span id="dist">0m</span><span>최고 <b id="best">0</b></span></div>
+      <div class="sub"><span id="dist">0m</span><span id="lv">속도 1</span><span>최고 <b id="best">0</b></span></div>
     </div>
     <div class="mid">
       <div id="combo" hidden>
@@ -25,6 +25,7 @@
     </div>
     <div class="right">
       <div class="sub coins"><i class="coin"></i><span id="coins">0</span></div>
+      <div id="air" aria-label="2단 점프"><span>2단</span><i><b id="air-bar"></b></i></div>
       <div id="boost" aria-label="가속 단계"><i></i><i></i><i></i><i></i><i></i></div>
       <div class="icons">
         <button id="btn-mute" type="button" aria-label="음소거"></button>
@@ -41,15 +42,19 @@
     <ul class="tips">
       <li>짧게 누르면 낮게, 길게 누르면 높게</li>
       <li>착지 <b>직후</b> 다시 뛰면 <b class="cy">퍼펙트 가속</b></li>
+      <li>공중에서 한 번 더: <b class="cy">2단 점프</b>(3초 충전)</li>
+      <li>실외기·방해꾼은 위에서 <b class="ye">밟아서</b> 격파</li>
       <li>동전을 이어 먹으면 <b class="ye">콤보 배율</b></li>
       <li>물탱크·빨랫줄·먼 옥상은 <b class="pk">위험 보너스</b></li>
     </ul>
     <nav>
       <button type="button" data-act="start" class="primary">달리기 시작</button>
+      <button type="button" data-act="maps">유저 맵</button>
+      <button type="button" data-act="ranking">주간 순위</button>
       <button type="button" data-act="settings">설정</button>
       <button type="button" data-act="credits">크레딧</button>
     </nav>
-    <p class="keys"></p>
+    <p class="keys" data-keys></p>
     <p class="warn" data-nosave hidden>이 브라우저에서는 저장할 수 없어 기록이 이번 실행 동안만 유지됩니다.</p>
   </section>
 
@@ -61,26 +66,99 @@
       <button type="button" data-act="settings">설정</button>
       <button type="button" data-act="home">타이틀로</button>
     </nav>
-    <p class="keys"></p>
+    <p class="keys" data-keys></p>
   </section>
 
   <section class="screen" id="result" hidden>
     <h2 id="r-title">추락!</h2>
     <p class="big"><span id="r-score">0</span>점</p>
     <p id="r-best"></p>
+    <p id="r-online" class="keys" role="status"></p>
     <dl>
       <div><dt>거리</dt><dd id="r-dist"></dd></div>
       <div><dt>동전</dt><dd id="r-coins"></dd></div>
       <div><dt>최대 콤보</dt><dd id="r-combo"></dd></div>
       <div><dt>퍼펙트</dt><dd id="r-perfect"></dd></div>
+      <div><dt>밟기</dt><dd id="r-stomp"></dd></div>
+      <div><dt>다이아</dt><dd id="r-diamond"></dd></div>
       <div><dt>위험 보너스</dt><dd id="r-risk"></dd></div>
     </dl>
     <nav>
       <button type="button" data-act="restart" class="primary">다시 달리기</button>
       <button type="button" data-act="home">타이틀로</button>
     </nav>
-    <p class="keys"></p>
+    <p class="keys" data-keys></p>
     <p class="warn" data-nosave hidden>저장할 수 없는 브라우저라 이 기록은 창을 닫으면 사라집니다.</p>
+  </section>
+
+  <section class="screen" id="maps" hidden>
+    <h2>유저 맵</h2>
+    <nav class="row">
+      <button type="button" data-act="newmap" class="primary">새 맵 만들기</button>
+      <button type="button" data-act="import">파일 불러오기</button>
+      <button type="button" data-act="home">타이틀로</button>
+    </nav>
+    <input type="file" id="map-file" accept=".json,application/json" hidden />
+    <p id="maps-msg" class="warn" role="status"></p>
+    <h3>내 맵</h3>
+    <div id="map-list" class="cards"></div>
+    <h3>공유 맵</h3>
+    <button type="button" id="shared-order" class="small" hidden></button>
+    <div id="shared-list" class="cards"></div>
+  </section>
+
+  <section class="screen" id="ranking" hidden>
+    <h2>주간 순위</h2>
+    <p id="rank-reset" class="keys"></p>
+    <p id="rank-off" class="warn"></p>
+    <p id="rank-wait" class="keys" hidden>계정을 확인하는 중입니다.</p>
+    <button type="button" id="rank-login" class="small" hidden>Google로 로그인</button>
+    <div id="rank-account" hidden>
+      <form id="nick-form">
+        <label for="nick">닉네임</label>
+        <input id="nick" type="text" maxlength="32" autocomplete="off" />
+        <button type="submit" class="small">바꾸기</button>
+        <button type="button" id="rank-logout" class="small">로그아웃</button>
+      </form>
+    </div>
+    <p id="rank-msg" class="warn" role="status"></p>
+    <p id="rank-mine" class="ye"></p>
+    <div id="rank-list"></div>
+    <nav><button type="button" data-act="home" class="primary">타이틀로</button></nav>
+  </section>
+
+  <section class="screen" id="editor" hidden>
+    <div class="ed-top">
+      <button type="button" data-act="ed-back">목록</button>
+      <input id="ed-title" type="text" aria-label="맵 이름" autocomplete="off" />
+      <button type="button" data-ed="undo">되돌리기</button>
+      <button type="button" data-ed="redo">다시</button>
+      <button type="button" data-act="ed-save">저장</button>
+      <button type="button" data-act="ed-export">파일로</button>
+      <button type="button" data-act="ed-test" class="primary">테스트</button>
+    </div>
+    <canvas id="ed-canvas" aria-label="맵 미리보기"></canvas>
+    <input id="ed-scroll" type="range" min="-40" max="0" value="0" aria-label="맵 위치" />
+    <div id="ed-tools" role="toolbar" aria-label="도구"></div>
+    <p id="ed-help" class="keys"></p>
+    <p id="ed-msg" class="warn" role="status"></p>
+    <div id="ed-problems" hidden></div>
+    <div class="ed-form">
+      <div class="step"><button type="button" data-ed="prev" aria-label="이전 구간">◀</button><b id="ed-seg"></b><button type="button" data-ed="next" aria-label="다음 구간">▶</button></div>
+      <div class="step"><span>길이</span><button type="button" data-ed="w:-2" aria-label="길이 줄이기">−</button><b id="ed-w">0</b><button type="button" data-ed="w:2" aria-label="길이 늘리기">+</button></div>
+      <div class="step"><span>간격</span><button type="button" data-ed="gap:-1" aria-label="간격 줄이기">−</button><b id="ed-gap">0</b><button type="button" data-ed="gap:1" aria-label="간격 늘리기">+</button></div>
+      <div class="step"><span>높이</span><button type="button" data-ed="h:-1" aria-label="높이 줄이기">−</button><b id="ed-h">0</b><button type="button" data-ed="h:1" aria-label="높이 늘리기">+</button></div>
+      <button type="button" data-ed="kind"></button>
+      <button type="button" data-ed="road"></button>
+      <button type="button" data-ed="add">뒤에 추가</button>
+      <button type="button" data-ed="copy">복제</button>
+      <button type="button" data-ed="left">앞으로 옮기기</button>
+      <button type="button" data-ed="right">뒤로 옮기기</button>
+      <button type="button" data-ed="clear">물체 비우기</button>
+      <button type="button" data-ed="del">구간 삭제</button>
+      <div class="step"><span>시작 속도</span><button type="button" data-ed="base:-5" aria-label="시작 속도 줄이기">−</button><b id="ed-base">0</b><button type="button" data-ed="base:5" aria-label="시작 속도 늘리기">+</button></div>
+      <div class="step"><span>가속</span><button type="button" data-ed="gain:-5" aria-label="가속 줄이기">−</button><b id="ed-gain">0</b><button type="button" data-ed="gain:5" aria-label="가속 늘리기">+</button></div>
+    </div>
   </section>
 
   <section class="screen" id="settings" hidden>
@@ -99,7 +177,7 @@
     <div class="text">
       <p>기획 Kevin-innovation<br />그래픽·음악·효과음·코드<br />이 게임을 위해 AI(Claude Code)로 새로 제작</p>
       <p>글꼴 Galmuri11 Bold © Lee Minseo<br />SIL Open Font License 1.1</p>
-      <p>Vite·TypeScript로 제작, Canvas·WebAudio 사용</p>
+      <p>Vite·TypeScript로 제작, Canvas·WebAudio 사용<br />온라인: React (MIT), Convex·Convex Auth (Apache-2.0)</p>
     </div>
     <nav><button type="button" data-act="back" class="primary">돌아가기</button></nav>
   </section>

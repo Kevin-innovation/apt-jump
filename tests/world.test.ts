@@ -65,12 +65,12 @@ describe('generation', () => {
   });
 });
 
-it('a planning player survives two minutes on 25 seeds', () => {
+it('a planning player survives four minutes, up to near top speed, on 25 seeds', () => {
   const died: string[] = [];
   for (let s = 1; s <= 25; s++) {
     const g = new Game(s);
     const b = new Bot();
-    while (!g.dead && g.time < 120) { g.step(b.next(g)); g.drain(); }
+    while (!g.dead && g.time < 240) { g.step(b.next(g)); g.drain(); }
     if (g.dead) died.push(`seed ${s} at ${Math.round(g.distance)}m`);
   }
   expect(died).toEqual([]);

@@ -1,8 +1,9 @@
 import type { Game, GameEvent } from './game';
-import { BOOST_SPEED, baseSpeed } from './physics';
+import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawQuilt, drawRoad, drawRoadSign, drawScaffold, drawTank, drawWarning } from './art';
+import { BOOST_SPEED, enemyBox, paceSpeed, roofEnd } from './physics';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
-import type { Obstacle, Roof } from './world';
+import { ROAD_DEPTH, type Roof } from './world';
 
 type Ctx = CanvasRenderingContext2D;
 type RGB = [number, number, number];
@@ -25,7 +26,6 @@ const WALLS = [
   { wall: '#a9c0c4', shade: '#7b93a4', trim: '#586a88', rail: '#4a5676' },
   { wall: '#cf8f7e', shade: '#a8655f', trim: '#784455', rail: '#5f344a' },
 ] as const;
-const CLOTH = ['#ff6b81', '#59c3ff', '#ffd85a', '#9be36b'];
 
 const canvas = (w: number, h: number) => {
   const c = document.createElement('canvas');
@@ -308,27 +308,6 @@ export class Renderer {
     if (n > 0) { g.globalAlpha = n; g.drawImage(p.night, x, y); g.globalAlpha = 1; }
   }
 
-  private drawObstacle(o: Obstacle, cx: number, cy: number): void {
-    const g = this.g;
-    const x = Math.round(o.x - cx), y = Math.round(o.y - cy);
-    const box = (c: string, a: number, b: number, w: number, h: number) => { g.fillStyle = c; g.fillRect(x + a, y + b, w, h); };
-    if (o.kind === 'ac') {
-      box('#1a1230', -1, -1, 18, 12);
-      box('#f4f1f8', 0, 0, 16, 10); box('#bdb6d2', 0, 8, 16, 2);
-      box('#5a5480', 2, 1, 8, 7);
-      const f = Math.floor(this.t * 14) % 2;
-      box('#c9c3de', f ? 5 : 2, f ? 1 : 4, f ? 2 : 8, f ? 7 : 1);
-      box('#ff5566', 12, 2, 2, 1); box('#8a84ac', 12, 5, 3, 1);
-    } else {
-      box('#1a1230', -1, -1, 38, 28);
-      box('#ffcf4a', 0, 1, 36, 24); box('#ffe79a', 2, 1, 6, 24); box('#e09a2c', 28, 1, 8, 24);
-      for (let k = 6; k < 24; k += 6) box('#d48a2a', 0, k, 36, 1);
-      box('#fff0b8', 0, 0, 36, 2); box('#b86a24', 12, -3, 12, 3);
-      box('#1a1230', 2, 26, 4, 5); box('#1a1230', 30, 26, 4, 5); box('#1a1230', 16, 26, 4, 5);
-      box('#b9562b', 14, 11, 8, 5); box('#fff0b8', 16, 12, 4, 3);
-    }
-  }
-
   // ---- Frame -------------------------------------------------------------
 
   onEvent(e: GameEvent, g: Game): void {
@@ -351,8 +330,23 @@ export class Renderer {
         if (e.speed > 120) burst(6, p.x + 5, p.y, ['#e9dcd0', '#c9b8c0'], 50, 8);
         if (e.speed > 380) this.shake = Math.max(this.shake, 1.5);
         break;
-      case 'coin': burst(e.value > 1 ? 12 : 6, e.x, e.y, e.value > 1 ? ['#ff7ad9', '#fff'] : ['#ffcf4a', '#fff6c0'], 80); break;
+      case 'coin': if (e.kind === 'diamond') { burst(22, e.x, e.y, ['#6ee8ff', '#fff', '#2fa8e0'], 130); pop(e.x, e.y - 6, `다이아 +${e.points}`, '#8ff4ff'); break; }
+        burst(e.kind === 'gold' ? 12 : 6, e.x, e.y, e.kind === 'gold' ? ['#ff7ad9', '#fff'] : ['#ffcf4a', '#fff6c0'], 80); break;
       case 'perfectBonus': pop(e.x, e.y - 6, `퍼펙트 +${e.points}`, '#7dfff0'); break;
+      case 'airjump':
+        this.squash = -0.1;
+        burst(12, p.x + 5, p.y, ['#ffffff', '#8ff4ff', '#b8a8ff'], 90, -10, 60);
+        break;
+      case 'stomp':
+        this.squash = 0.15;
+        this.shake = Math.max(this.shake, 2.5);
+        burst(18, e.x, e.y + 4, e.target === 'ac' ? ['#f4f1f8', '#bdb6d2', '#5a5480'] : e.target === 'drone' ? ['#e8465f', '#ffe14a', '#dfe9ff'] : ['#c9d0ea', '#9aa3c7', '#fff'], 130, 50);
+        break;
+      case 'stompBonus': pop(e.x - 8, e.y - 18, `밟기 +${e.points}`, '#ffe14a'); break;
+      case 'road': pop(e.x, e.y - 30, '도로 착지! 램프로 복귀', '#7dfff0'); break;
+      case 'roadExit': pop(e.x, e.y - 30, '옥상 복귀!', '#9be36b'); break;
+      case 'speedup': pop(p.x - 10, p.y - 44, `속도 UP! Lv.${e.level}`, '#ffb84a'); break;
+      case 'goal': burst(40, p.x + 6, p.y - 20, ['#ffd85a', '#7dfff0', '#ff7ad9', '#fff'], 170, 60); break;
       case 'risk': pop(e.x, e.y - 6, `${RISK_NAMES[e.kind]} +${e.points}`, '#ff9be6'); break;
       case 'stumble': this.shake = 4; burst(14, p.x + 10, p.y - 8, ['#fff', '#ff5566', '#ffcf4a'], 120, 40); pop(p.x, p.y - 22, '쿵!', '#ff7a7a'); break;
       case 'wall': this.shake = 5; burst(12, p.x + 10, p.y - 8, ['#e9dcd0', '#b98a7c'], 110, 20); break;
@@ -385,10 +379,24 @@ export class Renderer {
       }
     }
 
+    // Buildings and scaffolds first, then streets over the scaffold feet, then everything on top.
+    const seen: Roof[] = [];
     for (const r of game.world.roofs) {
       const x = r.x - cx;
-      if (x > this.W + 260 || x + r.w < -260) { if (x + r.w < -400) this.roofs.delete(r.id); continue; }
-      this.drawPair(this.roofArt(r), x, r.y - HEAD - cy, n);
+      if (x > this.W + 700 || roofEnd(r) - cx < -260) { if (x + r.w < -600) this.roofs.delete(r.id); continue; }
+      seen.push(r);
+      if (x > this.W || x + r.w < 0) continue;
+      if (r.kind === 'scaffold') drawScaffold(g, x, Math.round(r.y - cy), r.w, ROAD_DEPTH + 60);
+      else this.drawPair(this.roofArt(r), x, r.y - HEAD - cy, n);
+    }
+    for (const r of seen) if (r.road) drawRoad(g, r.road, cx, cy, this.H, n);
+    if (game.world.goalX !== null) {
+      const last = game.world.roofs[game.world.roofs.length - 1]!;
+      drawFlag(g, Math.round(game.world.goalX - cx), Math.round(last.y - cy), this.t);
+    }
+    for (const r of seen) {
+      const x = r.x - cx;
+      if (r.road) drawRoadSign(g, r, x, Math.round(r.y - cy), this.t);
       for (const l of r.lines) {
         // Rope between the two roofs, with the quilt that can be stood on.
         const on = p.ground?.id === l.id ? 2 : 0;
@@ -398,20 +406,29 @@ export class Renderer {
         g.fillRect(ax, ly - 3, 2, r.y - cy - ly + 3);
         g.fillRect(bx, ly - 3, 2, Math.max(4, r.y + r.nextDy - cy - ly + 3));
         g.fillStyle = '#f5ead8'; g.fillRect(ax, ly, bx - ax, 1);
-        g.fillStyle = '#1a1230'; g.fillRect(lx - 1, ly - 1, l.w + 2, 18);
-        g.fillStyle = CLOTH[l.style]!; g.fillRect(lx, ly, l.w, 16);
-        g.fillStyle = 'rgba(255,255,255,.55)';
-        for (let k = 3; k < l.w - 3; k += 9) g.fillRect(lx + k, ly + 5 + (k % 2) * 5, 3, 3);
-        g.fillStyle = '#fff6e0'; g.fillRect(lx, ly, l.w, 2);
-        const sway = Math.round(Math.sin(this.t * 3 + l.x) * 1);
-        g.fillStyle = CLOTH[(l.style + 1) % 4]!; g.fillRect(lx + 4 + sway, ly + 16, 7, 4);
+        drawQuilt(g, lx, ly, l.w, l.style, this.t);
       }
-      for (const o of r.obstacles) this.drawObstacle(o, cx, cy);
+      for (const o of r.obstacles) {
+        if (p.gone.includes(o.id)) continue;
+        if (o.kind === 'ac') drawAc(g, Math.round(o.x - cx), Math.round(o.y - cy), this.t);
+        else drawTank(g, Math.round(o.x - cx), Math.round(o.y - cy));
+      }
       for (const c of r.coins) if (!c.taken) {
+        if (c.kind === 'diamond') { drawDiamond(g, Math.round(c.x - cx - 5), Math.round(c.y - cy - 4 + Math.sin(this.t * 3) * 2), this.t); continue; }
         const f = Math.floor(this.t * 8 + c.x * 0.02) % 4;
-        const s = (c.value > 1 ? this.sprites.gold : this.sprites.coin)[f]!;
+        const s = (c.kind === 'gold' ? this.sprites.gold : this.sprites.coin)[f]!;
         g.drawImage(s, Math.round(c.x - cx - 3), Math.round(c.y - cy - 3 + Math.sin(this.t * 4 + c.x * 0.05)));
       }
+    }
+
+    for (const r of seen) for (const e of r.enemies) {
+      if (p.gone.includes(e.id)) continue;
+      const b = enemyBox(e, p.x);
+      const ex = Math.round(b.x - cx), ey = Math.round(b.y - cy);
+      if (ex > this.W - 4) {
+        // Warn before it comes into view.
+        if (e.x - p.x < Math.max(this.W, p.vx * 2.4)) drawWarning(g, this.W - 14, Math.max(60, Math.min(this.H - 12, ey + 5)), this.t);
+      } else if (ex > -20) (e.kind === 'drone' ? drawDrone : drawPigeon)(g, ex, ey, this.t);
     }
 
     this.drawPlayer(game, cx, cy, dt, moving);
@@ -438,6 +455,7 @@ export class Renderer {
     if (!p.ground) s = p.vy < 0 ? this.sprites.jump : this.sprites.fall;
     else if (moving) s = this.sprites.run[Math.floor(p.x / 13) % 4]!;
     if (p.stumble > 0 && Math.floor(this.t * 20) % 2) g.globalAlpha = 0.45;
+    if (p.airCooldown <= 0 && !p.ground && !p.airUsed && this.quality !== 'low') { g.fillStyle = '#8ff4ff'; g.fillRect(Math.round(p.x - cx) + 1, Math.round(p.y - cy) + 1, 2, 1); g.fillRect(Math.round(p.x - cx) + 7, Math.round(p.y - cy) + 1, 2, 1); }
     const w = Math.round(14 * (1 + this.squash * 1.5)), h = Math.round(16 * (1 - this.squash * 1.5));
     const px = Math.round(p.x - cx - 2 - (w - 14) / 2), py = Math.round(p.y - cy - h + 1);
     if (p.ground) { g.fillStyle = 'rgba(10,6,30,.35)'; g.fillRect(px + 1, Math.round(p.y - cy), 12, 1); }
@@ -450,7 +468,7 @@ export class Renderer {
     }
     g.globalAlpha = 1;
     // Speed lines
-    const fast = (p.vx - baseSpeed(p.x)) / BOOST_SPEED;
+    const fast = (p.vx - paceSpeed(p.pace, p.x)) / BOOST_SPEED;
     if (moving && fast > 1.5 && this.quality === 'high') {
       g.fillStyle = 'rgba(255,255,255,.35)';
       for (let i = 0; i < fast * 2; i++) g.fillRect(Math.floor(Math.random() * this.W), Math.floor(Math.random() * this.H * 0.8), 14, 1);

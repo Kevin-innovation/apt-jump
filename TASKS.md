@@ -8,3 +8,7 @@
 - [x] P5 단위 테스트, 타입체크/빌드, patch-test
 - [ ] 사람이 직접 확인: 조작감, 소리(청음), 실제 휴대폰, 실제 패드
 - [x] 오케스트레이터 검증, 커밋/푸시(`8820447`), Vercel 배포
+- [x] P6 밟기, 2단 점프(3초), 다이아, 속도 증가, 방해꾼, 도로와 램프
+- [x] P7 맵 편집기, 검증, 파일 입출력, 테스트플레이, 내 맵 보관함
+- [x] P8 코드: Google 로그인, 닉네임, 주간 순위, 재실행 검증, 맵 게시/목록/가져오기 (로컬 Convex + convex-test)
+- [ ] P8 운영(미완료): Convex 로그인 → kevin-park-e828f 프로젝트/production → Google 키 → `convex deploy` → Vercel `VITE_CONVEX_URL` → 실제 로그인 확인

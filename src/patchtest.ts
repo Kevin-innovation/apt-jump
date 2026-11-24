@@ -3,19 +3,24 @@ import type { Game, GameEvent } from './game';
 import type { Phase } from './main';
 import type { JumpInput } from './physics';
 
+/** Patch allows twelve. */
 export const CHECKS = [
-  'title-shown', 'run-advances', 'long-press-jumps-higher', 'coin-scores', 'combo-multiplies', 'perfect-jump-boosts',
-  'risk-route-bonus', 'picture-drawn', 'pause-freezes-run', 'resume-continues', 'fall-shows-result', 'restart-begins-fresh-run',
+  'title-shown', 'long-press-jumps-higher', 'coin-combo-multiplies', 'perfect-jump-boosts', 'stomp-breaks-unit',
+  'double-jump-gets-diamond', 'enemy-stomped', 'road-returns-to-roof', 'custom-map-finishes', 'pause-and-resume',
+  'fall-shows-result', 'restart-begins-fresh-run',
 ] as const;
 type Check = (typeof CHECKS)[number];
-/** Everything that has to be seen before the pause part starts. */
-const PLAY_CHECKS = CHECKS.slice(1, 8);
-const TIME_LIMIT = 150;
+/** What the practice map has to show; a run that misses some is played again. */
+const COURSE_CHECKS = CHECKS.slice(1, 9);
+const TIME_LIMIT = 170;
 
 export interface Host {
   phase(): Phase;
   game(): Game;
-  start(): void; pause(): void; resume(): void; restart(): void;
+  /** Plays the built-in made map. */
+  startMap(): void;
+  startEndless(): void;
+  pause(): void; resume(): void; restart(): void;
   visible(id: string): boolean;
   canvas: HTMLCanvasElement;
 }
@@ -25,12 +30,14 @@ export class PatchTest {
   private bot = new Bot();
   private done = new Set<Check>();
   private t0 = performance.now();
-  private stage: 'title' | 'play' | 'paused' | 'resumed' | 'fall' | 'restarted' | 'end' = 'title';
+  private stage: 'title' | 'map' | 'endless' | 'paused' | 'resumed' | 'fall' | 'restarted' | 'end' = 'title';
   private stageAt = performance.now();
   private pausedX = 0;
   private apexes: number[] = [];
   private takeoff: number | null = null;
   private apex = 0;
+  private airUsed = false;
+  private wasOnRoad = false;
 
   constructor(private h: Host) { this.bot.script = [0.02, 0.4]; }
 
@@ -49,32 +56,47 @@ export class PatchTest {
 
   input(): JumpInput {
     if (this.stage === 'fall') return { pressed: false, held: false };
-    this.bot.wantPerfect = !this.done.has('perfect-jump-boosts');
-    this.bot.wantRisk = !this.done.has('risk-route-bonus');
-    return this.bot.next(this.h.game());
+    const b = this.bot, need = (c: Check) => !this.done.has(c);
+    b.wantPerfect = need('perfect-jump-boosts');
+    b.want.clear();
+    if (need('stomp-breaks-unit') || need('enemy-stomped')) b.want.add('stomp');
+    b.wantDiamond = need('double-jump-gets-diamond');
+    b.wantRoad = need('road-returns-to-roof');
+    return b.next(this.h.game());
   }
 
   onEvent(e: GameEvent): void {
     const g = this.h.game();
-    if (e.type === 'jump') {
-      this.takeoff = g.player.y;
-      this.apex = 0;
-    } else if (e.type === 'land') {
-      if (this.takeoff !== null && this.apexes.length < 2) {
-        this.apexes.push(this.apex);
-        const [short, long] = this.apexes;
-        if (short !== undefined && long !== undefined) {
-          if (long > short + 20) this.pass('long-press-jumps-higher');
-          else this.fail('long-press-jumps-higher', `short ${short.toFixed(1)}px, long ${long.toFixed(1)}px`);
+    switch (e.type) {
+      case 'jump':
+        this.takeoff = g.player.y;
+        this.apex = 0;
+        this.airUsed = false;
+        break;
+      case 'airjump': this.airUsed = true; break;
+      case 'land':
+        if (this.takeoff !== null && this.apexes.length < 2 && !this.airUsed) {
+          this.apexes.push(this.apex);
+          const [short, long] = this.apexes;
+          if (short !== undefined && long !== undefined) {
+            if (long > short + 20) this.pass('long-press-jumps-higher');
+            else this.fail('long-press-jumps-higher', `short ${short.toFixed(1)}px, long ${long.toFixed(1)}px`);
+          }
         }
-      }
-      this.takeoff = null;
-    } else if (e.type === 'coin') {
-      if (g.coins > 0 && g.score >= e.points) this.pass('coin-scores');
-    } else if (e.type === 'perfectBonus') {
-      if (g.player.boost >= 1) this.pass('perfect-jump-boosts');
-    } else if (e.type === 'risk') this.pass('risk-route-bonus');
-    if (g.mult >= 2) this.pass('combo-multiplies');
+        this.takeoff = null;
+        break;
+      case 'coin':
+        if (e.kind === 'diamond' && this.airUsed && g.diamonds > 0) this.pass('double-jump-gets-diamond');
+        if (g.mult >= 2 && g.score >= e.points) this.pass('coin-combo-multiplies');
+        break;
+      case 'perfectBonus': if (g.player.boost >= 1) this.pass('perfect-jump-boosts'); break;
+      case 'stomp':
+        if (g.player.vy < 0 && g.player.gone.includes(e.id)) this.pass(e.target === 'ac' ? 'stomp-breaks-unit' : 'enemy-stomped');
+        break;
+      case 'road': this.wasOnRoad = true; break;
+      case 'roadExit': if (this.wasOnRoad && g.player.ground?.kind === 'roof') this.pass('road-returns-to-roof'); break;
+      case 'goal': if (g.finished) this.pass('custom-map-finishes'); break;
+    }
   }
 
   /** Called after each simulated step. */
@@ -101,41 +123,44 @@ export class PatchTest {
       return;
     }
     switch (this.stage) {
-      case 'title':
+      case 'title': {
         if (since < 2) break;
-        if (!h.visible('title')) { this.fail('title-shown', 'the title screen is not visible'); break; }
+        const colors = this.colorsOnScreen();
+        if (!h.visible('title') || colors <= 20) { this.fail('title-shown', `visible ${h.visible('title')}, ${colors} colours drawn`); break; }
         this.pass('title-shown');
-        h.start();
-        this.go('play');
+        h.startMap();
+        this.go('map');
         break;
-      case 'play':
-        if (h.phase() === 'result') {
-          if (since > 1) { this.bot = new Bot(); this.takeoff = null; h.restart(); }
-          break;
-        }
-        if (g.distance > 10) this.pass('run-advances');
-        if (since > 3 && !this.done.has('picture-drawn') && this.colorsOnScreen() > 20) this.pass('picture-drawn');
-        if (h.phase() === 'playing' && PLAY_CHECKS.every((c) => this.done.has(c))) {
-          h.pause();
-          this.pausedX = g.player.x;
-          this.go('paused');
-        }
+      }
+      case 'map':
+        if (h.phase() !== 'result' || since < 1) break;
+        if (COURSE_CHECKS.every((c) => this.done.has(c))) { h.startEndless(); this.bot = new Bot(); this.go('endless'); break; }
+        this.bot = new Bot();
+        if (this.apexes.length < 2) { this.apexes = []; this.bot.script = [0.02, 0.4]; }
+        this.takeoff = null;
+        this.wasOnRoad = false;
+        h.restart();
+        break;
+      case 'endless':
+        if (g.distance < 15) break;
+        h.pause();
+        this.pausedX = g.player.x;
+        this.go('paused');
         break;
       case 'paused':
         if (since < 1) break;
         if (g.player.x !== this.pausedX || h.phase() !== 'paused' || !h.visible('pause')) {
-          this.fail('pause-freezes-run', `moved ${g.player.x - this.pausedX}px, phase ${h.phase()}`);
+          this.fail('pause-and-resume', `moved ${g.player.x - this.pausedX}px, phase ${h.phase()}`);
           break;
         }
-        this.pass('pause-freezes-run');
         h.resume();
         this.go('resumed');
         break;
       case 'resumed':
-        if (g.player.x > this.pausedX + 40 && h.phase() === 'playing') { this.pass('resume-continues'); this.go('fall'); }
+        if (g.player.x > this.pausedX + 40 && h.phase() === 'playing') { this.pass('pause-and-resume'); this.go('fall'); }
         break;
       case 'fall':
-        if (h.phase() !== 'result' || !h.visible('result')) break;
+        if (h.phase() !== 'result' || !h.visible('result') || !g.dead) break;
         if (!this.done.has('fall-shows-result')) { this.pass('fall-shows-result'); this.stageAt = now; break; }
         if (since > 1.5) { h.restart(); this.go('restarted'); }
         break;

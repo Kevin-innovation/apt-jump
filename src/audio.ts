@@ -18,7 +18,7 @@ const LEAD = [
 ];
 const BPM = 138;
 
-export type Sfx = 'jump' | 'land' | 'perfect' | 'coin' | 'gold' | 'risk' | 'stumble' | 'fall' | 'ui' | 'count' | 'best';
+export type Sfx = 'jump' | 'land' | 'perfect' | 'coin' | 'gold' | 'risk' | 'stumble' | 'fall' | 'ui' | 'count' | 'best' | 'air' | 'stomp' | 'diamond' | 'goal' | 'up';
 
 export class Audio8 {
   private ctx: AudioContext | null = null;
@@ -150,6 +150,11 @@ export class Audio8 {
       case 'fall': this.tone('square', 520, t, 0.7, 0.25, o, 60); break;
       case 'ui': run([79], 0.05, 0.14); break;
       case 'count': run([72], 0.08, 0.16); break;
+      case 'air': this.tone('square', 380, t, 0.18, 0.16, o, 900); break;
+      case 'stomp': this.tone('square', 320, t, 0.1, 0.25, o, 120); this.hiss(t, 0.12, 0.3, 900, o); break;
+      case 'diamond': run([84, 88, 91, 96, 100], 0.05); break;
+      case 'goal': run([72, 76, 79, 84, 88, 91, 96], 0.08); break;
+      case 'up': run([76, 79, 83], 0.07, 0.14); break;
       case 'best': run([72, 76, 79, 84, 79, 84, 88], 0.09); break;
     }
   }

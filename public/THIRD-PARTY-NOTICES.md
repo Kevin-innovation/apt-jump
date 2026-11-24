@@ -102,3 +102,33 @@ FROM, OUT OF THE USE OR INABILITY TO USE THE FONT SOFTWARE OR FROM
 OTHER DEALINGS IN THE FONT SOFTWARE.
 
 ```
+
+## React 19.3.1
+
+Used by the online features (`assets/`).
+Source: <https://github.com/facebook/react>
+License: MIT, full text in `LICENSES/react-MIT.txt`
+
+## React DOM 19.3.1
+
+Used by the online features (`assets/`).
+Source: <https://github.com/facebook/react>
+License: MIT, full text in `LICENSES/react-dom-MIT.txt`
+
+## Scheduler 0.28.0
+
+Used by the online features (`assets/`).
+Source: <https://github.com/facebook/react>
+License: MIT, full text in `LICENSES/scheduler-MIT.txt`
+
+## Convex 1.51.0
+
+Used by the online features (`assets/`).
+Source: <https://github.com/get-convex/convex-backend>
+License: Apache-2.0, full text in `LICENSES/convex-Apache-2.0.txt`
+
+## Convex Auth 2.1.0
+
+Used by the online features (`assets/`).
+Source: <https://github.com/get-convex/convex-auth>
+License: Apache-2.0, full text in `LICENSES/convex-dev_auth-Apache-2.0.txt`

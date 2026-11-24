@@ -5,3 +5,4 @@ shots
 .env*
 CLAUDE_REPORT.md
 TASKS.md
+.convex

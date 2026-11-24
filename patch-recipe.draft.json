@@ -1,11 +1,69 @@
 {
   "$schema": "https://patch.gg/schemas/recipe/v1.json",
   "test": {
-    "checks": ["title-shown", "run-advances", "long-press-jumps-higher", "coin-scores", "combo-multiplies", "perfect-jump-boosts", "risk-route-bonus", "picture-drawn", "pause-freezes-run", "resume-continues", "fall-shows-result", "restart-begins-fresh-run"]
+    "checks": [
+      "title-shown",
+      "long-press-jumps-higher",
+      "coin-combo-multiplies",
+      "perfect-jump-boosts",
+      "stomp-breaks-unit",
+      "double-jump-gets-diamond",
+      "enemy-stomped",
+      "road-returns-to-roof",
+      "custom-map-finishes",
+      "pause-and-resume",
+      "fall-shows-result",
+      "restart-begins-fresh-run"
+    ]
   },
   "credits": [
-    { "files": "fonts/Galmuri11-Bold.woff2", "license": "OFL-1.1", "source": "https://github.com/quiple/galmuri", "author": "Lee Minseo (Galmuri 2.40.3)" },
-    { "files": "assets/", "license": "NOASSERTION", "source": "https://github.com/Kevin-innovation/apt-jump", "author": "Kevin-innovation; original code, pixel art, music and sound effects made for this game with AI (Claude Code)" },
-    { "files": "favicon.svg", "license": "NOASSERTION", "source": "https://github.com/Kevin-innovation/apt-jump", "author": "Kevin-innovation; original icon made with AI (Claude Code)" }
+    {
+      "files": "fonts/Galmuri11-Bold.woff2",
+      "license": "OFL-1.1",
+      "source": "https://github.com/quiple/galmuri",
+      "author": "Lee Minseo (Galmuri 2.40.3)"
+    },
+    {
+      "files": "assets/",
+      "license": "NOASSERTION",
+      "source": "https://github.com/Kevin-innovation/apt-jump",
+      "author": "Kevin-innovation; original code, pixel art, music and sound effects made for this game with AI (Claude Code)"
+    },
+    {
+      "files": "favicon.svg",
+      "license": "NOASSERTION",
+      "source": "https://github.com/Kevin-innovation/apt-jump",
+      "author": "Kevin-innovation; original icon made with AI (Claude Code)"
+    },
+    {
+      "files": "assets/",
+      "license": "MIT",
+      "source": "https://github.com/facebook/react",
+      "author": "React 19.3.1 (bundled library)"
+    },
+    {
+      "files": "assets/",
+      "license": "MIT",
+      "source": "https://github.com/facebook/react",
+      "author": "React DOM 19.3.1 (bundled library)"
+    },
+    {
+      "files": "assets/",
+      "license": "MIT",
+      "source": "https://github.com/facebook/react",
+      "author": "Scheduler 0.28.0 (bundled library)"
+    },
+    {
+      "files": "assets/",
+      "license": "Apache-2.0",
+      "source": "https://github.com/get-convex/convex-backend",
+      "author": "Convex 1.51.0 (bundled library)"
+    },
+    {
+      "files": "assets/",
+      "license": "Apache-2.0",
+      "source": "https://github.com/get-convex/convex-auth",
+      "author": "Convex Auth 2.1.0 (bundled library)"
+    }
   ]
 }

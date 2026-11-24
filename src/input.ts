@@ -6,6 +6,9 @@ const MENU_KEYS: Record<string, MenuAction> = {
   Enter: 'confirm', NumpadEnter: 'confirm', Space: 'confirm', Backspace: 'back',
 };
 
+/** Keys pressed in a text box or slider belong to it, not to the game. */
+const typing = (e: Event) => e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement || e.target instanceof HTMLSelectElement;
+
 /** One set of actions from keyboard, pointer and any standard gamepad. */
 export class Input {
   device: Device = matchMedia('(pointer: coarse)').matches ? 'touch' : 'key';
@@ -29,7 +32,7 @@ export class Input {
 
   constructor(surface: HTMLElement) {
     addEventListener('keydown', (e) => {
-      if (this.locked || e.ctrlKey || e.metaKey || e.altKey) return;
+      if (this.locked || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || typing(e)) return;
       this.onGesture();
       this.setDevice('key');
       if (e.code === 'KeyP' || e.code === 'KeyM') {
@@ -49,7 +52,7 @@ export class Input {
     addEventListener('keyup', (e) => {
       this.keys.delete(e.code);
       // Menus act on keydown: stop the browser clicking the focused button again on release.
-      if (e.code === 'Space') e.preventDefault();
+      if (e.code === 'Space' && !typing(e)) e.preventDefault();
     });
     surface.addEventListener('pointerdown', (e) => {
       if (this.locked || e.button !== 0) return;

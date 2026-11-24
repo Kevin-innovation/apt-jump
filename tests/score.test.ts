@@ -6,7 +6,7 @@ import type { Roof } from '../src/world';
 const idle = { pressed: false, held: false };
 function bare(): Game {
   const g = new Game(3);
-  for (const r of g.world.roofs) { r.coins = []; r.obstacles = []; r.lines = []; }
+  for (const r of g.world.roofs) { r.coins = []; r.obstacles = []; r.lines = []; r.enemies = []; }
   g.step(idle);
   g.drain();
   return g;
@@ -19,7 +19,7 @@ describe('score', () => {
   it('counts a coin once, multiplies by combo and refreshes the timer', () => {
     const g = bare();
     g.combo = 4; g.comboTimer = 1;
-    g.world.roofs[0]!.coins.push({ x: g.player.x + 5, y: g.player.y - 8, value: 5, taken: false });
+    g.world.roofs[0]!.coins.push({ x: g.player.x + 5, y: g.player.y - 8, kind: 'gold', taken: false });
     for (let i = 0; i < 3; i++) g.step(idle);
     expect(g.coins).toBe(5);
     expect(g.bonus).toBe(COIN_POINTS * 5 * 2);
@@ -27,7 +27,7 @@ describe('score', () => {
   });
   it('builds the combo and multiplier from a run of coins, then times out', () => {
     const g = bare();
-    for (let i = 0; i < 6; i++) g.world.roofs[0]!.coins.push({ x: g.player.x + 20 + i * 12, y: -8, value: 1, taken: false });
+    for (let i = 0; i < 6; i++) g.world.roofs[0]!.coins.push({ x: g.player.x + 20 + i * 12, y: -8, kind: 'coin', taken: false });
     for (let i = 0; i < 120; i++) g.step(idle);
     expect(g.combo).toBe(6);
     expect(g.mult).toBe(2);
@@ -38,7 +38,7 @@ describe('score', () => {
   });
   it('a crash resets a combo built from coins', () => {
     const g = bare();
-    for (let i = 0; i < 5; i++) g.world.roofs[0]!.coins.push({ x: g.player.x + 10 + i * 8, y: -8, value: 1, taken: false });
+    for (let i = 0; i < 5; i++) g.world.roofs[0]!.coins.push({ x: g.player.x + 10 + i * 8, y: -8, kind: 'coin', taken: false });
     g.world.roofs[0]!.obstacles.push({ id: 9998, kind: 'ac', x: g.player.x + 90, y: -11, w: 16, h: 11 });
     let top = 0;
     for (let i = 0; i < 100; i++) { g.step(idle); top = Math.max(top, g.combo); }

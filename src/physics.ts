@@ -1,4 +1,4 @@
-import type { Obstacle, Roof } from './world';
+import type { Enemy, Obstacle, Roof } from './world';
 
 // Units are virtual pixels and seconds. y grows downward; player.y is the feet.
 export const STEP = 1 / 120;
@@ -21,16 +21,37 @@ export const LEDGE = 6;
 export const LINE_SPRING = 1.08;
 export const STUMBLE_TIME = 0.5;
 export const STUMBLE_FACTOR = 0.55;
+export const AIR_JUMP_V = 240;
+export const AIR_COOLDOWN = 3;
+/** Share of the hold already used up when an air jump or stomp begins. */
+const SECOND_HOLD = HOLD_MAX * 0.4;
+export const STOMP_V = 210;
+const STOMP_SLACK = 6;
 const ACCEL = 320;
-/** Falling this far below the last roof ends the run. */
+/** How far a runner may be off a surface and still be carried onto it (ramps). */
+const SNAP = 8;
+/** Falling this far below the last surface ends the run. */
 export const FALL_LIMIT = 150;
 
-export function baseSpeed(x: number): number {
-  return 118 + 80 * (1 - Math.exp(-Math.max(0, x) / 14000));
+export interface Pace { base: number; gain: number }
+export const DEFAULT_PACE: Readonly<Pace> = { base: 118, gain: 122 };
+// The simulation uses only basic arithmetic (no exp or sin), so a replay gives the same run on every engine.
+/** Rises from 0 toward 1, halfway at `half`. */
+export function ease(x: number, half: number): number { const u = Math.max(0, x); return u / (u + half); }
+/** A smooth wave between -1 and 1 with period 1, like a sine. */
+export function wave(t: number): number {
+  const s = t - Math.floor(t);
+  return s < 0.5 ? 16 * s * (0.5 - s) : -16 * (s - 0.5) * (1 - s);
 }
+export function paceSpeed(pace: Pace, x: number): number {
+  return pace.base + pace.gain * ease(x, 6000);
+}
+/** Speed of an ordinary run at x, before any boost. */
+export function baseSpeed(x: number): number { return paceSpeed(DEFAULT_PACE, x); }
 
-export type SurfaceKind = 'roof' | 'ac' | 'tank' | 'line';
-export interface Surface { id: number; kind: SurfaceKind; x0: number; x1: number; y: number }
+export type SurfaceKind = 'roof' | 'scaffold' | 'ac' | 'tank' | 'line' | 'road' | 'ramp';
+/** y is the height at x0; y1, when present, the height at x1 (a slope). */
+export interface Surface { id: number; kind: SurfaceKind; x0: number; x1: number; y: number; y1?: number }
 
 export interface Player {
   x: number; y: number; vx: number; vy: number;
@@ -48,22 +69,29 @@ export interface Player {
   lastRoofY: number;
   /** Was the latest touchdown a real landing (not a step-off)? */
   landedFromAir: boolean;
+  airUsed: boolean;
+  airCooldown: number;
+  /** Units and enemies already dealt with. Replaced, never mutated, so copies are safe. */
+  gone: readonly number[];
+  pace: Readonly<Pace>;
 }
 
 export interface JumpInput { pressed: boolean; held: boolean }
 
 export type PhysEvent =
   | { type: 'jump'; perfect: boolean; boost: number }
+  | { type: 'airjump' }
   | { type: 'land'; surface: Surface; speed: number }
-  | { type: 'stumble'; id: number }
+  | { type: 'stomp'; id: number; target: 'ac' | 'drone' | 'pigeon'; x: number; y: number }
+  | { type: 'stumble'; id: number; by: 'ac' | 'tank' | 'drone' | 'pigeon' }
   | { type: 'wall' }
   | { type: 'fell' };
 
-export function newPlayer(x: number, y: number): Player {
+export function newPlayer(x: number, y: number, pace: Readonly<Pace> = DEFAULT_PACE): Player {
   return {
-    x, y, vx: baseSpeed(0), vy: 0, ground: null, groundTime: 1, airTime: 0, coyote: 0, buffer: 0,
+    x, y, vx: paceSpeed(pace, 0), vy: 0, ground: null, groundTime: 1, airTime: 0, coyote: 0, buffer: 0,
     holdTime: 0, jumping: false, boost: 0, stumble: 0, lastHit: -1, crashed: false, lastRoofY: y,
-    landedFromAir: false,
+    landedFromAir: false, airUsed: false, airCooldown: 0, gone: [], pace,
   };
 }
 
@@ -92,22 +120,70 @@ export function jumpHeightAt(t: number): number {
   return -y;
 }
 
+export interface Box { x: number; y: number; w: number; h: number }
+/** Where an enemy is depends only on how far the runner has got, so a map always plays the same. */
+export function enemyBox(e: Enemy, px: number): Box {
+  if (e.kind === 'drone') return { x: e.x, y: e.y + e.amp * wave(px / 180 + e.phase), w: 16, h: 10 };
+  const ahead = Math.max(-80, Math.min(240, (e.x - px) * 0.6));
+  return { x: e.x + ahead, y: e.y + 2 * wave(px / 63), w: 14, h: 9 };
+}
+
+/** Right-hand end of everything that belongs to a roof, its road included. */
+export function roofEnd(r: Roof): number { return Math.max(r.x + r.w, r.road ? r.road.rampEnd : 0) + (r.lines.length ? r.gap : 0); }
+
+export function surfaceY(s: Surface, x: number): number {
+  if (s.y1 === undefined) return s.y;
+  const t = Math.max(0, Math.min(1, (x - s.x0) / (s.x1 - s.x0)));
+  return s.y + (s.y1 - s.y) * t;
+}
+
 const overlaps = (p: Player, x0: number, x1: number) => p.x + PW - 2 > x0 && p.x + 2 < x1;
 const obsSurface = (o: Obstacle): Surface => ({ id: o.id, kind: o.kind, x0: o.x, x1: o.x + o.w, y: o.y });
 
-function findLanding(p: Player, prevFeet: number, roofs: readonly Roof[]): Surface | null {
-  let best: Surface | null = null;
-  const consider = (s: Surface) => {
-    if (prevFeet <= s.y + 0.01 && p.y >= s.y && overlaps(p, s.x0, s.x1) && (!best || s.y < best.y)) best = s;
-  };
+function eachSurface(p: Player, roofs: readonly Roof[], visit: (s: Surface) => void): void {
   for (const r of roofs) {
-    // A roof's lines hang in the gap after it, so keep looking a little past its end.
-    if (r.x > p.x + 60 || r.x + r.w < p.x - 260) continue;
-    consider({ id: r.id, kind: 'roof', x0: r.x, x1: r.x + r.w, y: r.y });
-    for (const o of r.obstacles) consider(obsSurface(o));
-    for (const l of r.lines) consider({ id: l.id, kind: 'line', x0: l.x, x1: l.x + l.w, y: l.y });
+    if (r.x > p.x + 80 || roofEnd(r) < p.x - 80) continue;
+    visit({ id: r.id, kind: r.kind === 'scaffold' ? 'scaffold' : 'roof', x0: r.x, x1: r.x + r.w, y: r.y });
+    for (const o of r.obstacles) if (!p.gone.includes(o.id)) visit(obsSurface(o));
+    for (const l of r.lines) visit({ id: l.id, kind: 'line', x0: l.x, x1: l.x + l.w, y: l.y });
+    if (r.road) {
+      const d = r.road;
+      visit({ id: d.id, kind: 'road', x0: d.x, x1: d.rampStart, y: d.y });
+      visit({ id: d.id, kind: 'ramp', x0: d.rampStart, x1: d.rampEnd, y: d.y, y1: d.rampY });
+    }
   }
+}
+
+function findLanding(p: Player, prevFeet: number, prevX: number, roofs: readonly Roof[]): Surface | null {
+  let best: Surface | null = null, bestY = 0;
+  const half = PW / 2;
+  eachSurface(p, roofs, (s) => {
+    if (!overlaps(p, s.x0, s.x1)) return;
+    const y = surfaceY(s, p.x + half);
+    if (prevFeet <= surfaceY(s, prevX + half) + 0.01 && p.y >= y && (!best || y < bestY)) { best = s; bestY = y; }
+  });
   return best;
+}
+
+/** The surface a runner is carried onto without leaving the ground, if any. */
+function carry(p: Player, roofs: readonly Roof[], rampsOnly: boolean): Surface | null {
+  const c = p.x + PW / 2;
+  let best: Surface | null = null, bestD = SNAP;
+  eachSurface(p, roofs, (s) => {
+    if (rampsOnly && s.kind !== 'ramp') return;
+    if (s.kind === 'line' || s.kind === 'ac' || s.kind === 'tank') return;
+    if (c < s.x0 || c > s.x1) return;
+    const d = Math.abs(surfaceY(s, c) - p.y);
+    if (d <= bestD) { best = s; bestD = d; }
+  });
+  return best;
+}
+
+function landsSoon(p: Player, roofs: readonly Roof[]): boolean {
+  if (p.vy <= 0) return false;
+  const t = BUFFER * 0.9;
+  const ahead: Player = { ...p, x: p.x + p.vx * t, y: p.y + p.vy * t + 0.5 * GRAVITY * t * t };
+  return findLanding(ahead, p.y, p.x, roofs) !== null;
 }
 
 /** One fixed step. Mutates p only, so a planner can run it on a copy. */
@@ -115,6 +191,7 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
   const dt = STEP;
   p.buffer = Math.max(0, p.buffer - dt);
   p.stumble = Math.max(0, p.stumble - dt);
+  p.airCooldown = Math.max(0, p.airCooldown - dt);
 
   if (p.ground) {
     p.groundTime += dt;
@@ -124,10 +201,11 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
     p.coyote = Math.max(0, p.coyote - dt);
   }
 
-  const speedTarget = () => (baseSpeed(p.x) + p.boost * BOOST_SPEED) * (p.stumble > 0 ? STUMBLE_FACTOR : 1);
+  const speedTarget = () => (paceSpeed(p.pace, p.x) + p.boost * BOOST_SPEED) * (p.stumble > 0 ? STUMBLE_FACTOR : 1);
 
   if (input.pressed) p.buffer = BUFFER;
-  if ((p.ground !== null || p.coyote > 0) && !p.crashed && p.buffer > 0) {
+  const grounded = p.ground !== null || p.coyote > 0;
+  if (grounded && !p.crashed && p.buffer > 0) {
     // A buffered press still jumps, but only a fresh press after touchdown earns the boost.
     const perfect = input.pressed && p.ground !== null && p.landedFromAir && p.groundTime <= PERFECT_WINDOW;
     if (perfect) {
@@ -138,6 +216,12 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
     p.ground = null;
     p.coyote = 0; p.buffer = 0; p.holdTime = 0; p.airTime = 0; p.jumping = true; p.landedFromAir = false;
     emit({ type: 'jump', perfect, boost: p.boost });
+  } else if (input.pressed && !p.crashed && !p.airUsed && p.airCooldown <= 0 && !landsSoon(p, roofs)) {
+    // A press just above a roof is a buffered jump, not a wasted air jump.
+    p.vy = -AIR_JUMP_V;
+    p.airUsed = true; p.airCooldown = AIR_COOLDOWN;
+    p.buffer = 0; p.holdTime = SECOND_HOLD; p.jumping = true;
+    emit({ type: 'airjump' });
   }
 
   if (!p.ground) {
@@ -159,53 +243,89 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
     const target = speedTarget();
     p.vx = p.vx < target ? Math.min(target, p.vx + ACCEL * dt) : Math.max(target, p.vx - ACCEL * 2 * dt);
   }
+  const prevX = p.x;
   const prevRight = p.x + PW;
   const prevFeet = p.y;
   p.x += p.vx * dt;
   if (!p.ground) p.y += p.vy * dt;
 
-  // Building sides are solid; a near miss is lifted onto the ledge.
+  // Building sides are solid; a near miss is lifted onto the ledge. Scaffolds have no sides.
   let lifted = false;
-  if (!p.ground && !p.crashed) {
+  if (!p.crashed) {
     for (const r of roofs) {
-      if (prevRight - 2 > r.x + 0.01 || p.x + PW - 2 <= r.x || p.y <= r.y) continue;
+      if (r.kind === 'scaffold' || prevRight - 2 > r.x + 0.01 || p.x + PW - 2 <= r.x || p.y <= r.y) continue;
       if (p.y - r.y <= LEDGE && p.vy >= 0) { p.y = r.y; lifted = true; break; }
-      if (prevFeet <= r.y) continue; // came over the corner: the landing check handles it
-      p.x = r.x - PW + 2; p.vx = 0; p.crashed = true; p.jumping = false;
+      if (!p.ground && prevFeet <= r.y) continue; // came over the corner: the landing check handles it
+      p.x = r.x - PW + 2; p.vx = 0; p.crashed = true; p.jumping = false; p.ground = null;
       p.vy = Math.max(p.vy, 0);
       emit({ type: 'wall' });
       break;
     }
   }
 
+  const bounce = () => {
+    p.vy = -STOMP_V; p.ground = null; p.coyote = 0; p.airTime = 0; p.landedFromAir = false;
+    p.jumping = input.held; p.holdTime = SECOND_HOLD;
+  };
+  const remove = (id: number) => { p.gone = [...p.gone.slice(-39), id]; };
+
   if (p.ground) {
-    if (!overlaps(p, p.ground.x0, p.ground.x1)) {
+    const next = carry(p, roofs, overlaps(p, p.ground.x0, p.ground.x1));
+    if (next) p.ground = next;
+    if (next || overlaps(p, p.ground.x0, p.ground.x1)) {
+      p.y = surfaceY(p.ground, p.x + PW / 2);
+      p.lastRoofY = p.ground.kind === 'line' || p.ground.kind === 'ac' || p.ground.kind === 'tank' ? p.lastRoofY : p.y;
+    } else {
       p.ground = null; p.coyote = COYOTE; p.airTime = 0; p.vy = 0; p.jumping = false;
     }
   } else if (p.vy >= 0 && !p.crashed) {
-    const s = findLanding(p, lifted ? p.y : prevFeet, roofs);
-    if (s) {
+    const s = findLanding(p, lifted ? p.y : prevFeet, lifted ? p.x : prevX, roofs);
+    if (s && s.kind === 'ac') {
+      // Landing on an outdoor unit from above smashes it.
+      p.y = s.y;
+      remove(s.id);
+      bounce();
+      emit({ type: 'stomp', id: s.id, target: 'ac', x: (s.x0 + s.x1) / 2, y: s.y });
+    } else if (s) {
       const speed = p.vy;
       p.landedFromAir = p.airTime > 0.12;
-      p.y = s.y; p.vy = 0; p.ground = s; p.jumping = false; p.groundTime = 0;
-      if (s.kind === 'roof') p.lastRoofY = s.y;
+      p.y = surfaceY(s, p.x + PW / 2);
+      p.vy = 0; p.ground = s; p.jumping = false; p.groundTime = 0; p.airUsed = false; p.coyote = 0;
+      if (s.kind !== 'line' && s.kind !== 'tank') p.lastRoofY = p.y;
       emit({ type: 'land', surface: s, speed });
     }
   }
 
-  // Obstacle fronts trip the runner once each.
-  if (!p.crashed) {
-    for (const r of roofs) {
-      if (r.x > p.x + 60 || r.x + r.w < p.x - 60) continue;
-      for (const o of r.obstacles) {
-        if (o.id === p.lastHit || p.x + PW - 2 <= o.x || p.x + 2 >= o.x + o.w) continue;
-        if (p.y > o.y + LEDGE && p.y - PH < o.y + o.h) {
-          p.lastHit = o.id; p.stumble = STUMBLE_TIME; p.boost = 0; p.vx *= STUMBLE_FACTOR;
-          emit({ type: 'stumble', id: o.id });
-        }
-      }
+  if (!p.crashed) touchHazards(p, prevFeet, roofs, emit, bounce, remove);
+  if (p.y > p.lastRoofY + FALL_LIMIT) emit({ type: 'fell' });
+}
+
+function touchHazards(
+  p: Player, prevFeet: number, roofs: readonly Roof[], emit: (e: PhysEvent) => void,
+  bounce: () => void, remove: (id: number) => void,
+): void {
+  const trip = (id: number, by: 'ac' | 'tank' | 'drone' | 'pigeon') => {
+    p.lastHit = id; p.stumble = STUMBLE_TIME; p.boost = 0; p.vx *= STUMBLE_FACTOR;
+    emit({ type: 'stumble', id, by });
+  };
+  for (const r of roofs) {
+    if (r.x > p.x + 300 || roofEnd(r) < p.x - 300) continue;
+    for (const e of r.enemies) {
+      if (p.gone.includes(e.id)) continue;
+      const b = enemyBox(e, p.x);
+      if (p.x + PW - 1 <= b.x || p.x + 1 >= b.x + b.w || p.y <= b.y || p.y - PH + 2 >= b.y + b.h) continue;
+      remove(e.id);
+      if (!p.ground && p.vy > 0 && prevFeet <= b.y + STOMP_SLACK) {
+        p.y = Math.min(p.y, b.y);
+        bounce();
+        emit({ type: 'stomp', id: e.id, target: e.kind, x: b.x + b.w / 2, y: b.y });
+      } else if (p.stumble <= 0) trip(e.id, e.kind);
+    }
+    // Obstacle sides trip the runner once each, never while already stumbling.
+    for (const o of r.obstacles) {
+      if (o.id === p.lastHit || p.stumble > 0 || p.gone.includes(o.id)) continue;
+      if (p.x + PW - 2 <= o.x || p.x + 2 >= o.x + o.w) continue;
+      if (p.y > o.y + LEDGE && p.y - PH < o.y + o.h) trip(o.id, o.kind);
     }
   }
-
-  if (p.y > p.lastRoofY + FALL_LIMIT) emit({ type: 'fell' });
 }
