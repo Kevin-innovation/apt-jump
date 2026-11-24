@@ -11,4 +11,6 @@
 - [x] P6 밟기, 2단 점프(3초), 다이아, 속도 증가, 방해꾼, 도로와 램프
 - [x] P7 맵 편집기, 검증, 파일 입출력, 테스트플레이, 내 맵 보관함
 - [x] P8 코드: Google 로그인, 닉네임, 주간 순위, 재실행 검증, 맵 게시/목록/가져오기 (로컬 Convex + convex-test)
-- [ ] P8 운영(미완료): Convex 로그인 → kevin-park-e828f 프로젝트/production → Google 키 → `convex deploy` → Vercel `VITE_CONVEX_URL` → 실제 로그인 확인
+- [x] P8 운영: Convex 로그인, `kevin-park-e828f/apt-jump` 프로젝트, production `honorable-guanaco-452`, `SITE_ORIGINS`
+- [ ] P8 운영: Google OAuth 값 2개 (사용자 설정 대기)
+- [ ] P8 운영: Convex 함수 배포 → Vercel `VITE_CONVEX_URL` → 실제 로그인·순위·맵 공유 확인

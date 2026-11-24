@@ -53,18 +53,31 @@ CONVEX_AGENT_MODE=anonymous npx convex dev
 npx convex env set AUTH_GOOGLE_CLIENT_ID <값>        # 없으면 자리표시 값이라도 필요
 npx convex env set AUTH_GOOGLE_CLIENT_SECRET <값>
 npx convex env set SITE_ORIGINS http://127.0.0.1:7622
+```
 
-# 운영 첫 설정: 이 순서대로. 필수 환경 변수가 없으면 배포가 실패합니다.
-# 로컬 배포를 쓰던 폴더에서는 .env.local의 CONVEX_DEPLOYMENT가 어느 배포인지 먼저 확인하세요.
-npx convex login
-npx convex project create apt-jump --team kevin-park-e828f
-npx convex deployment create kevin-park-e828f:apt-jump:production --type prod --default --select
-# Google 콘솔 승인된 리디렉션 URI: <CONVEX_SITE_URL>/oauth/google/callback
-npx convex env set --prod AUTH_GOOGLE_CLIENT_ID <값>
-npx convex env set --prod AUTH_GOOGLE_CLIENT_SECRET <값>
-npx convex env set --prod SITE_ORIGINS https://apt-jump-wine.vercel.app
-npx convex deploy
-# 마지막으로 Vercel 환경 변수 VITE_CONVEX_URL=https://<배포>.convex.cloud 를 넣고 다시 배포 (이 값만 공개용)
+### 운영
+
+| 항목 | 값 | 상태 |
+| --- | --- | --- |
+| Convex 팀 / 프로젝트 | `kevin-park-e828f` / `apt-jump` | 완료 |
+| 기본 production (프로젝트와 함께 자동 생성) | `honorable-guanaco-452` | 완료 |
+| `SITE_ORIGINS` | `https://apt-jump-wine.vercel.app` | 설정됨 |
+| `AUTH_GOOGLE_CLIENT_ID`, `AUTH_GOOGLE_CLIENT_SECRET` | 비밀 | **없음, 사용자 설정 대기** |
+| Convex 함수 배포 | | **대기** (Google 값이 없으면 실패) |
+| Vercel `VITE_CONVEX_URL` | `https://honorable-guanaco-452.convex.cloud` | **대기** (함수 배포 뒤) |
+
+Google 콘솔의 승인된 리디렉션 URI: `https://honorable-guanaco-452.convex.site/oauth/google/callback`
+
+`.env.local`은 로컬 배포용이므로 운영 명령에는 대상을 항상 적습니다. 배포에 쓰는 `.env.convex-prod.local`은 Git·Vercel에서 제외되며 내용은 다음 한 줄뿐입니다(비밀 값 없음): `CONVEX_DEPLOYMENT=prod:honorable-guanaco-452`
+
+```sh
+# 1. 값은 명령줄에 쓰지 말고 물을 때 입력 (셸 기록에 남지 않도록)
+npx convex env set AUTH_GOOGLE_CLIENT_ID --deployment honorable-guanaco-452
+npx convex env set AUTH_GOOGLE_CLIENT_SECRET --deployment honorable-guanaco-452
+npx convex env list --names-only --deployment honorable-guanaco-452
+# 2. 함수 배포
+npx convex deploy --env-file .env.convex-prod.local --codegen disable
+# 3. Vercel에 VITE_CONVEX_URL(위 표)을 넣고 다시 배포한 뒤 실제 로그인 확인
 ```
 
 비밀 값은 Convex 환경 변수에만 두고 `VITE_`로 시작하는 변수나 파일에 넣지 않습니다.

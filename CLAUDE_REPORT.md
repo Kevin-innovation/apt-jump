@@ -1,6 +1,6 @@
 # CLAUDE_REPORT — 아파트 점프 v2 (P6~P8)
 
-작성: t1p (Claude Code). 커밋·푸시·배포 안 함. MVP(P0~P5) 보고는 커밋 044f237의 이 파일 참고.
+작성: t1p (Claude Code). 본문은 커밋 전 작성 기준이며 이후 결과는 맨 끝 "후속 기록" 참고. MVP(P0~P5) 보고는 커밋 044f237의 이 파일 참고.
 
 ## 검증
 
@@ -27,7 +27,7 @@
 
 ## 제한 / 남은 일
 
-- **P8 운영은 미완료**: 실제 키가 없어 Google 로그인, 로그인 상태의 서버 호출, cloud 배포를 확인하지 못함. 운영 설정 순서는 README(명령 도움말로만 확인, 실행하지 않음)
+- **P8 운영은 미완료**: Google 값이 없어 Convex 함수 배포, Google 로그인, 로그인 상태의 서버 호출을 확인하지 못함. 현재 상태와 명령은 README "운영" 및 아래 후속 기록
 - 재실행 검증은 점수 조작을 막지만, 시드를 받아 자동으로 플레이하는 봇은 막지 못함. 일시정지를 허용하므로 느린 플레이도 구분하지 못함
 - Safari/Firefox에서 재실행 일치는 실측하지 않음(기본 사칙연산만 쓰도록 설계)
 - 맵 편집기는 포인터 조작 중심이라 패드로는 배치할 수 없음. 패드 실기기·소리·실제 휴대폰·사람 난이도는 여전히 미확인
@@ -35,6 +35,11 @@
 - Patch 배포본은 외부 호스트 연결이 막히므로 `VITE_CONVEX_URL` 없이 빌드(온라인 기능 없이 동작)
 - 자체 제작물 라이선스 미정(사용자 결정)
 
-## 실행 중인 터미널 (t1p가 시작)
+## 후속 기록
 
-- t2y `aptdev`: dev 서버 7622 / t31 `aptconvex2`: 로컬 Convex 3210
+- 커밋 `0040aa2`, 잠금 파일 수정 `7aa9721` 푸시. Vercel 재배포 성공(t1n 수행·보고): <https://apt-jump-wine.vercel.app>
+- 잠금 파일: npm 10에서 `@emnapi/core`·`@emnapi/runtime` 누락을 재현하고 두 항목만 추가. 격리 폴더 npm 10/11 × linux/win32 설치 통과
+- Convex 운영(t1n 수행·보고): 로그인, 팀 `kevin-park-e828f`의 `apt-jump` 프로젝트 생성 완료. 기본 production `honorable-guanaco-452`는 자동 생성됨. 이전 문서의 production 생성 명령은 "이미 존재" 오류가 나고 prod 선택은 지원되지 않아 삭제
+- t1p 확인: `env list --names-only --deployment honorable-guanaco-452`에 `SITE_ORIGINS`만 있음. `env set`에는 `--env-file`이 없어 `--deployment`로 대상을 지정. `convex deploy --env-file`은 도움말로만 확인하고 실행하지 않음
+- 대기: 사용자의 Google OAuth 값 → Convex 함수 배포 → Vercel `VITE_CONVEX_URL` → 실제 로그인 확인
+- t1p가 시작한 서버는 모두 종료함
