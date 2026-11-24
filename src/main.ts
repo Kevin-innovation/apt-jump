@@ -1,3 +1,4 @@
+import { inject } from '@vercel/analytics';
 import { Audio8 } from './audio';
 import { Bot } from './bot';
 import { Editor } from './editor';
@@ -14,6 +15,9 @@ import { STEP, type JumpInput } from './physics';
 import { Renderer } from './render';
 import { SaveFile } from './storage';
 import { UI, type Act, type ScreenName } from './ui';
+
+// Initialize Vercel Web Analytics
+inject();
 
 export type Phase = 'title' | 'playing' | 'countdown' | 'paused' | 'dying' | 'result' | 'editor' | 'issuing';
 /** What is being played, so a restart repeats it and scores never mix. */
