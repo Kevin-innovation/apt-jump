@@ -1,5 +1,7 @@
 # 아파트 점프 (apt-jump)
 
+**플레이: <https://apt-jump-wine.vercel.app>**
+
 노을 진 아파트 옥상을 자동으로 달리며 뛰는 8비트 원버튼 점프 게임. Vite + TypeScript + Canvas + WebAudio로 만든 정적 웹 게임이며 서버와 DB가 없습니다.
 
 ## 규칙

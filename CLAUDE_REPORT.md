@@ -1,6 +1,6 @@
 # CLAUDE_REPORT — 아파트 점프 MVP
 
-작성: t1p (Claude Code). 커밋/푸시/배포는 하지 않음. 브랜치 `feature/flight-combat`, 전 파일 미커밋.
+작성: t1p (Claude Code). 아래 본문은 배포 전 작성 기준이며, 커밋·배포 결과는 맨 끝 "후속 기록" 참고. 브랜치 `feature/flight-combat`.
 
 ## 실행
 
@@ -40,3 +40,11 @@ guide 확인, toolbox 검색(rooftop, city, apartment, coin, jump, korean, cat, 
 - patch-test는 자동 플레이라 키보드·터치 입력은 검증하지 않음
 - 프로젝트 자체 제작물의 라이선스 미정(사용자 결정). 레시피 credits에는 임시로 `NOASSERTION` 표기
 - Patch 게시 권장: 배포 여부와 별개로 사용자 지시 시 Windows의 Patch Desktop 테스트가 필요
+
+## 후속 기록 — 오케스트레이터 검증 / 배포 (t1n 수행·보고)
+
+- 커밋 `8820447`, `feature/flight-combat` 푸시 성공
+- Vercel production: <https://apt-jump-wine.vercel.app> (프로젝트 `dlab-daegu/apt-jump`)
+- 배포본: 공개 HTTP 200, 게임 시작/Space/P 정상, 글꼴 로드, THIRD-PARTY-NOTICES HTTP 200과 OFL 본문 확인, 콘솔 오류 0, 실패 응답 0
+- 배포 전 독립 검증: patch-test 12개 pass, 일시정지/재개/저장/재시작/터치 등 11개 항목 통과, 가상 표준 게임패드 메뉴, 320x568 저장 차단 안내/레이아웃 정상
+- 여전히 미확인: 실제 휴대폰·게임패드, 사람의 청음, 조작감·난이도, 자체 제작물 라이선스
