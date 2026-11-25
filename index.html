@@ -13,6 +13,7 @@
   <canvas id="game" aria-label="아파트 점프 게임 화면"></canvas>
 
   <div id="hud" hidden>
+    <div id="jump-meter"><span id="jump-label">길게 누를수록 높게</span><div role="progressbar" aria-label="점프 높이" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="jump-pressure"><i id="jump-fill"></i><b></b><b></b><b></b></div><small>짧게 ↑　길게 ↑↑↑</small></div>
     <div class="left">
       <div class="score"><span id="score">0</span><small>점</small></div>
       <div class="sub"><span id="dist">0m</span><span id="lv">속도 1</span><span>최고 <b id="best">0</b></span></div>
@@ -47,14 +48,15 @@
       <li>공중에서 한 번 더: <b class="cy">2단 점프</b>(3초 충전)</li>
       <li>실외기·방해꾼은 위에서 <b class="ye">밟아서</b> 격파</li>
       <li>동전을 이어 먹으면 <b class="ye">콤보 배율</b></li>
-      <li>캡슐 <b class="ye">아이템</b> 7가지와 이어지는 <b class="cy">미션</b></li>
+      <li>캡슐 <b class="ye">아이템</b> 6가지와 이어지는 <b class="cy">미션</b></li>
       <li>달릴수록 <b class="pk">빠르게</b> 속도가 오름</li>
       <li>물탱크·빨랫줄·먼 옥상은 <b class="pk">위험 보너스</b></li>
     </ul>
     <nav>
       <button type="button" data-act="start" class="primary">달리기 시작</button>
-      <button type="button" data-act="maps">유저 맵</button>
       <button type="button" data-act="ranking">주간 순위</button>
+      <button type="button" data-act="signup" id="title-account">회원가입 · 로그인</button>
+      <button type="button" data-act="maps">유저 맵</button>
       <button type="button" data-act="items">아이템 도감</button>
       <button type="button" data-act="settings">설정</button>
       <button type="button" data-act="credits">크레딧</button>
@@ -74,6 +76,10 @@
     <p class="keys" data-keys></p>
   </section>
 
+  <section class="screen" id="welcome" hidden>
+    <div class="welcome-card"><p class="cy">아파트 점프에 오신 것을 환영해요!</p><h2>내 닉네임으로<br>옥상을 달려요</h2><p>회원가입하면 주간 순위에 도전하고<br>직접 만든 맵을 공유할 수 있어요.</p><nav><button type="button" class="primary" data-act="signup">회원가입</button><button type="button" data-act="login">이미 계정이 있어요 · 로그인</button><button type="button" data-act="guest">가입 없이 먼저 플레이</button><button type="button" data-act="ranking">주간 순위 먼저 보기</button></nav><p class="keys">혼자 달리기와 맵 만들기는 가입 없이도 가능해요.</p></div>
+  </section>
+  <section id="update-notice" hidden role="alertdialog" aria-modal="true" aria-labelledby="update-title"><div class="welcome-card"><h2 id="update-title">새 버전이 도착했어요</h2><p id="update-message"></p><nav><button type="button" id="update-now" class="primary">지금 업데이트</button><button type="button" id="update-export" hidden>맵 파일로 저장하고 업데이트</button></nav></div></section>
   <section class="screen" id="result" hidden>
     <h2 id="r-title">추락!</h2>
     <p class="big"><span id="r-score">0</span>점</p>
@@ -118,6 +124,9 @@
   <section class="screen" id="ranking" hidden>
     <h2>주간 순위</h2>
     <p id="rank-reset" class="keys"></p>
+    <div id="rank-board-controls"><label for="rank-version">난이도 구분</label> <select id="rank-version" aria-label="난이도별 주간 순위"></select><p id="rank-version-note" class="keys"></p></div>
+    <p id="rank-mine" class="ye"></p>
+    <div id="rank-list"></div>
     <p id="rank-off" class="warn"></p>
     <p id="rank-wait" class="keys" hidden>계정을 확인하는 중입니다.</p>
     <form id="auth-form" aria-labelledby="auth-title" novalidate hidden>
@@ -143,8 +152,6 @@
       </form>
     </div>
     <p id="rank-msg" class="warn" role="status"></p>
-    <p id="rank-mine" class="ye"></p>
-    <div id="rank-list"></div>
     <nav><button type="button" data-act="home" class="primary">타이틀로</button></nav>
   </section>
 
@@ -202,7 +209,7 @@
   <section class="screen" id="credits" hidden>
     <h2>크레딧</h2>
     <div class="text">
-      <p>기획 Kevin-innovation<br />그래픽·음악·효과음·코드<br />이 게임을 위해 AI(Claude Code)로 새로 제작</p>
+      <p>기획 Kevin-innovation<br />그래픽·음악·효과음·코드<br />이 게임을 위해 AI(Claude Code·Codex)로 새로 제작</p>
       <p>글꼴 Galmuri11 Bold © Lee Minseo<br />SIL Open Font License 1.1</p>
       <p>Vite·TypeScript로 제작, Canvas·WebAudio 사용<br />온라인: React (MIT), Convex·Convex Auth (Apache-2.0)</p>
     </div>

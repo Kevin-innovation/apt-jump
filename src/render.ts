@@ -2,10 +2,11 @@ import type { Game, GameEvent } from './game';
 import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawScaffold, drawTank, drawWarning, powerColor } from './art';
 import { MAGNET_RANGE, POWER_NAMES } from './items';
 import { missionText } from './missions';
-import { BOOST_SPEED, canAirJump, enemyBox, paceSpeed, roofEnd, timeRate } from './physics';
+import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, roofEnd, timeRate } from './physics';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
 import { ROAD_DEPTH, type Roof } from './world';
+import { roadCars } from './traffic';
 
 type Ctx = CanvasRenderingContext2D;
 type RGB = [number, number, number];
@@ -349,7 +350,8 @@ export class Renderer {
       case 'dash': pop(e.x, e.y - 18, `질주 착지 +${e.points}`, '#ffd85a'); break;
       case 'mission': burst(30, p.x + 5, p.y - 20, ['#ffd85a', '#9be36b', '#7dfff0', '#fff'], 150, 40); pop(p.x - 14, p.y - 58, `미션 완료! ${missionText(e.mission)} +${e.points}`, '#9be36b'); break;
       case 'shielded': this.shake = Math.max(this.shake, 3); burst(24, e.x, e.y, ['#9be36b', '#fff6e0', '#fff'], 150, 30); pop(p.x - 6, p.y - 26, '안전모가 막았다!', '#9be36b'); break;
-      case 'road': pop(e.x, e.y - 30, '도로 착지! 램프로 복귀', '#7dfff0'); break;
+      case 'road': pop(e.x, e.y - 30, '자동차 주의! 점프로 피하세요', '#ffd85a'); break;
+      case 'trafficHit': this.shake = 9; burst(30, e.x, e.y - 8, ['#ff5566', '#ffd85a', '#fff'], 170, 60); pop(e.x - 20, e.y - 30, '차량 충돌!', '#ff7a7a'); break;
       case 'roadExit': pop(e.x, e.y - 30, '옥상 복귀!', '#9be36b'); break;
       case 'speedup': pop(p.x - 10, p.y - 44, `속도 UP! Lv.${e.level}`, '#ffb84a'); break;
       case 'goal': burst(40, p.x + 6, p.y - 20, ['#ffd85a', '#7dfff0', '#ff7ad9', '#fff'], 170, 60); break;
@@ -398,6 +400,17 @@ export class Renderer {
       else this.drawPair(this.roofArt(r), x, r.y - HEAD - cy, n);
     }
     for (const r of seen) if (r.road) drawRoad(g, r.road, cx, cy, this.H, n);
+    for (const r of seen) if (r.road) for (const car of roadCars(r.road, p.time)) {
+      const x = Math.round(car.x - cx), y = Math.round(car.y - cy);
+      if (x < -40 || x > this.W + 40) continue;
+      g.fillStyle = '#140c2e'; g.fillRect(x - 1, y + 4, 34, 10); g.fillRect(x + 6, y - 1, 21, 7);
+      g.fillStyle = ['#e94b61', '#ffd85a', '#73b5dc', '#d8dbe5'][car.color]!;
+      g.fillRect(x, y + 5, 32, 7); g.fillRect(x + 7, y, 18, 6);
+      g.fillStyle = '#29264b'; g.fillRect(x + 9, y + 1, 6, 5); g.fillRect(x + 17, y + 1, 6, 5);
+      g.fillStyle = '#fff6c0'; g.fillRect(x, y + 7, 3, 3);
+      g.fillStyle = '#140c2e'; g.fillRect(x + 4, y + 11, 6, 4); g.fillRect(x + 23, y + 11, 6, 4);
+      g.fillStyle = '#b5afc9'; g.fillRect(x + 6, y + 12, 2, 2); g.fillRect(x + 25, y + 12, 2, 2);
+    }
     if (game.world.goalX !== null) {
       const last = game.world.roofs[game.world.roofs.length - 1]!;
       drawFlag(g, Math.round(game.world.goalX - cx), Math.round(last.y - cy), this.t);
@@ -472,6 +485,11 @@ export class Renderer {
     const px = Math.round(p.x - cx - 2 - (w - 14) / 2), py = Math.round(p.y - cy - h + 1);
     if (p.ground) { g.fillStyle = 'rgba(10,6,30,.35)'; g.fillRect(px + 1, Math.round(p.y - cy), 12, 1); }
     g.drawImage(s, px, py, w, h);
+    if (p.vy < 0 && (p.jumping || p.holdTime >= HOLD_MAX)) {
+      const fill = Math.min(1, p.holdTime / HOLD_MAX);
+      g.fillStyle = '#140c2e'; g.fillRect(px - 5, py - 9, 25, 5);
+      g.fillStyle = fill >= 0.99 ? '#ffd85a' : '#7dfff0'; g.fillRect(px - 4, py - 8, Math.round(23 * fill), 3);
+    }
     // Scarf tail
     g.fillStyle = '#ff4d5e';
     for (let i = 0; i < 5; i++) {
@@ -503,7 +521,6 @@ export class Renderer {
     if (shown(game.magnetTime)) { const q = (this.t * 1.5) % 1; g.globalAlpha = 0.5 * q; ring(MAGNET_RANGE * (1 - q) * 0.6 + 8, '#ff5d6c', this.quality === 'low' ? 10 : 22, 0.5); g.globalAlpha = 1; }
     if (shown(game.doubleTime)) ring(10, '#ff9be6', 4, -5);
     if (shown(game.keepTime)) ring(17, '#ffb84a', 3, 3);
-    if (shown(p.slowTime)) { g.globalAlpha = 0.14; g.fillStyle = '#8fb8ff'; g.fillRect(0, 0, this.W, this.H); g.globalAlpha = 1; }
     for (let i = 0; i < p.airBonus; i++) { g.fillStyle = '#7dfff0'; g.fillRect(px + 3 + i * 5, py + 18, 3, 2); }
   }
 

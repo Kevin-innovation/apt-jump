@@ -152,7 +152,7 @@ describe('speed', () => {
     expect(at(1000)).toBeGreaterThan(at(0) * 1.65);
     for (let m = 0; m < 20000; m += 50) {
       expect(at(m + 50)).toBeGreaterThan(at(m));
-      expect(at(m)).toBeLessThan(DEFAULT_PACE.base + DEFAULT_PACE.gain);
+      expect(at(m)).toBeLessThan(DEFAULT_PACE.base + DEFAULT_PACE.gain + 8 * DEFAULT_PACE.stageGain!);
     }
   });
 });
@@ -167,7 +167,8 @@ describe('enemies', () => {
     const all = enemies(60, 40000);
     expect(Math.min(...all.map((a) => a.e.x))).toBeGreaterThan(ENEMY_START);
     const count = (a: number, b: number) => all.filter(({ e }) => e.x >= a && e.x < b).length;
-    expect(count(30000, 34000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) * 1.3);
+    // Encounters per second matter: at late speeds, each kilometre is crossed much sooner.
+    expect(count(30000, 34000) * baseSpeed(32000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) * baseSpeed(ENEMY_START + 2000) * 1.5);
     expect(all.some(({ e }) => e.kind === 'drone')).toBe(true);
     expect(all.some(({ e }) => e.kind === 'pigeon')).toBe(true);
   });
@@ -194,7 +195,7 @@ describe('enemies', () => {
       n++;
     }
     expect(n).toBeGreaterThan(50);
-    expect(worst).toBeGreaterThanOrEqual(3);
+    expect(worst).toBeGreaterThanOrEqual(2); // Late difficulty narrows the window, but retains alternative clean jumps.
   });
 
   const pigeon: Enemy = { id: 5, kind: 'pigeon', x: 160, y: -13, amp: 0, phase: 0 };
@@ -257,7 +258,7 @@ describe('street', () => {
       const i = w.roofs.findIndex((r) => r.road);
       const owner = w.roofs[i]!;
       const d = owner.road!;
-      for (const r of w.roofs) { r.obstacles = []; r.enemies = []; }
+      for (const r of w.roofs) { r.obstacles = []; r.enemies = []; if (r.road) r.road.traffic = false; }
       const p = newPlayer(owner.x + owner.w - 30, owner.y);
       const ev: string[] = [];
       let landed = '';
@@ -279,7 +280,7 @@ describe('street', () => {
       w.ensure(0, 12000);
       const owner = w.roofs.find((r) => r.road)!;
       const d = owner.road!;
-      for (const r of w.roofs) { r.obstacles = []; r.enemies = []; r.lines = []; }
+      for (const r of w.roofs) { r.obstacles = []; r.enemies = []; r.lines = []; if (r.road) r.road.traffic = false; }
       const p = newPlayer(owner.x + owner.w - 30, owner.y);
       let bad = '';
       for (let k = 0; k < 120 * 20 && p.x < d.rampEnd + 10 && !bad; k++) {

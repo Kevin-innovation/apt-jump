@@ -5,6 +5,7 @@ import { downloadMap, mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
 import { weekEnd, weekKey } from '../week';
 import { errorText, type Online, type SharedMapInfo } from './types';
+import { SIM_VERSION } from '../replay';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const num = (n: number) => n.toLocaleString('ko-KR');
@@ -19,8 +20,18 @@ export class OnlineScreens {
   private order: 'new' | 'old' = 'new';
   private mapTicket = 0;
   private joining = false;
+  private boardVersion = SIM_VERSION;
+  private boardChosen = false;
 
   constructor(private store: MapStore, private maps: MapActions) {
+    const version = $('rank-version') as HTMLSelectElement;
+    for (let n = SIM_VERSION; n >= 1; n--) {
+      const option = document.createElement('option'); option.value = String(n);
+      option.textContent = n === SIM_VERSION ? '새 난이도 순위' : `이전 난이도 (${SIM_VERSION - n}단계 전)`;
+      version.append(option);
+    }
+    version.value = String(SIM_VERSION);
+    version.addEventListener('change', () => { this.boardChosen = true; this.boardVersion = Number(version.value); void this.refreshBoard(); });
     ($('auth-form') as HTMLFormElement).addEventListener('submit', (e) => { e.preventDefault(); void this.enter(); });
     $('auth-switch').addEventListener('click', () => { this.setJoining(!this.joining); this.say(''); $('auth-id').focus(); });
     this.setJoining(false);
@@ -43,7 +54,7 @@ export class OnlineScreens {
   get signedIn(): boolean { const a = this.online?.account(); return a?.status === 'in' && a.nickname !== null; }
   private say(text: string): void { $('rank-msg').textContent = text; }
 
-  private setJoining(on: boolean): void {
+  setJoining(on: boolean): void {
     this.joining = on;
     $('auth-title').textContent = on ? '회원가입' : '로그인';
     $('auth-go').textContent = on ? '가입하고 시작' : '로그인';
@@ -102,6 +113,7 @@ export class OnlineScreens {
   refresh(): void {
     const a = this.online?.account();
     $('rank-off').hidden = !!this.online;
+    $('rank-board-controls').hidden = !this.online;
     $('rank-off').textContent = this.connecting ? '온라인에 연결하는 중입니다.' : '온라인 연결을 준비하고 있습니다. 혼자 달리기, 맵 만들기, 맵 파일 주고받기는 지금도 됩니다.';
     $('auth-form').hidden = a?.status !== 'out';
     $('rank-account').hidden = a?.status !== 'in';
@@ -117,6 +129,10 @@ export class OnlineScreens {
 
   openRanking(): void {
     this.say('');
+    if (!this.boardChosen) {
+      this.boardVersion = SIM_VERSION;
+      ($('rank-version') as HTMLSelectElement).value = String(SIM_VERSION);
+    }
     this.refresh();
   }
 
@@ -138,8 +154,17 @@ export class OnlineScreens {
     if (!this.online) { list.replaceChildren(); mine.textContent = ''; return; }
     const ticket = ++this.ticket;
     try {
-      const b = await this.online.board(weekKey(this.online.now()));
+      const week = weekKey(this.online.now());
+      let b = await this.online.board(week, this.boardVersion);
+      if (!this.boardChosen && this.boardVersion === SIM_VERSION && b.previousVersion && ticket === this.ticket) {
+        this.boardVersion = b.previousVersion;
+        ($('rank-version') as HTMLSelectElement).value = String(this.boardVersion);
+        b = await this.online.board(week, this.boardVersion);
+      }
       if (ticket !== this.ticket) return;
+      $('rank-version-note').textContent = this.boardVersion === SIM_VERSION
+        ? '새 난이도 기록을 집계합니다. 기존 기록은 이전 난이도에서 볼 수 있어요.'
+        : '기존 기록을 보관한 순위입니다. 새로 달린 기록은 새 난이도에 등록됩니다.';
       list.replaceChildren(...b.top.map((r) => {
         const row = document.createElement('div');
         row.className = r.mine ? 'rank me' : 'rank';

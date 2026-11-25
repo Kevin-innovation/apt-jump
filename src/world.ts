@@ -9,7 +9,7 @@ export interface Coin { x: number; y: number; kind: CoinKind; taken: boolean }
 /** x is where the runner meets it; y the middle of its movement (top of its box). */
 export interface Enemy { id: number; kind: 'drone' | 'pigeon'; x: number; y: number; amp: number; phase: number }
 /** A street under a run of scaffolds, with a ramp back up to the next building. */
-export interface Road { id: number; x: number; y: number; rampStart: number; rampEnd: number; rampY: number }
+export interface Road { id: number; x: number; y: number; rampStart: number; rampEnd: number; rampY: number; traffic?: boolean }
 export interface Roof {
   id: number; kind: 'building' | 'scaffold'; x: number; w: number; y: number; style: number; seed: number; number: number;
   obstacles: Obstacle[]; lines: Line[]; coins: Coin[]; powers: Power[]; enemies: Enemy[]; road: Road | null;
@@ -43,7 +43,7 @@ export const OBSTACLE_SIZE = { ac: { w: 16, h: 11 }, tank: { w: 36, h: 31 } } as
 
 export function difficulty(x: number): number { return ease(x, 2600); }
 export function enemyChance(x: number): number {
-  return x < ENEMY_START ? 0 : 0.15 + 0.6 * ease(x - ENEMY_START, 3500);
+  return x < ENEMY_START ? 0 : 0.22 + 0.65 * ease(x - ENEMY_START, 2500);
 }
 
 /** Deterministic city: each gap is sized from what an unboosted, fully held single jump can cross. */
@@ -66,7 +66,6 @@ export class World implements City {
     const first = this.blank(-200, START_ROOF + 200, 0);
     this.roofs.push(first);
     for (let i = 0; i < 6; i++) this.coin(first, 200 + i * 16, -10);
-    this.power(first, 360, -14);
     this.planGap(first);
   }
 
@@ -92,10 +91,10 @@ export class World implements City {
     this.sincePower = 0;
   }
 
-  /** Puts an item within easy reach on most roofs. */
+  /** A rare pickup: one every four to six roofs. */
   private maybePower(r: Roof): void {
     this.sincePower++;
-    if (this.sincePower < 2 && !this.rng.chance(0.4)) return;
+    if (this.sincePower < 4 || (this.sincePower < 6 && !this.rng.chance(0.25))) return;
     // Low enough to run through, or a short hop up, before anything stands in the way.
     const room = Math.min(landingZone(r.x), r.w - 30);
     this.power(r, r.x + this.rng.range(0.45, 0.9) * room, r.y - (this.rng.chance(0.6) ? 14 : 38));
@@ -110,7 +109,8 @@ export class World implements City {
     if (r.y + dy < -80) dy = Math.abs(dy);
     if (r.y + dy > 80) dy = -Math.min(MAX_RISE, Math.abs(dy));
     const speed = baseSpeed(edge);
-    const ratio = this.rng.range(0.38 + 0.14 * d, 0.6 + 0.2 * d);
+    const pressure = Math.min(1, Math.max(0, edge - 4000) / 20000);
+    const ratio = this.rng.range(0.38 + 0.14 * d + 0.12 * pressure, 0.6 + 0.2 * d + 0.08 * pressure);
     r.nextDy = dy;
     r.gap = Math.max(overRoad ? 70 : 26, Math.round(jumpReach(speed, dy) * ratio));
 
@@ -145,7 +145,7 @@ export class World implements City {
           id: this.nextId++, kind: drone ? 'drone' : 'pigeon', x: ex, y: r.y - (drone ? 30 : 13),
           amp: drone ? this.rng.int(6, 14) : 0, phase: this.rng.next(),
         });
-        x = ex + Math.round(speed * 0.85);
+        x = ex + Math.round(speed * (0.85 - 0.22 * d));
       } else {
         const kind = this.rng.chance(0.4) ? 'tank' : 'ac';
         const { w, h } = OBSTACLE_SIZE[kind];
@@ -153,7 +153,7 @@ export class World implements City {
         r.obstacles.push({ id: this.nextId++, kind, x: ox, y: r.y - h, w, h });
         if (kind === 'tank') for (let i = 0; i < 2; i++) this.coin(r, ox + 10 + i * 16, r.y - h - 12, 'gold');
         else if (this.rng.chance(0.6)) for (let i = 0; i < 3; i++) this.coin(r, ox - 8 + i * 16, r.y - (i === 1 ? 34 : 27));
-        x = ox + w + Math.round(speed * 0.8);
+        x = ox + w + Math.round(speed * (0.8 - 0.2 * d));
       }
       placed = true;
     }

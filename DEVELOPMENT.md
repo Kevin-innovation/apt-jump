@@ -27,7 +27,7 @@ pch check dist     # Patch 헤드리스 검사 (로그인 불필요)
 - Convex Auth의 `signUpWithUsernamePassword`도 호출할 수 있지만, 그렇게 만든 계정은 닉네임이 없어 순위·맵 게시가 막히고, 규칙에 맞지 않는 아이디는 닉네임도 정할 수 없습니다. 계정 생성 전체에 속도 제한이 있습니다.
 - 주간 순위: 무한 모드만, 닉네임으로 표시. 서버 시각 기준 KST 월요일 00:00에 새 주로 바뀝니다. 순위는 주 + `SIM_VERSION`별이라 규칙이 다른 버전의 점수가 섞이지 않으며, 이전 기록은 남습니다.
 - 점수 검증: 서버가 시드와 1회용 실행을 발급하고, 제출된 입력을 다시 실행해 아이템·미션까지 포함한 점수를 계산합니다. 사람이 낼 수 없는 입력 빈도, 실제보다 빠른 완료, 2시간 지난 실행은 거부합니다. 사람처럼 입력하는 자동 플레이까지 막지는 못합니다.
-- 시뮬레이션 결과가 바뀌는 수정에는 `src/replay.ts`의 `SIM_VERSION`(현재 2)을 올리고 Convex와 웹을 함께 배포하세요.
+- 시뮬레이션 결과가 바뀌는 수정에는 `src/replay.ts`의 `SIM_VERSION`(현재 3)을 올리고 Convex와 웹을 함께 배포하세요.
 
 ```sh
 # 로컬 (계정·환경 변수 불필요). .env.local의 VITE_CONVEX_URL=http://127.0.0.1:3210
@@ -57,3 +57,12 @@ npx convex deploy --env-file .env.convex-prod.local --codegen disable
 `physics` 물리, `world` 도시 생성, `game` 점수, `items` 아이템, `missions` 미션·메달, `bot` 자동 플레이, `maps` 맵 스키마, `replay` 기록 재실행, `week`·`nickname`·`username` 공용 규칙(이상 DOM 없음, 일부는 서버와 공유) · `render`/`art`/`sprites` 그림 · `audio` · `input` · `ui` · `storage`/`mapstore` 저장 · `editor`/`mapscreen` 맵 화면 · `online/` 온라인 화면과 React 연결부 · `patchtest` · `main` · `convex/` 서버.
 
 출처와 라이선스: [CREDITS.md](CREDITS.md)
+
+## 첫 방문과 배포 갱신
+
+- 첫 방문 계정 안내는 로컬 플래그로 재표시를 막고, 로그인 세션이 있으면 생략합니다. 저장 거부 시 메모리에서 동작합니다.
+- 빌드별 ID를 JS와 `version.json`에 함께 넣습니다. 화면이 보일 때 30초 간격과 focus/visibilitychange에서 검사하고, 새 ID면 5초 안내 후 새로고침합니다. 네트워크 실패·잘못된 응답은 무시하고, 세션/URL 가드로 반복 새로고침을 막습니다.
+- `/`, `/index.html`, `/version.json`은 Vercel `Cache-Control: no-store`로 배포합니다. 해시 자산은 별도 캐시를 유지합니다.
+- 이 감지 코드가 없던 구버전 탭은 원격으로 최초 새로고침할 수 없습니다. 해당 사용자에게 최초 1회 새로고침이 필요하며, 이후 배포부터 자동 적용됩니다.
+- 자동차 위치는 주자의 시뮬레이션 시간과 도로 ID에서 계산합니다. Bot·브라우저·서버 재실행이 같은 경로를 사용하며 자동차 충돌은 안전모와 무관하게 즉시 종료합니다.
+- 구맵의 `slow` 물체는 로드할 때 제거합니다. 아이템 풀·편집기·물리에는 감속 기능이 없습니다.

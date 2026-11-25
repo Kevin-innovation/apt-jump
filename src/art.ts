@@ -138,7 +138,6 @@ export function drawWarning(g: Ctx, x: number, y: number, t: number): void {
 /** 9x9 pictures on the item capsules: '#' main colour, 'o' light, 'x' ink. */
 const POWER_ART: Record<PowerKind, { color: string; rows: string[] }> = {
   boost: { color: '#ffd85a', rows: ['.....##..', '....##...', '...##....', '..######.', '....###..', '....##...', '...##....', '...#.....', '..#......'] },
-  slow: { color: '#8fb8ff', rows: ['..#####..', '.#ooooo#.', '#ooo#ooo#', '#ooo#ooo#', '#ooo##oo#', '#ooooooo#', '#ooooooo#', '.#ooooo#.', '..#####..'] },
   magnet: { color: '#ff5d6c', rows: ['oo.....oo', 'oo.....oo', '##.....##', '##.....##', '##.....##', '##.....##', '.##...##.', '.#######.', '..#####..'] },
   shield: { color: '#9be36b', rows: ['..#####..', '.##ooo##.', '##o####..', '#o######.', '#o######.', '#########', '#########', 'ooooooooo', '.........'] },
   double: { color: '#ff9be6', rows: ['.......#.', '......#.#', '#.#.....#', '#.#....#.', '.#....###', '#.#......', '#.#......', '.........', '.........'] },

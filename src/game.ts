@@ -44,6 +44,7 @@ export class Game {
   world: City;
   player: Player;
   dead = false;
+  deathCause: 'fall' | 'traffic' | null = null;
   finished = false;
   time = 0;
   bonus = 0;
@@ -94,7 +95,6 @@ export class Game {
     const p = this.player;
     switch (kind) {
       case 'boost': return p.boostTime;
-      case 'slow': return p.slowTime;
       case 'magnet': return this.magnetTime;
       case 'double': return this.doubleTime;
       case 'keep': return this.keepTime;
@@ -131,8 +131,7 @@ export class Game {
   private use(kind: PowerKind): void {
     const p = this.player, time = POWER_TIME[kind];
     switch (kind) {
-      case 'boost': p.boostTime = time; p.slowTime = 0; break;
-      case 'slow': p.slowTime = time; p.boostTime = 0; break;
+      case 'boost': p.boostTime = time; break;
       case 'magnet': this.magnetTime = time; break;
       case 'double': this.doubleTime = time; break;
       case 'keep': this.keepTime = time; if (this.combo > 0) this.comboTimer = COMBO_TIME; break;
@@ -169,7 +168,7 @@ export class Game {
     this.doubleTime = Math.max(0, this.doubleTime - STEP);
     this.keepTime = Math.max(0, this.keepTime - STEP);
 
-    // Counted in the runner's time, so slowing down never costs a combo.
+    // Counted in the runner's simulation time.
     if (this.combo > 0 && this.keepTime <= 0) {
       this.comboTimer -= STEP * rate;
       if (this.comboTimer <= 0) this.loseCombo();
@@ -235,7 +234,8 @@ export class Game {
         break;
       case 'land': this.onLand(e.surface.kind, e.surface.id); break;
       case 'stumble': case 'wall': this.loseCombo(); break;
-      case 'fell': this.dead = true; break;
+      case 'trafficHit': this.loseCombo(); this.deathCause = 'traffic'; this.dead = true; break;
+      case 'fell': this.deathCause = 'fall'; this.dead = true; break;
     }
   }
 

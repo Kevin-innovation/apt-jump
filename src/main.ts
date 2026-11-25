@@ -1,6 +1,8 @@
 import { Audio8 } from './audio';
 import { Bot } from './bot';
 import { Editor } from './editor';
+import { FirstVisit } from './entry';
+import { watchReleases } from './updates';
 import { Game, type GameEvent } from './game';
 import { Input } from './input';
 import { buildCourse, blankMap, PRACTICE, type GameMap } from './maps';
@@ -55,6 +57,17 @@ let ranked: { runId: string; recorder: Recorder } | null = null;
 let starting = 0;
 /** The window lost focus while a run was being issued. */
 let awayAtStart = false;
+const firstVisit = new FirstVisit();
+let booted = false;
+let updating = false;
+
+function syncEntry(): void {
+  const account = onlineUi.online?.account();
+  const button = document.getElementById('title-account')!;
+  button.textContent = account?.status === 'in' ? `${account.nickname ?? '닉네임 설정'} · 내 계정` : '회원가입 · 로그인';
+  if (booted && !testing && !updating && phase === 'title' && ui.screen === 'title' && account && firstVisit.shouldShow(account.status)) ui.show('welcome');
+  if (account?.status === 'in' && ui.screen === 'welcome') title();
+}
 
 function setPhase(p: Phase): void { phase = p; phaseAt = performance.now(); }
 
@@ -73,6 +86,7 @@ function title(): void {
   audio.stop();
   ui.hud(false); ui.hint(false); ui.count(null);
   ui.show('title');
+  if (booted) syncEntry();
 }
 
 function openMaps(): void {
@@ -174,16 +188,23 @@ function resume(): void {
 }
 
 function act(a: Act): void {
+  if (updating) return;
   // A jump press made while falling must not skip the result.
   if (phase === 'result' && performance.now() - phaseAt < 450 && (a === 'restart' || a === 'home')) return;
   const s = save.data;
   switch (a) {
+    case 'guest': firstVisit.dismiss(); title(); break;
+    case 'signup': case 'login':
+      firstVisit.dismiss();
+      ui.show('ranking'); onlineUi.openRanking(); onlineUi.setJoining(a === 'signup');
+      requestAnimationFrame(() => { document.getElementById('auth-form')!.scrollIntoView({ block: 'start' }); document.getElementById('auth-id')!.focus(); });
+      break;
     case 'start': mode = { kind: 'endless' }; startRun(); break;
     case 'restart': startRun(); break;
     case 'resume': resume(); break;
     case 'home': if (phase === 'title') title(); else leave(); break;
     case 'maps': openMaps(); break;
-    case 'ranking': ui.show('ranking'); onlineUi.openRanking(); break;
+    case 'ranking': if (ui.screen === 'welcome') firstVisit.dismiss(); ui.show('ranking'); onlineUi.openRanking(); break;
     case 'newmap': openEditor(blankMap(), null); break;
     case 'import': mapScreen.pickFile(); break;
     case 'ed-save': saveMap(); break;
@@ -226,6 +247,11 @@ const onlineUi = new OnlineScreens(maps, {
   play: (map, id) => playMap(map, id, 'maps'),
   edit: (map, id) => openEditor(map, id),
 });
+addEventListener('beforeunload', (event) => {
+  if (!updating && (editor.dirty || onlineUi.online?.pending())) {
+    event.preventDefault(); event.returnValue = '';
+  }
+});
 mapScreen.onRefresh = () => onlineUi.refreshMaps();
 
 /** Hands a finished ranked run in; the result screen says how it went. */
@@ -248,6 +274,7 @@ input.onMenu = (a) => ui.menu(a);
 input.onGesture = () => audio.unlock();
 input.onMute = () => act('mute');
 input.onPause = () => {
+  if (updating) return;
   if (phase === 'playing' || phase === 'countdown') pause();
   else if (ui.screen === 'settings' || ui.screen === 'credits' || ui.screen === 'items') act('back');
   else if (phase === 'paused') act('resume');
@@ -278,7 +305,7 @@ function onEvent(e: GameEvent): void {
     case 'coin': audio.play(e.kind); break;
     case 'airjump': audio.play('air'); break;
     case 'stomp': audio.play('stomp'); input.rumble(60, 0.4); break;
-    case 'power': audio.play(e.kind === 'boost' || e.kind === 'slow' ? e.kind : 'power'); break;
+    case 'power': audio.play(e.kind === 'boost' ? e.kind : 'power'); break;
     case 'shielded': audio.play('shield'); input.rumble(90, 0.5); break;
     case 'mission': audio.play('mission'); break;
     case 'speedup': audio.play('up'); break;
@@ -292,6 +319,7 @@ function onEvent(e: GameEvent): void {
     case 'risk': audio.play('risk'); break;
     case 'stumble': audio.play('stumble'); input.rumble(120, 0.5); break;
     case 'wall': audio.play('stumble'); input.rumble(160, 0.7); break;
+    case 'trafficHit':
     case 'fell':
       audio.stop();
       audio.play('fall');
@@ -336,7 +364,7 @@ function frame(now: number): void {
     case 'playing':
       simulate(dt, runInput);
       if (game.distance > 30) ui.hint(false);
-      ui.update(game);
+      ui.update(game, input.held || assistHold);
       break;
     case 'countdown': {
       const left = 3 - inPhase / 600;
@@ -369,7 +397,7 @@ function frame(now: number): void {
       break;
   }
   if (phase === 'editor') { editor.draw(dt); return; }
-  audio.tempo = (1 + Math.min(0.25, (game.level - 1) * 0.022)) * (game.player.boostTime > 0 ? 1.12 : game.player.slowTime > 0 ? 0.85 : 1);
+  audio.tempo = (1 + Math.min(0.25, (game.level - 1) * 0.022)) * (game.player.boostTime > 0 ? 1.12 : 1);
   audio.night = view.nightAt(game.distance);
   view.draw(game, phase === 'paused' || phase === 'countdown' ? 0 : dt, phase === 'playing' || phase === 'title');
   test?.frame();
@@ -389,9 +417,48 @@ const url = testing ? null : onlineUrl(import.meta.env.VITE_CONVEX_URL as string
 if (url) {
   onlineUi.connecting = true;
   onlineUi.refresh();
-  import('./online/island').then((m) => onlineUi.attach(m.connect(url)), () => { onlineUi.connecting = false; onlineUi.refresh(); });
+  import('./online/island').then((m) => {
+    const online = m.connect(url);
+    onlineUi.attach(online); online.onAccount(syncEntry); syncEntry();
+  }, () => { onlineUi.connecting = false; onlineUi.refresh(); });
 }
+
+function offerUpdate(version: string): void {
+  if (updating) return;
+  updating = true;
+  const wasRunning = phase === 'playing' || phase === 'countdown' || phase === 'issuing' || phase === 'paused';
+  starting++; ranked = null;
+  pause(); input.release(); input.locked = true; audio.stop();
+  if (phase === 'issuing') setPhase('paused');
+  const notice = document.getElementById('update-notice')!;
+  const message = document.getElementById('update-message')!;
+  const now = document.getElementById('update-now') as HTMLButtonElement;
+  const exportMap = document.getElementById('update-export') as HTMLButtonElement;
+  let safe = true;
+  if (phase === 'editor' && editor.dirty) {
+    editor.flush();
+    // Keep the draft, including invalid courses, without ever overwriting an unrelated map.
+    safe = saveMap() && maps.available;
+    exportMap.hidden = safe;
+  }
+  notice.hidden = false;
+  const reload = () => {
+    const next = new URL(location.href); next.searchParams.set('updated', version);
+    location.replace(next.href);
+  };
+  now.onclick = reload;
+  exportMap.onclick = () => { downloadMap(editor.map); reload(); };
+  if (!safe) {
+    message.textContent = '새 버전을 적용하려면 새로고침이 필요합니다. 편집 중인 맵을 파일로 보관한 뒤 업데이트해 주세요.';
+    now.hidden = true; exportMap.focus(); return;
+  }
+  let seconds = 5;
+  const text = () => { message.textContent = `${seconds}초 뒤 새 버전으로 자동 새로고침합니다.${wasRunning ? ' 진행 중인 판은 종료되며 순위에 등록되지 않습니다.' : ''} 저장된 맵과 로그인은 유지됩니다.`; };
+  text(); now.focus();
+  const timer = setInterval(() => { seconds--; text(); if (seconds <= 0) { clearInterval(timer); reload(); } }, 1000);
+}
+if (!testing && import.meta.env.PROD) watchReleases(__RELEASE_ID__, offerUpdate);
 // Building numbers are painted once, so wait briefly for the font.
 Promise.race([document.fonts.load('11px Galmuri11', '동점'), new Promise((r) => setTimeout(r, 1500))])
   .catch(() => {})
-  .finally(() => { title(); requestAnimationFrame(frame); });
+  .finally(() => { title(); booted = true; syncEntry(); requestAnimationFrame(frame); });

@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { Bot } from '../src/bot';
 import { COIN_POINTS, COMBO_TIME, Game } from '../src/game';
-import { BOOST_RATE, DASH_POINTS, MAX_AIR_BONUS, POWER_KINDS, POWER_POINTS, POWER_TIME, SLOW_RATE, type PowerKind } from '../src/items';
+import { BOOST_RATE, DASH_POINTS, MAX_AIR_BONUS, POWER_KINDS, POWER_POINTS, POWER_TIME, type PowerKind } from '../src/items';
 import { buildCourse, PRACTICE, checkMap, parseMap, serializeMap, type GameMap } from '../src/maps';
 import { medalFor, MEDALS, MISSIONS, nextMedal } from '../src/missions';
 import { baseSpeed, jumpReach, newPlayer, STEP, stepPlayer, type Player } from '../src/physics';
@@ -41,21 +41,29 @@ describe('difficulty', () => {
     }
     expect(early).toBeGreaterThan(30);
   });
+  it('keeps increasing in late 250m stages instead of plateauing', () => {
+    const speeds = [250, 500, 1000, 1500, 2000].map(m => baseSpeed(60 + m * 16));
+    expect(speeds[2]!).toBeGreaterThan(380);
+    expect(speeds[4]!).toBeGreaterThan(480);
+    for (let i = 1; i < speeds.length; i++) expect(speeds[i]! - speeds[i - 1]!).toBeGreaterThan(40);
+  });
 });
 
 describe('items in the city', () => {
-  it('are plentiful, of every kind, from the first roof on', () => {
-    for (let s = 1; s <= 30; s++) {
-      const w = new World(s);
-      w.ensure(0, 16000);
-      const all = w.roofs.flatMap((r) => r.powers);
-      expect(all.length).toBeGreaterThan(18); // a kilometre
-      expect(new Set(all.map((p) => p.kind)).size).toBe(POWER_KINDS.length);
-      expect(w.roofs[0]!.powers).toHaveLength(1);
-      expect(all[0]!.x).toBeLessThan(400);
-      // Each kind comes round in every seven.
-      for (let i = 0; i + 7 <= all.length; i += 7) expect(new Set(all.slice(i, i + 7).map((p) => p.kind)).size).toBe(7);
+  it('are about a third as frequent, never on the first roof, and cycle six kinds', () => {
+    let total = 0;
+    for (let seed = 1; seed <= 40; seed++) {
+      const w = new World(seed); w.ensure(0, 16000);
+      const all = w.roofs.flatMap(r => r.powers).filter(p => p.x < 16000);
+      total += all.length;
+      expect(w.roofs[0]!.powers).toHaveLength(0);
+      expect(all.length).toBeGreaterThanOrEqual(4);
+      expect(all.length).toBeLessThanOrEqual(9);
+      expect(all.every(p => p.kind !== ('slow' as string))).toBe(true);
+      for (let i = 0; i + 6 <= all.length; i += 6) expect(new Set(all.slice(i, i + 6).map(p => p.kind)).size).toBe(6);
     }
+    expect(total / 40).toBeGreaterThan(4);
+    expect(total / 40).toBeLessThan(20.175 / 2.5);
   });
   it('stand on their own roof, within reach, clear of obstacles and before the edge', () => {
     for (let s = 1; s <= 40; s++) {
@@ -80,19 +88,13 @@ describe('effects', () => {
     expect(g.combo).toBe(1);
     expect(g.bonus).toBe(POWER_POINTS);
   });
-  it('last their time, in real seconds, and replace their opposite', () => {
-    const g = bare();
-    give(g, 'boost');
-    expect(g.effect('boost')).toBeCloseTo(POWER_TIME.boost, 1);
-    give(g, 'slow');
-    expect(g.effect('boost')).toBe(0);
-    expect(g.effect('slow')).toBeGreaterThan(POWER_TIME.slow - 0.1);
+  it('boost lasts five real seconds', () => {
+    const p = { ...newPlayer(0, 0), boostTime: POWER_TIME.boost };
     let n = 0;
-    const p: Player = { ...newPlayer(0, 0), slowTime: POWER_TIME.slow };
-    while (p.slowTime > 0) { stepPlayer(p, idle, [flat()], () => {}); n++; }
-    expect(n * STEP).toBeCloseTo(POWER_TIME.slow, 1);
+    while (p.boostTime > 0) { stepPlayer(p, idle, [flat()], () => {}); n++; }
+    expect(n * STEP).toBeCloseTo(POWER_TIME.boost, 1);
   });
-  it('speed the runner up and slow it down', () => {
+  it('speed the runner up', () => {
     const run = (set: Partial<Player>) => {
       const p: Player = { ...newPlayer(0, 0), ...set };
       for (let i = 0; i < 120; i++) stepPlayer(p, idle, [flat()], () => {});
@@ -100,10 +102,9 @@ describe('effects', () => {
     };
     const plain = run({});
     expect(run({ boostTime: 5 }) / plain).toBeCloseTo(BOOST_RATE, 1);
-    expect(run({ slowTime: 5 }) / plain).toBeCloseTo(SLOW_RATE, 1);
   });
 
-  it.each<[string, Partial<Player>]>([['plain', {}], ['slow', { slowTime: 99 }], ['fast', { boostTime: 99 }], ['slow ending mid-jump', { slowTime: 0.3 }], ['fast ending mid-jump', { boostTime: 0.3 }]])(
+  it.each<[string, Partial<Player>]>([['plain', {}], ['fast', { boostTime: 99 }], ['fast ending mid-jump', { boostTime: 0.3 }]])(
     'leave every gap of the city crossable: %s', (_n, set) => {
       let tried = 0;
       const missed: string[] = [];
@@ -151,7 +152,6 @@ describe('effects', () => {
       return p.x - x;
     };
     const plain = reach({});
-    expect(Math.abs(reach({ slowTime: 99 }) - plain)).toBeLessThan(plain * 0.02);
     expect(Math.abs(reach({ boostTime: 99 }) - plain)).toBeLessThan(plain * 0.02);
   });
 
@@ -199,7 +199,7 @@ describe('effects', () => {
     for (let i = 0; i < 130; i++) { g.step({ pressed: i % 25 === 0, held: true }); jumps += g.drain().filter((e) => e.type === 'airjump').length; }
     expect(jumps).toBe(1 + MAX_AIR_BONUS);
   });
-  it('combo keeper stops the combo clock, and slow time slows it', () => {
+  it('combo keeper stops the combo clock', () => {
     const left = (kind: PowerKind | null) => {
       const g = bare();
       if (kind) give(g, kind);
@@ -208,7 +208,7 @@ describe('effects', () => {
       return g.comboTimer;
     };
     expect(left('keep')).toBe(COMBO_TIME);
-    expect(left('slow')).toBeGreaterThan(left(null) + 0.2);
+    expect(left(null)).toBeLessThan(COMBO_TIME - 0.9);
   });
   it('fast time pays for each new roof', () => {
     const dashes = (fast: boolean) => {

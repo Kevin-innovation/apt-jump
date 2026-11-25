@@ -12,9 +12,18 @@ const wasmModule = {
   },
 };
 
+const releaseId = `${process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 12) ?? 'local'}-${Date.now().toString(36)}`;
+const releaseManifest = {
+  name: 'release-manifest',
+  generateBundle(this: { emitFile(file: { type: 'asset'; fileName: string; source: string }): void }) {
+    this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ id: releaseId }) });
+  },
+};
+
 export default defineConfig(({ mode }) => ({
   base: './',
+  define: { __RELEASE_ID__: JSON.stringify(releaseId) },
   build: { target: 'es2022', assetsInlineLimit: 0 },
-  plugins: mode === 'test' ? [wasmModule] : [],
+  plugins: mode === 'test' ? [wasmModule] : [releaseManifest],
   test: { server: { deps: { inline: [/password-hash-wasm/, /@convex-dev/] } } },
 }));

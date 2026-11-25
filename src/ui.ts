@@ -2,15 +2,15 @@ import { drawPower, powerColor } from './art';
 import { COMBO_TIME, type Game } from './game';
 import { POWER_KINDS, POWER_NAMES, POWER_TEXT, POWER_TIME, type PowerKind } from './items';
 import { medalFor, missionText, nextMedal } from './missions';
-import { AIR_COOLDOWN, canAirJump } from './physics';
+import { AIR_COOLDOWN, canAirJump, HOLD_MAX } from './physics';
 import type { Device, MenuAction } from './input';
 import type { SaveFile } from './storage';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
-export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'items';
+export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'items' | 'welcome';
 export type Act = 'start' | 'resume' | 'restart' | 'home' | 'settings' | 'credits' | 'back' | 'mute' | 'music' | 'sfx' | 'shake'
-  | 'maps' | 'ranking' | 'items' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
-const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'items'];
+  | 'maps' | 'ranking' | 'items' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
+const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'items', 'welcome'];
 const VOLUME = ['끔', '작게', '보통', '크게'];
 const KEYS: Record<Device, string> = {
   key: '점프 Space · ↑ · 클릭　　일시정지 P　　음소거 M',
@@ -105,6 +105,7 @@ export class UI {
     else if (a === 'back') {
       if (this.screen === 'settings' || this.screen === 'credits' || this.screen === 'items') this.onAct('back');
       else if (this.screen === 'pause') this.onAct('resume');
+      else if (this.screen === 'welcome') this.onAct('guest');
       else if (this.screen === 'result' || this.screen === 'maps' || this.screen === 'ranking') this.onAct('home');
       else if (this.screen === 'editor') this.onAct('ed-back');
     } else (list[i] ?? list.find((b) => b.classList.contains('primary')))?.click();
@@ -130,7 +131,13 @@ export class UI {
     this.text('best', num(s.best));
   }
 
-  update(g: Game): void {
+  update(g: Game, held = false): void {
+    const charge = held && g.player.vy < 0 ? Math.min(1, g.player.holdTime / HOLD_MAX) : 0;
+    $('jump-fill').style.transform = `scaleX(${charge})`;
+    $('jump-pressure').setAttribute('aria-valuenow', String(Math.round(charge * 100)));
+    $('jump-meter').classList.toggle('charging', charge > 0);
+    $('jump-meter').classList.toggle('full', charge >= 0.99);
+    this.text('jump-label', charge >= 0.99 ? '최대 높이!' : charge > 0 ? '꾹 누르는 중…' : '길게 누를수록 높게');
     this.text('score', num(g.score));
     this.text('dist', `${Math.floor(g.distance)}m`);
     this.text('coins', String(g.coins));
@@ -171,7 +178,7 @@ export class UI {
   /** best is null for a test play, which keeps no record. */
   result(g: Game, isBest: boolean, best: number | null): void {
     $('r-title').classList.toggle('new', isBest || g.finished);
-    this.text('r-title', g.finished ? (isBest ? '완주! 신기록' : '완주!') : isBest ? '신기록!' : '추락!');
+    this.text('r-title', g.finished ? (isBest ? '완주! 신기록' : '완주!') : g.deathCause === 'traffic' ? '차량 충돌!' : isBest ? '신기록!' : '추락!');
     this.text('r-score', num(g.score));
     this.text('r-best', best === null ? '이 판은 기록을 남기지 않습니다' : `최고 점수 ${num(best)}`);
     this.text('r-dist', `${Math.floor(g.distance)}m`);

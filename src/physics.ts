@@ -1,5 +1,6 @@
-import { BOOST_RATE, SLOW_RATE } from './items';
+import { BOOST_RATE } from './items';
 import type { Enemy, Obstacle, Roof } from './world';
+import { roadCars } from './traffic';
 
 // Units are virtual pixels and seconds. y grows downward; player.y is the feet.
 export const STEP = 1 / 120;
@@ -35,8 +36,8 @@ const SNAP = 8;
 export const FALL_LIMIT = 150;
 
 /** half is the distance in pixels by which half the gain is reached. */
-export interface Pace { base: number; gain: number; half?: number }
-export const DEFAULT_PACE: Readonly<Pace> = { base: 130, gain: 175, half: 2400 };
+export interface Pace { base: number; gain: number; half?: number; stageGain?: number }
+export const DEFAULT_PACE: Readonly<Pace> = { base: 140, gain: 180, half: 2400, stageGain: 22 };
 // The simulation uses only basic arithmetic (no exp or sin), so a replay gives the same run on every engine.
 /** Rises from 0 toward 1, halfway at `half`. */
 export function ease(x: number, half: number): number { const u = Math.max(0, x); return u / (u + half); }
@@ -46,7 +47,8 @@ export function wave(t: number): number {
   return s < 0.5 ? 16 * s * (0.5 - s) : -16 * (s - 0.5) * (1 - s);
 }
 export function paceSpeed(pace: Pace, x: number): number {
-  return pace.base + pace.gain * ease(x, pace.half ?? 6000);
+  const stages = Math.min(8, Math.floor(Math.max(0, x - 60) / (250 * PX_PER_M)));
+  return pace.base + pace.gain * ease(x, pace.half ?? 6000) + stages * (pace.stageGain ?? 0);
 }
 /** Speed of an ordinary run at x, before any boost. */
 export function baseSpeed(x: number): number { return paceSpeed(DEFAULT_PACE, x); }
@@ -56,6 +58,8 @@ export type SurfaceKind = 'roof' | 'scaffold' | 'ac' | 'tank' | 'line' | 'road' 
 export interface Surface { id: number; kind: SurfaceKind; x0: number; x1: number; y: number; y1?: number }
 
 export interface Player {
+  /** Simulation seconds, including speed effects. */
+  time: number;
   x: number; y: number; vx: number; vy: number;
   ground: Surface | null;
   groundTime: number;
@@ -75,9 +79,8 @@ export interface Player {
   airCooldown: number;
   /** Air jumps from items, beyond the ordinary one. */
   airBonus: number;
-  /** Seconds left of the items that speed time up and slow it down. Never both. */
+  /** Seconds left of the speed item. */
   boostTime: number;
-  slowTime: number;
   /** Will take the next collision. */
   shield: boolean;
   /** Units and enemies already dealt with. Replaced, never mutated, so copies are safe. */
@@ -95,13 +98,14 @@ export type PhysEvent =
   | { type: 'stomp'; id: number; target: 'ac' | 'drone' | 'pigeon'; x: number; y: number }
   | { type: 'stumble'; id: number; by: 'ac' | 'tank' | 'drone' | 'pigeon' }
   | { type: 'wall' }
+  | { type: 'trafficHit'; x: number; y: number }
   | { type: 'fell' };
 
 export function newPlayer(x: number, y: number, pace: Readonly<Pace> = DEFAULT_PACE): Player {
   return {
-    x, y, vx: paceSpeed(pace, 0), vy: 0, ground: null, groundTime: 1, airTime: 0, coyote: 0, buffer: 0,
+    time: 0, x, y, vx: paceSpeed(pace, 0), vy: 0, ground: null, groundTime: 1, airTime: 0, coyote: 0, buffer: 0,
     holdTime: 0, jumping: false, boost: 0, stumble: 0, lastHit: -1, crashed: false, lastRoofY: y,
-    landedFromAir: false, airUsed: false, airCooldown: 0, airBonus: 0, boostTime: 0, slowTime: 0, shield: false, gone: [], pace,
+    landedFromAir: false, airUsed: false, airCooldown: 0, airBonus: 0, boostTime: 0, shield: false, gone: [], pace,
   };
 }
 
@@ -197,14 +201,14 @@ function landsSoon(p: Player, roofs: readonly Roof[]): boolean {
 }
 
 /** How fast time passes for the runner. */
-export function timeRate(p: Player): number { return p.boostTime > 0 ? BOOST_RATE : p.slowTime > 0 ? SLOW_RATE : 1; }
+export function timeRate(p: Player): number { return p.boostTime > 0 ? BOOST_RATE : 1; }
 export function canAirJump(p: Player): boolean { return (!p.airUsed && p.airCooldown <= 0) || p.airBonus > 0; }
 
 /** One fixed step. Mutates p only, so a planner can run it on a copy. */
 export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], emit: (e: PhysEvent) => void): void {
   const dt = STEP * timeRate(p);
+  p.time += dt;
   p.boostTime = Math.max(0, p.boostTime - STEP);
-  p.slowTime = Math.max(0, p.slowTime - STEP);
   p.buffer = Math.max(0, p.buffer - dt);
   p.stumble = Math.max(0, p.stumble - dt);
   p.airCooldown = Math.max(0, p.airCooldown - dt);
@@ -315,6 +319,16 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
   }
 
   if (!p.crashed) touchHazards(p, prevFeet, roofs, emit, bounce, remove);
+  if (!p.crashed) for (const r of roofs) {
+    if (!r.road || p.x + PW < r.road.x || p.x > r.road.rampStart) continue;
+    for (const car of roadCars(r.road, p.time)) {
+      if (p.x + PW - 1 <= car.x || p.x + 1 >= car.x + car.w || p.y <= car.y || p.y - PH + 1 >= car.y + car.h) continue;
+      // Cars are lethal even with a helmet; they cannot be stomped.
+      p.crashed = true; p.vx = 0; p.jumping = false;
+      emit({ type: 'trafficHit', x: p.x, y: p.y });
+      break;
+    }
+  }
   if (p.y > p.lastRoofY + FALL_LIMIT) emit({ type: 'fell' });
 }
 

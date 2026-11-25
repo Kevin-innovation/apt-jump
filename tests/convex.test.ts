@@ -149,7 +149,11 @@ describe('ranked runs', () => {
       for (const version of [undefined, SIM_VERSION - 1, SIM_VERSION + 1]) for (const p of [a, b])
         await ctx.db.insert('scores', { week: '2026-11-23', version, userId: p.id, score: 1e9, distance: 1, achievedAt: NOW });
     });
-    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null });
+    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null, previousVersion: SIM_VERSION - 1 });
+    const previous = await a.as.query(api.ranking.board, { week: '2026-11-23', version: SIM_VERSION - 1 });
+    expect(previous.top).toHaveLength(2);
+    expect(previous.top.every(row => row.score === 1e9)).toBe(true);
+    await expect(a.as.query(api.ranking.board, { week: '2026-11-23', version: SIM_VERSION + 1 })).rejects.toThrow('순위 구분');
     const { runId, seed } = await start(a);
     const run = play(seed, 5);
     vi.setSystemTime(NOW + run.ms + 1000);

@@ -83,7 +83,7 @@ export class Bot {
     const steps = Math.round(seconds / STEP);
     for (let i = 0; i < steps && !out.bad && !(stopOnLand && out.landed); i++) {
       stepPlayer(c, { pressed: i === 0 && hold > 0, held: left > 0 }, g.world.roofs, (e) => {
-        if (e.type === 'stumble' || e.type === 'wall' || e.type === 'fell') out.bad = true;
+        if (e.type === 'stumble' || e.type === 'wall' || e.type === 'fell' || e.type === 'trafficHit') out.bad = true;
         else if (e.type === 'land') out.landed = e.surface.kind;
         else if (e.type === 'stomp') out.stomped = true;
       });

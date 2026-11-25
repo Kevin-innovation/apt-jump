@@ -64,6 +64,8 @@ export function readMap(v: unknown): MapResult {
     if (items > LIMITS.items) return bad(i, `물체는 ${LIMITS.items}개까지입니다.`);
     const list: MapItem[] = [];
     for (const it of s.items as unknown[]) {
+      // Removed pickup in older saved/shared maps: retain the course, discard this item.
+      if (isObj(it) && it.t === 'slow') continue;
       if (!isObj(it) || !ITEM_TYPES.includes(it.t as ItemType)) { bad(i, '알 수 없는 물체가 있습니다.'); continue; }
       const t = it.t as ItemType;
       if (!whole(it.x, [0, s.w + s.gap]) || !whole(it.y, onFloor(t) ? [0, 0] : LIMITS.itemY)) { bad(i, `${ITEM_NAMES[t]}의 위치가 범위를 벗어났습니다.`); continue; }

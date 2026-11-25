@@ -19,7 +19,7 @@ describe('generation', () => {
   it('keeps every gap crossable without boost, over 200 seeds', () => {
     let worst = 0, bad = 0, n = 0;
     for (let s = 1; s <= 200; s++) {
-      const roofs = gather(s, 60000);
+      const roofs = gather(s, 100000); // Faster late stages make each roof wider; retain >20k gap samples.
       for (let i = 0; i + 1 < roofs.length; i++) {
         const a = roofs[i]!, b = roofs[i + 1]!;
         const dy = b.y - a.y;
@@ -31,7 +31,7 @@ describe('generation', () => {
     }
     expect(n).toBeGreaterThan(20000);
     expect(bad).toBe(0);
-    expect(worst).toBeLessThanOrEqual(0.82);
+    expect(worst).toBeLessThanOrEqual(0.89);
   });
 
   it('leaves clear landing and run-up space around obstacles', () => {

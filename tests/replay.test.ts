@@ -29,7 +29,7 @@ describe('replay', () => {
   it('fits ten minutes well inside the limit', () => {
     const { text } = play(2, 600);
     expect(text.length).toBeLessThan(MAX_REPLAY / 3);
-  });
+  }, 15_000); // Ten minutes of planning also evaluates moving traffic on copied players.
   const { text } = play(1, 10);
   it.each([
     ['empty', ''], ['junk', 'hello'], ['zero count', 'A0'], ['unknown code', 'E5'], ['split runs', 'A5A5'],

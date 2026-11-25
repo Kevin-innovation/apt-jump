@@ -13,7 +13,13 @@ const WRONG = '아이디나 비밀번호가 맞지 않습니다.';
 
 /** A small React root that only carries Convex Auth; the game's screens stay plain DOM. */
 export function connect(url: string): Online {
-  const client = new ConvexReactClient(url);
+  // The game owns the leave warning so a scheduled upgrade can deliberately reload.
+  const client = new ConvexReactClient(url, { unsavedChangesWarning: false });
+  let pending = 0;
+  const write = async <T,>(send: () => Promise<T>): Promise<T> => {
+    pending++;
+    try { return await send(); } finally { pending--; }
+  };
   let account: Account = { status: 'loading', nickname: null };
   const watchers: (() => void)[] = [];
   const notYet = async () => { throw new Refusal('아직 준비 중입니다. 잠시 뒤 다시 시도해 주세요.'); };
@@ -67,20 +73,21 @@ export function connect(url: string): Online {
   client.mutation(api.ranking.clock, {}).then((t) => { offset = t - Date.now(); }, () => {});
 
   return {
+    pending: () => pending > 0,
     account: () => account,
     onAccount: (f) => { watchers.push(f); },
-    signIn: (username, password) => doSignIn(username, password),
-    signUp: (username, password, nickname) => doSignUp(username, password, nickname),
-    signOut: () => doSignOut(),
-    setNickname: (nickname) => client.mutation(api.users.setNickname, { nickname }),
+    signIn: (username, password) => write(() => doSignIn(username, password)),
+    signUp: (username, password, nickname) => write(() => doSignUp(username, password, nickname)),
+    signOut: () => write(doSignOut),
+    setNickname: (nickname) => write(() => client.mutation(api.users.setNickname, { nickname })),
     now: () => Date.now() + offset,
-    start: () => client.mutation(api.ranking.start, { version: SIM_VERSION }),
-    finish: (runId, replay) => client.action(api.ranking.finish, { runId: runId as Id<'runs'>, replay }),
-    board: (week) => client.query(api.ranking.board, { week }),
+    start: () => write(() => client.mutation(api.ranking.start, { version: SIM_VERSION })),
+    finish: (runId, replay) => write(() => client.action(api.ranking.finish, { runId: runId as Id<'runs'>, replay })),
+    board: (week, version) => client.query(api.ranking.board, { week, ...(version === undefined ? {} : { version }) }),
     listMaps: (order, cursor) => client.query(api.maps.list, { order, paginationOpts: { numItems: 10, cursor } }),
     getMap: (id) => client.query(api.maps.get, { id: id as Id<'maps'> }),
-    publishMap: (json) => client.mutation(api.maps.publish, { json }),
-    updateMap: async (id, json) => { await client.mutation(api.maps.update, { id: id as Id<'maps'>, json }); },
-    removeMap: async (id) => { await client.mutation(api.maps.remove, { id: id as Id<'maps'> }); },
+    publishMap: (json) => write(() => client.mutation(api.maps.publish, { json })),
+    updateMap: async (id, json) => { await write(() => client.mutation(api.maps.update, { id: id as Id<'maps'>, json })); },
+    removeMap: async (id) => { await write(() => client.mutation(api.maps.remove, { id: id as Id<'maps'> })); },
   };
 }
