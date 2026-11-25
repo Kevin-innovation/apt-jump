@@ -16,6 +16,7 @@
     "noUnusedParameters": true,
     "noImplicitReturns": true,
     "noEmit": true,
+    "allowImportingTsExtensions": true,
     "skipLibCheck": true,
     "jsx": "react-jsx"
   },

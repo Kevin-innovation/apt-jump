@@ -1,4 +1,5 @@
-import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawQuilt, drawRoad, drawScaffold, drawTank } from './art';
+import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawScaffold, drawTank } from './art';
+import { POWER_TEXT } from './items';
 import {
   buildCourse, checkMap, cleanTitle, ITEM_NAMES, ITEM_TYPES, LIMITS, LINE_W, onFloor, segmentStarts, UNIT,
   type GameMap, type ItemType, type MapProblem, type Segment,
@@ -11,6 +12,7 @@ const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const clamp = (v: number, [a, b]: readonly [number, number]) => Math.max(a, Math.min(b, v));
 const TOOLS: Tool[] = ['select', 'erase', ...ITEM_TYPES];
 const HELP: Record<Tool, string> = {
+  ...POWER_TEXT,
   select: '구간을 눌러 선택, 끌어서 이동', erase: '지울 물체를 누르세요',
   coin: '놓을 자리를 누르세요', gold: '놓을 자리를 누르세요', diamond: '높이 120px(15칸)쯤이면 2단 점프로 닿습니다',
   ac: '옥상 위를 누르세요', tank: '옥상 위를 누르세요', line: '건물 사이 간격을 누르세요',
@@ -291,6 +293,7 @@ export class Editor {
         if (c.kind === 'diamond') drawDiamond(g, c.x - cx - 5, c.y - cy - 4, this.t);
         else g.drawImage(this.sprites[c.kind === 'gold' ? 'gold' : 'coin'][0]!, c.x - cx - 3, c.y - cy - 3);
       }
+      for (const w of r.powers) drawPower(g, w.kind, w.x - cx, w.y - cy, this.t);
       for (const e of r.enemies) (e.kind === 'drone' ? drawDrone : drawPigeon)(g, e.x - cx, e.y - cy, this.t);
     }
     const last = roofs[roofs.length - 1]!;

@@ -5,7 +5,7 @@ import type { Roof } from '../src/world';
 
 const idle = { pressed: false, held: false };
 const roof = (x: number, w: number, y: number, extra: Partial<Roof> = {}): Roof => ({
-  id: x + 1000, x, w, y, style: 0, seed: 1, number: 101, kind: 'building', obstacles: [], lines: [], coins: [], enemies: [], road: null, gap: 0, nextDy: 0, ...extra,
+  id: x + 1000, x, w, y, style: 0, seed: 1, number: 101, kind: 'building', obstacles: [], lines: [], coins: [], powers: [], enemies: [], road: null, gap: 0, nextDy: 0, ...extra,
 });
 function grounded(roofs: Roof[]): Player {
   const p = newPlayer(0, 0);

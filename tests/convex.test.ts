@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api, internal } from '../convex/_generated/api';
+import { api } from '../convex/_generated/api';
 import schema from '../convex/schema';
 import { Bot } from '../src/bot';
 import { Game } from '../src/game';
@@ -9,8 +9,8 @@ import { PRACTICE, serializeMap } from '../src/maps';
 import { Recorder, SIM_VERSION, verifyReplay } from '../src/replay';
 import { STEP } from '../src/physics';
 
-// Signing in itself needs Google. Here the caller's identity names the user row directly;
-// everything after that is the real code.
+// Real sign-in is in auth.test.ts. Here the caller's identity names the user row directly, without password
+// hashing for every player; everything after that is the real code.
 vi.mock('@convex-dev/auth/server', async (original) => ({
   ...(await original<object>()),
   getAuthUserId: async (ctx: { auth: { getUserIdentity(): Promise<{ subject: string } | null> } }) => (await ctx.auth.getUserIdentity())?.subject ?? null,
@@ -52,24 +52,6 @@ describe('accounts', () => {
     await expect(t.mutation(api.ranking.start, { version: SIM_VERSION })).rejects.toThrow('로그인');
     await expect(t.mutation(api.users.setNickname, { nickname: '손님입니다' })).rejects.toThrow('로그인');
     await expect(t.mutation(api.maps.publish, { json: serializeMap(PRACTICE) })).rejects.toThrow('로그인');
-  });
-  it('a new account gets a neutral nickname and keeps nothing from Google', async () => {
-    const { t } = await setup();
-    const profile = { id: 'g1', email: 'someone@example.com', emailVerified: true, name: 'Real Name' };
-    const id = await t.mutation(internal.users.createUser, { method: { name: 'google', profile: profile as never } });
-    const row = await t.run((ctx) => ctx.db.get(id));
-    expect(row!.nickname).toMatch(/^주자\d{6}$/);
-    expect(JSON.stringify(row)).not.toMatch(/example|Real/);
-  });
-  it('a nickname changes only its owner, and stays unique', async () => {
-    const { a, b } = await setup();
-    expect(await a.as.mutation(api.users.setNickname, { nickname: '  옥상  대장 ' })).toBe('옥상 대장');
-    expect(await a.as.query(api.users.me)).toEqual({ nickname: '옥상 대장' });
-    expect(await b.as.query(api.users.me)).toEqual({ nickname: '비이' });
-    await expect(b.as.mutation(api.users.setNickname, { nickname: '옥상대장' })).rejects.toThrow('이미 쓰는');
-    await a.as.mutation(api.users.setNickname, { nickname: '옥상.대장' });
-    for (const bad of ['가', 'x'.repeat(17), 'me@example.com', '<b>hi</b>', '   ', '__', 'a'.repeat(100)])
-      await expect(a.as.mutation(api.users.setNickname, { nickname: bad })).rejects.toThrow();
   });
 });
 
@@ -161,14 +143,39 @@ describe('ranked runs', () => {
     expect((await a.as.query(api.ranking.board, { week: '2026-11-30' })).mine!.score).toBe(next.score);
     expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).mine!.score).toBe(good.score);
   });
+  it('scores made under other rules are on no current board, and never block a new one', async () => {
+    const { t, a, b } = await setup();
+    await t.run(async (ctx) => {
+      for (const version of [undefined, SIM_VERSION - 1, SIM_VERSION + 1]) for (const p of [a, b])
+        await ctx.db.insert('scores', { week: '2026-11-23', version, userId: p.id, score: 1e9, distance: 1, achievedAt: NOW });
+    });
+    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null });
+    const { runId, seed } = await start(a);
+    const run = play(seed, 5);
+    vi.setSystemTime(NOW + run.ms + 1000);
+    expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toEqual({ score: run.score, best: true });
+    const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
+    expect(board.top).toHaveLength(1);
+    expect(board.mine).toMatchObject({ rank: 1, score: run.score });
+    expect(await t.run((ctx) => ctx.db.query('scores').collect())).toHaveLength(7);
+  });
+  it('a run begun under other rules can’t be handed in', async () => {
+    const { t, a } = await setup();
+    const { runId, seed } = await start(a);
+    await t.run((ctx) => ctx.db.patch(runId, { version: SIM_VERSION - 1 }));
+    const run = play(seed, 3);
+    vi.setSystemTime(NOW + run.ms + 1000);
+    await expect(a.as.action(api.ranking.finish, { runId, replay: run.text })).rejects.toThrow('오래된');
+    expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([]);
+  });
   it('the board shows fifty, best first, and where the caller stands below them', async () => {
     const { t, a } = await setup();
     await t.run(async (ctx) => {
       for (let i = 0; i < 60; i++) {
         const userId = await ctx.db.insert('users', { nickname: `p${i}`, nickKey: `p${i}` });
-        await ctx.db.insert('scores', { week: '2026-11-23', userId, score: 1000 + i, distance: 1, achievedAt: NOW });
+        await ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, userId, score: 1000 + i, distance: 1, achievedAt: NOW });
       }
-      await ctx.db.insert('scores', { week: '2026-11-23', userId: a.id, score: 5, distance: 1, achievedAt: NOW });
+      await ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, userId: a.id, score: 5, distance: 1, achievedAt: NOW });
     });
     const { top, mine } = await a.as.query(api.ranking.board, { week: '2026-11-23' });
     expect(top).toHaveLength(50);

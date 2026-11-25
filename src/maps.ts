@@ -1,4 +1,5 @@
 import type { Course } from './game';
+import { POWER_KINDS, POWER_NAMES, type PowerKind } from './items';
 import { jumpReach, paceSpeed, type Pace } from './physics';
 import { OBSTACLE_SIZE, RAMP_RUN, ROAD_DEPTH, type City, type Roof } from './world';
 
@@ -11,11 +12,13 @@ export const LIMITS = {
   w: [10, 150], h: [-12, 12], gap: [0, 40], itemY: [1, 24], base: [90, 200], gain: [0, 140],
   firstW: 40, lastW: 20, spawnClear: 30, edgeClear: 8, hazardGap: 8,
 } as const;
-export const ITEM_TYPES = ['coin', 'gold', 'diamond', 'ac', 'tank', 'line', 'drone', 'pigeon'] as const;
+export const ITEM_TYPES = ['coin', 'gold', 'diamond', 'ac', 'tank', 'line', 'drone', 'pigeon', ...POWER_KINDS] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 export const ITEM_NAMES: Record<ItemType, string> = {
   coin: '동전', gold: '분홍 동전', diamond: '다이아', ac: '실외기', tank: '물탱크', line: '빨랫줄', drone: '드론', pigeon: '비둘기',
+  ...POWER_NAMES,
 };
+export const isPower = (t: ItemType): t is PowerKind => (POWER_KINDS as readonly string[]).includes(t);
 /** Widths in units of things that can hurt. */
 const HAZARD_W: Partial<Record<ItemType, number>> = { ac: OBSTACLE_SIZE.ac.w / UNIT, tank: OBSTACLE_SIZE.tank.w / UNIT, drone: 2, pigeon: 2 };
 export const LINE_W = 5;
@@ -161,7 +164,7 @@ export function buildCourse(m: GameMap): Course {
     const next = m.segments[i + 1];
     const r: Roof = {
       id: id++, kind: s.kind, x: x - lead, w: s.w * UNIT + lead, y, style: (i * 3) % 5, seed: 1000 + i * 77, number: 101 + i,
-      obstacles: [], lines: [], coins: [], enemies: [], road: null,
+      obstacles: [], lines: [], coins: [], powers: [], enemies: [], road: null,
       gap: next ? s.gap * UNIT : 0, nextDy: next ? (s.h - next.h) * UNIT : 0,
     };
     for (const it of s.items) {
@@ -170,6 +173,7 @@ export function buildCourse(m: GameMap): Course {
       else if (it.t === 'line') r.lines.push({ id: id++, x: ix, w: LINE_W * UNIT, y: iy, style: it.x % 4 });
       else if (it.t === 'drone') r.enemies.push({ id: id++, kind: 'drone', x: ix, y: iy, amp: 8, phase: (it.x % 8) / 8 });
       else if (it.t === 'pigeon') r.enemies.push({ id: id++, kind: 'pigeon', x: ix, y: y - 13, amp: 0, phase: 0 });
+      else if (isPower(it.t)) r.powers.push({ id: id++, kind: it.t, x: ix, y: iy, taken: false });
       else r.coins.push({ x: ix, y: iy, kind: it.t, taken: false });
     }
     return r;
@@ -201,7 +205,7 @@ export function blankMap(): GameMap {
 export const PRACTICE: GameMap = {
   format: MAP_FORMAT, version: MAP_VERSION, title: '연습 옥상', pace: { base: 118, gain: 60 },
   segments: [
-    seg(90, 8, row('coin', 64, 7, 1)),
+    seg(90, 8, [...row('coin', 64, 7, 1), { t: 'double', x: 60, y: 2 }]),
     seg(62, 8, [{ t: 'ac', x: 34, y: 0 }]),
     seg(70, 8, [{ t: 'diamond', x: 40, y: 15 }], { h: 2 }),
     seg(60, 9, [{ t: 'pigeon', x: 34, y: 0 }]),

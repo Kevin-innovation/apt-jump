@@ -19,7 +19,7 @@ const screens = () => new OnlineScreens(new MapStore(() => { throw new Error('no
 function fakeOnline() {
   const weeks: string[] = [];
   const online = {
-    account: () => ({ status: 'in', nickname: '나', error: null }), onAccount() {}, now: () => Date.now(),
+    account: () => ({ status: 'in', nickname: '나' }), onAccount() {}, now: () => Date.now(),
     board: async (week: string) => { weeks.push(week); return { top: [], mine: null }; },
   } as unknown as Online;
   return { weeks, online };
@@ -61,7 +61,7 @@ it('says so, and shows no ranking, when nothing is connected', async () => {
   s.openRanking();
   await vi.advanceTimersByTimeAsync(3000);
   expect(el('rank-off').hidden).toBe(false);
-  expect(el('rank-login').hidden).toBe(true);
+  expect(el('auth-form').hidden).toBe(true);
   expect(el('rank-list').childElementCount).toBe(0);
   expect(el('rank-reset').textContent).toBe('');
   expect(el('shared-list').textContent).toContain('준비');

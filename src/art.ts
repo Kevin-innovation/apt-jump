@@ -1,3 +1,4 @@
+import type { PowerKind } from './items';
 import type { Road, Roof } from './world';
 
 type Ctx = CanvasRenderingContext2D;
@@ -133,3 +134,30 @@ export function drawWarning(g: Ctx, x: number, y: number, t: number): void {
   g.fillStyle = '#ff4d5e'; g.fillRect(x - 6, y - 7, 12, 14);
   g.fillStyle = '#fff6e0'; g.fillRect(x - 1, y - 5, 3, 6); g.fillRect(x - 1, y + 3, 3, 2);
 }
+
+/** 9x9 pictures on the item capsules: '#' main colour, 'o' light, 'x' ink. */
+const POWER_ART: Record<PowerKind, { color: string; rows: string[] }> = {
+  boost: { color: '#ffd85a', rows: ['.....##..', '....##...', '...##....', '..######.', '....###..', '....##...', '...##....', '...#.....', '..#......'] },
+  slow: { color: '#8fb8ff', rows: ['..#####..', '.#ooooo#.', '#ooo#ooo#', '#ooo#ooo#', '#ooo##oo#', '#ooooooo#', '#ooooooo#', '.#ooooo#.', '..#####..'] },
+  magnet: { color: '#ff5d6c', rows: ['oo.....oo', 'oo.....oo', '##.....##', '##.....##', '##.....##', '##.....##', '.##...##.', '.#######.', '..#####..'] },
+  shield: { color: '#9be36b', rows: ['..#####..', '.##ooo##.', '##o####..', '#o######.', '#o######.', '#########', '#########', 'ooooooooo', '.........'] },
+  double: { color: '#ff9be6', rows: ['.......#.', '......#.#', '#.#.....#', '#.#....#.', '.#....###', '#.#......', '#.#......', '.........', '.........'] },
+  recharge: { color: '#7dfff0', rows: ['....#....', '...###...', '..#####..', '....#....', '....#....', '...###...', '..#####..', '.#######.', '.........'] },
+  keep: { color: '#ffb84a', rows: ['..#####..', '.#.....#.', '.#.....#.', '#########', '####o####', '###ooo###', '####o####', '####o####', '#########'] },
+};
+
+/** An item capsule; x, y is its middle. */
+export function drawPower(g: Ctx, kind: PowerKind, x: number, y: number, t: number): void {
+  const a = POWER_ART[kind];
+  const cx = Math.round(x), cy = Math.round(y + Math.sin(t * 3 + x * 0.03) * 2);
+  g.fillStyle = INK; g.fillRect(cx - 8, cy - 6, 17, 13); g.fillRect(cx - 6, cy - 8, 13, 17);
+  g.fillStyle = a.color; g.fillRect(cx - 7, cy - 5, 15, 11); g.fillRect(cx - 5, cy - 7, 11, 15);
+  g.fillStyle = '#2c2052'; g.fillRect(cx - 6, cy - 5, 13, 11); g.fillRect(cx - 5, cy - 6, 11, 13);
+  a.rows.forEach((row, j) => [...row].forEach((ch, i) => {
+    if (ch === '.') return;
+    g.fillStyle = ch === 'o' ? '#fff6e0' : a.color;
+    g.fillRect(cx - 4 + i, cy - 4 + j, 1, 1);
+  }));
+  if (Math.floor(t * 3 + x) % 3 === 0) { g.fillStyle = '#fff'; g.fillRect(cx + 5, cy - 8, 1, 3); g.fillRect(cx + 4, cy - 7, 3, 1); }
+}
+export const powerColor = (kind: PowerKind) => POWER_ART[kind].color;

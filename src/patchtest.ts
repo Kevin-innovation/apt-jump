@@ -5,8 +5,8 @@ import type { JumpInput } from './physics';
 
 /** Patch allows twelve. */
 export const CHECKS = [
-  'title-shown', 'long-press-jumps-higher', 'coin-combo-multiplies', 'perfect-jump-boosts', 'stomp-breaks-unit',
-  'double-jump-gets-diamond', 'enemy-stomped', 'road-returns-to-roof', 'custom-map-finishes', 'pause-and-resume',
+  'title-shown', 'long-press-jumps-higher', 'coin-combo-multiplies', 'perfect-jump-boosts', 'stomps-unit-and-enemy',
+  'double-jump-gets-diamond', 'item-doubles-score', 'road-returns-to-roof', 'custom-map-finishes', 'pause-and-resume',
   'fall-shows-result', 'restart-begins-fresh-run',
 ] as const;
 type Check = (typeof CHECKS)[number];
@@ -38,6 +38,8 @@ export class PatchTest {
   private apex = 0;
   private airUsed = false;
   private wasOnRoad = false;
+  private doubled = false;
+  private stomped = new Set<string>();
 
   constructor(private h: Host) { this.bot.script = [0.02, 0.4]; }
 
@@ -59,7 +61,7 @@ export class PatchTest {
     const b = this.bot, need = (c: Check) => !this.done.has(c);
     b.wantPerfect = need('perfect-jump-boosts');
     b.want.clear();
-    if (need('stomp-breaks-unit') || need('enemy-stomped')) b.want.add('stomp');
+    if (need('stomps-unit-and-enemy')) b.want.add('stomp');
     b.wantDiamond = need('double-jump-gets-diamond');
     b.wantRoad = need('road-returns-to-roof');
     return b.next(this.h.game());
@@ -87,12 +89,15 @@ export class PatchTest {
         break;
       case 'coin':
         if (e.kind === 'diamond' && this.airUsed && g.diamonds > 0) this.pass('double-jump-gets-diamond');
+        if (e.kind === 'coin' && this.doubled && g.doubleTime > 0 && e.points === 20 * g.mult) this.pass('item-doubles-score');
         if (g.mult >= 2 && g.score >= e.points) this.pass('coin-combo-multiplies');
         break;
       case 'perfectBonus': if (g.player.boost >= 1) this.pass('perfect-jump-boosts'); break;
       case 'stomp':
-        if (g.player.vy < 0 && g.player.gone.includes(e.id)) this.pass(e.target === 'ac' ? 'stomp-breaks-unit' : 'enemy-stomped');
+        if (g.player.vy < 0 && g.player.gone.includes(e.id)) this.stomped.add(e.target === 'ac' ? 'unit' : 'enemy');
+        if (this.stomped.size === 2) this.pass('stomps-unit-and-enemy');
         break;
+      case 'power': if (e.kind === 'double' && g.doubleTime > 0) this.doubled = true; break;
       case 'road': this.wasOnRoad = true; break;
       case 'roadExit': if (this.wasOnRoad && g.player.ground?.kind === 'roof') this.pass('road-returns-to-roof'); break;
       case 'goal': if (g.finished) this.pass('custom-map-finishes'); break;
@@ -138,7 +143,7 @@ export class PatchTest {
         this.bot = new Bot();
         if (this.apexes.length < 2) { this.apexes = []; this.bot.script = [0.02, 0.4]; }
         this.takeoff = null;
-        this.wasOnRoad = false;
+        this.wasOnRoad = this.doubled = false;
         h.restart();
         break;
       case 'endless':

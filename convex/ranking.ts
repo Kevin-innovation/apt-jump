@@ -6,7 +6,7 @@ import { isWeekKey, weekKey } from '../src/week';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { action, internalMutation, mutation, query } from './_generated/server';
-import { requireUser } from './users';
+import { requirePlayer, requireUser } from './users';
 
 export const TOP = 50;
 /** Ranks past this are shown as "this or lower". */
@@ -24,7 +24,7 @@ export const start = mutation({
   args: { version: v.number() },
   returns: v.object({ runId: v.id('runs'), seed: v.number() }),
   handler: async (ctx, { version }) => {
-    const userId = await requireUser(ctx);
+    const userId = await requirePlayer(ctx);
     if (version !== SIM_VERSION) throw new ConvexError('게임이 업데이트되었습니다. 새로고침해 주세요.');
     const now = Date.now();
     const recent = await ctx.db.query('runs').withIndex('by_user_started', (q) => q.eq('userId', userId)).order('desc').take(STARTS_PER_WINDOW);
@@ -66,10 +66,10 @@ export const settle = internalMutation({
     if (!result) return { best: false };
     const now = Date.now();
     const week = weekKey(now);
-    const old = await ctx.db.query('scores').withIndex('by_week_user', (q) => q.eq('week', week).eq('userId', run.userId)).unique();
+    const old = await ctx.db.query('scores').withIndex('by_board_user', (q) => q.eq('week', week).eq('version', run.version).eq('userId', run.userId)).unique();
     if (old && old.score >= result.score) return { best: false };
     if (old) await ctx.db.patch(old._id, { ...result, achievedAt: now });
-    else await ctx.db.insert('scores', { week, userId: run.userId, ...result, achievedAt: now });
+    else await ctx.db.insert('scores', { week, version: run.version, userId: run.userId, ...result, achievedAt: now });
     return { best: true };
   },
 });
@@ -94,14 +94,14 @@ export const finish = action({
 
 const entry = v.object({ rank: v.number(), nickname: v.string(), score: v.number(), distance: v.number(), mine: v.boolean() });
 
-/** The page names the week, so a cached answer can never outlive it. */
+/** This version's board. The page names the week, so a cached answer can never outlive it. */
 export const board = query({
   args: { week: v.string() },
   returns: v.object({ top: v.array(entry), mine: v.union(v.null(), v.object({ rank: v.union(v.null(), v.number()), score: v.number(), distance: v.number() })) }),
   handler: async (ctx, { week }) => {
     if (!isWeekKey(week)) throw new ConvexError('잘못된 주간입니다.');
     const me = (await getAuthUserId(ctx)) as Id<'users'> | null;
-    const rows = await ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', week)).order('desc').take(TOP);
+    const rows = await ctx.db.query('scores').withIndex('by_board_score', (q) => q.eq('week', week).eq('version', SIM_VERSION)).order('desc').take(TOP);
     const top: { rank: number; nickname: string; score: number; distance: number; mine: boolean }[] = [];
     for (const r of rows) {
       const user = await ctx.db.get(r.userId);
@@ -109,10 +109,10 @@ export const board = query({
       const prev: (typeof top)[number] | undefined = top[top.length - 1];
       top.push({ rank: prev && prev.score === r.score ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', score: r.score, distance: r.distance, mine: r.userId === me });
     }
-    const own = me && (await ctx.db.query('scores').withIndex('by_week_user', (q) => q.eq('week', week).eq('userId', me)).unique());
+    const own = me && (await ctx.db.query('scores').withIndex('by_board_user', (q) => q.eq('week', week).eq('version', SIM_VERSION).eq('userId', me)).unique());
     let mine = null;
     if (own) {
-      const above = await ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', week).gt('score', own.score)).take(RANK_CAP);
+      const above = await ctx.db.query('scores').withIndex('by_board_score', (q) => q.eq('week', week).eq('version', SIM_VERSION).gt('score', own.score)).take(RANK_CAP);
       mine = { rank: above.length < RANK_CAP ? above.length + 1 : null, score: own.score, distance: own.distance };
     }
     return { top, mine };

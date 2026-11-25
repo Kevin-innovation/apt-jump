@@ -6,7 +6,7 @@ import type { Roof } from '../src/world';
 const idle = { pressed: false, held: false };
 function bare(): Game {
   const g = new Game(3);
-  for (const r of g.world.roofs) { r.coins = []; r.obstacles = []; r.lines = []; r.enemies = []; }
+  for (const r of g.world.roofs) { r.coins = []; r.powers = []; r.obstacles = []; r.lines = []; r.enemies = []; }
   g.step(idle);
   g.drain();
   return g;

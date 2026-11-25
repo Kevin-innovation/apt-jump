@@ -1,6 +1,6 @@
 import type { Game } from './game';
 import { DIAMOND_HEIGHT } from './world';
-import { STEP, stepPlayer, type JumpInput, type Player } from './physics';
+import { canAirJump, STEP, stepPlayer, type JumpInput, type Player } from './physics';
 
 type Goal = 'risk' | 'stomp';
 interface Plan { hold: number; wanted: boolean }
@@ -66,7 +66,7 @@ export class Bot {
 
   private inAir(g: Game): JumpInput {
     const p = g.player;
-    if (p.airUsed || p.airCooldown > 0) return IDLE;
+    if (!canAirJump(p)) return IDLE;
     if (this.wantDiamond && p.vy > -40 && p.vy < 60) {
       const d = this.diamondAhead(g);
       if (d !== null && d < p.vx * 0.5) return this.press(0.3);

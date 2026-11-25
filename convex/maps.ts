@@ -4,7 +4,7 @@ import { ConvexError, v } from 'convex/values';
 import { LIMITS, parseMap, serializeMap } from '../src/maps';
 import type { Doc, Id } from './_generated/dataModel';
 import { mutation, query, type MutationCtx } from './_generated/server';
-import { requireUser } from './users';
+import { requirePlayer } from './users';
 
 export const MAPS_PER_PLAYER = 20;
 export const PAGE = 20;
@@ -19,7 +19,7 @@ function accept(json: string): { title: string; segments: number; json: string }
 }
 
 async function own(ctx: MutationCtx, id: Id<'maps'>): Promise<Doc<'maps'>> {
-  const userId = await requireUser(ctx);
+  const userId = await requirePlayer(ctx);
   const m = await ctx.db.get(id);
   if (!m || m.ownerId !== userId) throw new ConvexError('내가 올린 맵만 바꿀 수 있습니다.');
   return m;
@@ -29,7 +29,7 @@ export const publish = mutation({
   args: { json: v.string() },
   returns: v.id('maps'),
   handler: async (ctx, args) => {
-    const ownerId = await requireUser(ctx);
+    const ownerId = await requirePlayer(ctx);
     const m = accept(args.json);
     const mine = await ctx.db.query('maps').withIndex('by_owner', (q) => q.eq('ownerId', ownerId)).order('desc').take(MAPS_PER_PLAYER);
     if (mine.length >= MAPS_PER_PLAYER) throw new ConvexError(`맵은 ${MAPS_PER_PLAYER}개까지 게시할 수 있습니다.`);

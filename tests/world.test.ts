@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { Bot } from '../src/bot';
 import { Game } from '../src/game';
 import { baseSpeed, jumpReach } from '../src/physics';
-import { LANDING_ZONE, MAX_DROP, MAX_RISE, RUNUP_ZONE, World } from '../src/world';
+import { landingZone, MAX_DROP, MAX_RISE, runupZone, World } from '../src/world';
 
 const gather = (seed: number, to: number) => {
   const w = new World(seed);
@@ -38,8 +38,8 @@ describe('generation', () => {
     let count = 0;
     for (let s = 1; s <= 60; s++) for (const r of gather(s, 30000)) for (const o of r.obstacles) {
       count++;
-      expect(o.x - r.x).toBeGreaterThanOrEqual(LANDING_ZONE);
-      expect(r.x + r.w - (o.x + o.w)).toBeGreaterThanOrEqual(RUNUP_ZONE - 1);
+      expect(o.x - r.x).toBeGreaterThanOrEqual(landingZone(r.x));
+      expect(r.x + r.w - (o.x + o.w)).toBeGreaterThanOrEqual(runupZone(r.x + r.w) - 1);
     }
     expect(count).toBeGreaterThan(200);
   });

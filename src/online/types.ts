@@ -6,15 +6,16 @@ export interface SharedPage { page: SharedMapInfo[]; isDone: boolean; continueCu
 
 export interface Account {
   status: 'loading' | 'out' | 'in';
+  /** Null while signed in only for an account that has yet to choose one. */
   nickname: string | null;
-  /** Why the last sign-in failed, in words. */
-  error: string | null;
 }
 
 export interface Online {
   account(): Account;
   onAccount(f: () => void): void;
-  signIn(): Promise<void>;
+  /** These two reject with a message fit to show. */
+  signIn(username: string, password: string): Promise<void>;
+  signUp(username: string, password: string, nickname: string): Promise<void>;
   signOut(): Promise<void>;
   setNickname(v: string): Promise<string>;
   /** Server's clock, in milliseconds. */
@@ -27,6 +28,11 @@ export interface Online {
   publishMap(json: string): Promise<string>;
   updateMap(id: string, json: string): Promise<void>;
   removeMap(id: string): Promise<void>;
+}
+
+/** A refusal in words the player can read. */
+export class Refusal extends Error {
+  constructor(readonly data: string) { super(data); }
 }
 
 /** Text safe to show for a failed call: the server's own message, or a plain one. */

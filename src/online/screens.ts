@@ -1,3 +1,4 @@
+import { cleanUsername, PASSWORD_MAX, PASSWORD_MIN } from '../username';
 import { cleanNickname } from '../nickname';
 import { parseMap, serializeMap, type GameMap } from '../maps';
 import { downloadMap, mapCard, type MapActions } from '../mapscreen';
@@ -17,9 +18,12 @@ export class OnlineScreens {
   private ticket = 0;
   private order: 'new' | 'old' = 'new';
   private mapTicket = 0;
+  private joining = false;
 
   constructor(private store: MapStore, private maps: MapActions) {
-    $('rank-login').addEventListener('click', () => void this.login());
+    ($('auth-form') as HTMLFormElement).addEventListener('submit', (e) => { e.preventDefault(); void this.enter(); });
+    $('auth-switch').addEventListener('click', () => { this.setJoining(!this.joining); this.say(''); $('auth-id').focus(); });
+    this.setJoining(false);
     $('rank-logout').addEventListener('click', () => void this.online?.signOut().catch((e) => this.say(errorText(e))));
     const form = $('nick-form') as HTMLFormElement;
     form.addEventListener('submit', (e) => { e.preventDefault(); void this.rename(); });
@@ -35,13 +39,51 @@ export class OnlineScreens {
     this.refresh();
   }
 
-  get signedIn(): boolean { return this.online?.account().status === 'in'; }
+  /** Signed in, with the nickname that ranking and maps show. */
+  get signedIn(): boolean { const a = this.online?.account(); return a?.status === 'in' && a.nickname !== null; }
   private say(text: string): void { $('rank-msg').textContent = text; }
 
-  private async login(): Promise<void> {
-    ($('rank-login') as HTMLButtonElement).disabled = true;
-    try { await this.online?.signIn(); } catch (e) { this.say(errorText(e)); }
-    ($('rank-login') as HTMLButtonElement).disabled = false;
+  private setJoining(on: boolean): void {
+    this.joining = on;
+    $('auth-title').textContent = on ? '회원가입' : '로그인';
+    $('auth-go').textContent = on ? '가입하고 시작' : '로그인';
+    $('auth-switch').textContent = on ? '이미 계정이 있어요' : '처음이에요 (회원가입)';
+    $('auth-nick-row').hidden = !on;
+    $('auth-rules').hidden = !on;
+    ($('auth-nick') as HTMLInputElement).required = on;
+    const pass = $('auth-pass') as HTMLInputElement;
+    pass.setAttribute('autocomplete', on ? 'new-password' : 'current-password');
+    pass.setAttribute('aria-describedby', on ? 'auth-rules rank-msg' : 'rank-msg');
+  }
+
+  /** Signs in, or makes an account: what the form shows. */
+  private async enter(): Promise<void> {
+    const online = this.online, go = $('auth-go') as HTMLButtonElement, swap = $('auth-switch') as HTMLButtonElement;
+    if (!online || go.disabled) return;
+    const id = $('auth-id') as HTMLInputElement, pass = $('auth-pass') as HTMLInputElement, nick = $('auth-nick') as HTMLInputElement;
+    const joining = this.joining;
+    const refuse = (box: HTMLInputElement, text: string) => { this.say(text); box.focus(); };
+    const nickname = cleanNickname(nick.value);
+    if (joining) {
+      if (!cleanUsername(id.value)) return refuse(id, '아이디는 영문으로 시작하는 4~20자의 영문·숫자·밑줄로 정해 주세요.');
+      const n = [...pass.value].length;
+      if (n < PASSWORD_MIN || n > PASSWORD_MAX) return refuse(pass, `비밀번호는 ${PASSWORD_MIN}자 이상 ${PASSWORD_MAX}자 이하로 정해 주세요.`);
+      if (!nickname) return refuse(nick, '닉네임은 2~16자의 글자·숫자로 정해 주세요.');
+    } else if (!id.value || !pass.value) return refuse(id.value ? pass : id, '아이디와 비밀번호를 입력해 주세요.');
+    go.disabled = swap.disabled = true;
+    this.say(joining ? '가입하는 중입니다.' : '로그인하는 중입니다.');
+    try {
+      if (joining) await online.signUp(id.value, pass.value, nickname!);
+      else await online.signIn(id.value, pass.value);
+      this.say(joining ? '가입했습니다. 이제 달리면 순위에 오릅니다!' : '로그인했습니다.');
+      pass.value = nick.value = '';
+      this.setJoining(false);
+      (document.activeElement as HTMLElement | null)?.blur();
+    } catch (e) {
+      this.say(errorText(e));
+      if (!joining) pass.value = '';
+    }
+    go.disabled = swap.disabled = false;
   }
 
   private async rename(): Promise<void> {
@@ -61,14 +103,14 @@ export class OnlineScreens {
     const a = this.online?.account();
     $('rank-off').hidden = !!this.online;
     $('rank-off').textContent = this.connecting ? '온라인에 연결하는 중입니다.' : '온라인 연결을 준비하고 있습니다. 혼자 달리기, 맵 만들기, 맵 파일 주고받기는 지금도 됩니다.';
-    $('rank-login').hidden = a?.status !== 'out';
+    $('auth-form').hidden = a?.status !== 'out';
     $('rank-account').hidden = a?.status !== 'in';
     $('rank-wait').hidden = a?.status !== 'loading';
     if (a?.status === 'in') {
       const box = $('nick') as HTMLInputElement;
       if (document.activeElement !== box) box.value = a.nickname ?? '';
     }
-    if (a?.error) this.say(a.error);
+    if (a?.status === 'in' && a.nickname === null) this.say('순위에 보일 닉네임을 정해 주세요.');
     if (!$('ranking').hidden) void this.refreshBoard();
     if (!$('maps').hidden) void this.refreshMaps();
   }

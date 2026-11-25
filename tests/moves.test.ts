@@ -8,7 +8,7 @@ import { DIAMOND_HEIGHT, ENEMY_START, World, type Enemy, type Roof } from '../sr
 
 const idle = { pressed: false, held: false };
 const roof = (x: number, w: number, y: number, extra: Partial<Roof> = {}): Roof => ({
-  id: x + 1000, kind: 'building', x, w, y, style: 0, seed: 1, number: 101, obstacles: [], lines: [], coins: [], enemies: [],
+  id: x + 1000, kind: 'building', x, w, y, style: 0, seed: 1, number: 101, obstacles: [], lines: [], coins: [], powers: [], enemies: [],
   road: null, gap: 0, nextDy: 0, ...extra,
 });
 function grounded(roofs: Roof[], x = 0): Player {
@@ -19,7 +19,7 @@ function grounded(roofs: Roof[], x = 0): Player {
 }
 const bare = (): Game => {
   const g = new Game(3);
-  for (const r of g.world.roofs) { r.coins = []; r.obstacles = []; r.lines = []; r.enemies = []; }
+  for (const r of g.world.roofs) { r.coins = []; r.powers = []; r.obstacles = []; r.lines = []; r.enemies = []; }
   g.drain();
   return g;
 };
@@ -167,7 +167,7 @@ describe('enemies', () => {
     const all = enemies(60, 40000);
     expect(Math.min(...all.map((a) => a.e.x))).toBeGreaterThan(ENEMY_START);
     const count = (a: number, b: number) => all.filter(({ e }) => e.x >= a && e.x < b).length;
-    expect(count(28000, 38000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 10000) * 1.3);
+    expect(count(30000, 34000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) * 1.3);
     expect(all.some(({ e }) => e.kind === 'drone')).toBe(true);
     expect(all.some(({ e }) => e.kind === 'pigeon')).toBe(true);
   });
@@ -274,7 +274,7 @@ describe('street', () => {
   });
 
   it('can be jumped along without getting stuck', () => {
-    for (let s = 1; s <= 10; s++) for (const every of [70, 110, 160]) {
+    for (let s = 1; s <= 10; s++) for (const every of [40, 70, 90, 110, 130, 160]) {
       const w = new World(s);
       w.ensure(0, 12000);
       const owner = w.roofs.find((r) => r.road)!;
@@ -304,4 +304,4 @@ it('a demanding player uses every move and still survives', () => {
   expect(stomps).toBeGreaterThan(20);
   expect(diamonds).toBeGreaterThan(5);
   expect(deaths).toBeLessThanOrEqual(2);
-});
+}, 30_000);

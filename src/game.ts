@@ -1,5 +1,7 @@
+import { DASH_POINTS, MAGNET_RANGE, MAGNET_SPEED, MAX_AIR_BONUS, POWER_POINTS, POWER_TIME, type PowerKind } from './items';
+import { MISSIONS, type Mission, type Tally } from './missions';
 import {
-  DEFAULT_PACE, jumpReach, newPlayer, paceSpeed, PH, PW, PX_PER_M, STEP, stepPlayer,
+  DEFAULT_PACE, jumpReach, newPlayer, paceSpeed, PH, PW, PX_PER_M, STEP, stepPlayer, timeRate,
   type JumpInput, type Pace, type PhysEvent, type Player, type SurfaceKind,
 } from './physics';
 import { World, type City, type CoinKind } from './world';
@@ -26,6 +28,9 @@ export type GameEvent =
   | { type: 'perfectBonus'; points: number; x: number; y: number }
   | { type: 'stompBonus'; points: number; x: number; y: number }
   | { type: 'risk'; kind: RiskKind; points: number; x: number; y: number }
+  | { type: 'power'; kind: PowerKind; points: number; x: number; y: number }
+  | { type: 'dash'; points: number; x: number; y: number }
+  | { type: 'mission'; mission: Mission; points: number }
   | { type: 'road'; x: number; y: number }
   | { type: 'roadExit'; x: number; y: number }
   | { type: 'speedup'; level: number }
@@ -51,6 +56,13 @@ export class Game {
   perfects = 0;
   risks = 0;
   level = 1;
+  powers = 0;
+  /** Missions finished; also which one is next. */
+  missionsDone = 0;
+  /** Seconds left of each item that isn't the runner's own. */
+  magnetTime = 0;
+  doubleTime = 0;
+  keepTime = 0;
   private events: GameEvent[] = [];
   private riskTaken = new Set<number>();
   private lastSurface: SurfaceKind = 'roof';
@@ -69,6 +81,27 @@ export class Game {
   get distance(): number { return Math.max(0, (this.player.x - START_X) / PX_PER_M); }
   get score(): number { return Math.floor(this.distance) + this.bonus; }
   get mult(): number { return multiplier(this.combo); }
+  /** The mission under way: endless runs only. */
+  get mission(): Mission | null { return this.world.goalX === null ? MISSIONS[this.missionsDone] ?? null : null; }
+  get tally(): Tally {
+    return {
+      coins: this.coins, powers: this.powers, perfects: this.perfects, stomps: this.stomps, risks: this.risks,
+      diamonds: this.diamonds, maxCombo: this.maxCombo, distance: Math.floor(this.distance),
+    };
+  }
+  /** Seconds left of an item's effect, or how many are held of those that wait. */
+  effect(kind: PowerKind): number {
+    const p = this.player;
+    switch (kind) {
+      case 'boost': return p.boostTime;
+      case 'slow': return p.slowTime;
+      case 'magnet': return this.magnetTime;
+      case 'double': return this.doubleTime;
+      case 'keep': return this.keepTime;
+      case 'shield': return p.shield ? 1 : 0;
+      case 'recharge': return p.airBonus;
+    }
+  }
   /** Share of a made map already run, 0 to 1. */
   get progress(): number | null {
     const g = this.world.goalX;
@@ -85,7 +118,7 @@ export class Game {
     this.combo = 0; this.comboTimer = 0;
   }
   private award(base: number): number {
-    const pts = base * this.mult;
+    const pts = base * this.mult * (this.doubleTime > 0 ? 2 : 1);
     this.bonus += pts;
     return pts;
   }
@@ -95,20 +128,63 @@ export class Game {
     this.events.push({ type: 'risk', kind, points: this.award(base), x: this.player.x, y: this.player.y - PH });
   }
 
+  private use(kind: PowerKind): void {
+    const p = this.player, time = POWER_TIME[kind];
+    switch (kind) {
+      case 'boost': p.boostTime = time; p.slowTime = 0; break;
+      case 'slow': p.slowTime = time; p.boostTime = 0; break;
+      case 'magnet': this.magnetTime = time; break;
+      case 'double': this.doubleTime = time; break;
+      case 'keep': this.keepTime = time; if (this.combo > 0) this.comboTimer = COMBO_TIME; break;
+      case 'shield': p.shield = true; break;
+      case 'recharge': p.airCooldown = 0; p.airUsed = false; p.airBonus = Math.min(MAX_AIR_BONUS, p.airBonus + 1); break;
+    }
+  }
+
+  /** Draws nearby coins in. Diamonds stay put: they are for double jumps. */
+  private pull(): void {
+    const p = this.player, cx = p.x + PW / 2, cy = p.y - PH / 2;
+    for (const r of this.world.roofs) {
+      if (r.x > p.x + MAGNET_RANGE + 60) break;
+      for (const c of r.coins) {
+        if (c.taken || c.kind === 'diamond') continue;
+        const dx = cx - c.x, dy = cy - c.y, d = Math.sqrt(dx * dx + dy * dy);
+        if (d > MAGNET_RANGE || d < 1) continue;
+        const k = Math.min(1, (MAGNET_SPEED * STEP) / d);
+        c.x += dx * k;
+        c.y += dy * k;
+      }
+    }
+  }
+
   /** Advance one fixed step. */
   step(input: JumpInput): void {
     if (this.over) return;
     this.time += STEP;
     const p = this.player;
+    const rate = timeRate(p);
     stepPlayer(p, input, this.world.roofs, (e) => this.onPhys(e));
     if (this.dead) return;
+    this.magnetTime = Math.max(0, this.magnetTime - STEP);
+    this.doubleTime = Math.max(0, this.doubleTime - STEP);
+    this.keepTime = Math.max(0, this.keepTime - STEP);
 
-    if (this.combo > 0) {
-      this.comboTimer -= STEP;
+    // Counted in the runner's time, so slowing down never costs a combo.
+    if (this.combo > 0 && this.keepTime <= 0) {
+      this.comboTimer -= STEP * rate;
       if (this.comboTimer <= 0) this.loseCombo();
     }
+    if (this.magnetTime > 0 && !p.crashed) this.pull();
     for (const r of this.world.roofs) {
-      if (r.x > p.x + 60) break;
+      if (r.x > p.x + MAGNET_RANGE + 60) break;
+      for (const w of r.powers) {
+        if (w.taken || w.x < p.x - 8 || w.x > p.x + PW + 8 || w.y < p.y - PH - 9 || w.y > p.y + 9) continue;
+        w.taken = true;
+        this.powers++;
+        this.use(w.kind);
+        this.addCombo();
+        this.events.push({ type: 'power', kind: w.kind, points: this.award(POWER_POINTS), x: w.x, y: w.y });
+      }
       for (const c of r.coins) {
         if (c.taken || c.x < p.x - 5 || c.x > p.x + PW + 5 || c.y < p.y - PH - 6 || c.y > p.y + 5) continue;
         c.taken = true;
@@ -126,6 +202,13 @@ export class Game {
     if (level > this.level) {
       this.level = level;
       this.events.push({ type: 'speedup', level });
+    }
+    const mission = this.mission;
+    if (mission && this.tally[mission.what] >= mission.goal) {
+      // A flat reward: the combo and the score item don't change it.
+      this.missionsDone++;
+      this.bonus += mission.reward;
+      this.events.push({ type: 'mission', mission, points: mission.reward });
     }
     if (this.world.goalX !== null && p.x >= this.world.goalX && !p.crashed) {
       this.finished = true;
@@ -168,6 +251,7 @@ export class Game {
         this.risk(kind, RISK_POINTS);
       } else if (kind === 'roof' || kind === 'scaffold') {
         this.riskTaken.add(id);
+        if (p.boostTime > 0) this.events.push({ type: 'dash', points: this.award(DASH_POINTS), x: p.x, y: p.y - PH });
         const roofs = this.world.roofs;
         const prev = roofs[roofs.findIndex((r) => r.id === id) - 1];
         // Crossing on laundry is paid as the laundry route; coming up from the street isn't a far jump.

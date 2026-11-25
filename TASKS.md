@@ -10,7 +10,19 @@
 - [x] 오케스트레이터 검증, 커밋/푸시(`8820447`), Vercel 배포
 - [x] P6 밟기, 2단 점프(3초), 다이아, 속도 증가, 방해꾼, 도로와 램프
 - [x] P7 맵 편집기, 검증, 파일 입출력, 테스트플레이, 내 맵 보관함
-- [x] P8 코드: Google 로그인, 닉네임, 주간 순위, 재실행 검증, 맵 게시/목록/가져오기 (로컬 Convex + convex-test)
+- [x] P8 코드(Google 로그인은 P9에서 제거): Google 로그인, 닉네임, 주간 순위, 재실행 검증, 맵 게시/목록/가져오기 (로컬 Convex + convex-test)
 - [x] P8 운영: Convex 로그인, `kevin-park-e828f/apt-jump` 프로젝트, production `honorable-guanaco-452`, `SITE_ORIGINS`
-- [ ] P8 운영: Google OAuth 값 2개 (사용자 설정 대기)
-- [ ] P8 운영: Convex 함수 배포 → Vercel `VITE_CONVEX_URL` → 실제 로그인·순위·맵 공유 확인
+- [x] P9 Google 로그인 제거, 아이디+비밀번호+닉네임 가입/로그인(Convex Auth 공식), 순위에 닉네임
+- [x] P9 난이도·속도 대폭 상향, 아이템 7종, 미션 18개, 메달, 아이템 도감, 편집기 아이템
+- [x] P9 공용 재실행에 모든 효과 포함(`SIM_VERSION` 2), 순위판을 버전별로 분리
+- [x] P9 테스트·빌드, 로컬 Convex에서 실제 가입·로그인·순위·맵 게시 확인
+- [x] 사용자 승인(t1n 전달): 커밋, 푸시, main 병합, 배포. 로그인은 사용자가 직접 확인
+- [x] P9 운영: Convex production 함수 배포(t45, t1n 보고, `honorable-guanaco-452`)
+- [x] 최종 배포 방향(사용자, t1n 전달): Vercel 프런트엔드 + Convex production. Patch 게시는 이전 계획으로만 남김
+- [x] 플레이어용 README, 개발 문서는 `DEVELOPMENT.md`로 분리
+- [ ] P9 공개 확인 뒤 README 상단 안내 문구 제거
+- [ ] P9 커밋·푸시·main 병합 (t1n)
+- [x] P9 운영: Vercel `VITE_CONVEX_URL` 설정(t1n 보고)
+- [ ] P9 운영: Vercel 배포와 공개 확인 (t1n)
+- [ ] P9 운영: 사용자의 실제 가입·로그인 확인
+- [ ] P9 사람이 직접: 새 난이도 체감, 소리, 실제 휴대폰·패드

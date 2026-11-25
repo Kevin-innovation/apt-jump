@@ -201,7 +201,7 @@ function act(a: Act): void {
       setPhase('editor');
       openMaps();
       break;
-    case 'settings': case 'credits': returnTo = ui.screen ?? 'title'; ui.show(a); break;
+    case 'settings': case 'credits': case 'items': returnTo = ui.screen ?? 'title'; ui.show(a); break;
     case 'back': ui.show(returnTo); break;
     case 'mute': s.muted = !s.muted; break;
     case 'music': s.music = (s.music + 1) % 4; break;
@@ -249,7 +249,7 @@ input.onGesture = () => audio.unlock();
 input.onMute = () => act('mute');
 input.onPause = () => {
   if (phase === 'playing' || phase === 'countdown') pause();
-  else if (ui.screen === 'settings' || ui.screen === 'credits') act('back');
+  else if (ui.screen === 'settings' || ui.screen === 'credits' || ui.screen === 'items') act('back');
   else if (phase === 'paused') act('resume');
   else if (phase === 'title' && ui.screen === 'title') act('start');
   else if (phase === 'result') act('restart');
@@ -278,6 +278,9 @@ function onEvent(e: GameEvent): void {
     case 'coin': audio.play(e.kind); break;
     case 'airjump': audio.play('air'); break;
     case 'stomp': audio.play('stomp'); input.rumble(60, 0.4); break;
+    case 'power': audio.play(e.kind === 'boost' || e.kind === 'slow' ? e.kind : 'power'); break;
+    case 'shielded': audio.play('shield'); input.rumble(90, 0.5); break;
+    case 'mission': audio.play('mission'); break;
     case 'speedup': audio.play('up'); break;
     case 'roadExit': audio.play('risk'); break;
     case 'goal':
@@ -366,6 +369,7 @@ function frame(now: number): void {
       break;
   }
   if (phase === 'editor') { editor.draw(dt); return; }
+  audio.tempo = (1 + Math.min(0.25, (game.level - 1) * 0.022)) * (game.player.boostTime > 0 ? 1.12 : game.player.slowTime > 0 ? 0.85 : 1);
   audio.night = view.nightAt(game.distance);
   view.draw(game, phase === 'paused' || phase === 'countdown' ? 0 : dt, phase === 'playing' || phase === 'title');
   test?.frame();

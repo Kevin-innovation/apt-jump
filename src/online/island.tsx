@@ -1,4 +1,4 @@
-import { useOauth, useSignInWithGoogle } from '@convex-dev/auth/methods/google/react';
+import { useSignInWithUsernamePassword } from '@convex-dev/auth/methods/username-password/react';
 import { ConvexAuthProvider, useAuthActions } from '@convex-dev/auth/react';
 import { ConvexReactClient, useConvexAuth, useQuery } from 'convex/react';
 import { useEffect } from 'react';
@@ -6,24 +6,23 @@ import { createRoot } from 'react-dom/client';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { SIM_VERSION } from '../replay';
-import type { Account, Online } from './types';
+import { cleanUsername } from '../username';
+import { errorText, Refusal, type Account, type Online } from './types';
 
-const FLOW_ERRORS: Record<string, string> = {
-  ACCESS_DENIED: '로그인을 취소했습니다.',
-  EXPIRED: '로그인 시간이 지났습니다. 다시 시도해 주세요.',
-  INVALID_FLOW: '로그인을 마치지 못했습니다. 다시 시도해 주세요.',
-};
+const WRONG = '아이디나 비밀번호가 맞지 않습니다.';
 
 /** A small React root that only carries Convex Auth; the game's screens stay plain DOM. */
 export function connect(url: string): Online {
   const client = new ConvexReactClient(url);
-  let account: Account = { status: 'loading', nickname: null, error: null };
+  let account: Account = { status: 'loading', nickname: null };
   const watchers: (() => void)[] = [];
-  let doSignIn: () => Promise<string | null> = async () => '아직 준비 중입니다.';
+  const notYet = async () => { throw new Refusal('아직 준비 중입니다. 잠시 뒤 다시 시도해 주세요.'); };
+  let doSignIn: (username: string, password: string) => Promise<void> = notYet;
+  let doSignUp: (username: string, password: string, nickname: string) => Promise<void> = notYet;
   let doSignOut: () => Promise<void> = async () => {};
   let offset = 0;
   const set = (a: Account) => {
-    if (a.status === account.status && a.nickname === account.nickname && a.error === account.error) return;
+    if (a.status === account.status && a.nickname === account.nickname) return;
     account = a;
     watchers.forEach((f) => f());
   };
@@ -31,22 +30,29 @@ export function connect(url: string): Online {
   function Bridge(): null {
     const { isLoading, isAuthenticated } = useConvexAuth();
     const me = useQuery(api.users.me, isAuthenticated ? {} : 'skip');
-    const { signIn } = useSignInWithGoogle(api.auth);
-    const { signOut } = useAuthActions();
-    const { flowError } = useOauth();
+    const { signIn } = useSignInWithUsernamePassword(api.auth);
+    const { setSession, signOut } = useAuthActions();
     useEffect(() => {
-      doSignIn = async () => {
-        const r = await signIn();
-        return r.status === 'redirect' ? null : '로그인을 시작하지 못했습니다. 잠시 뒤 다시 시도해 주세요.';
+      doSignIn = async (raw, password) => {
+        const username = cleanUsername(raw);
+        if (username === null) throw new Refusal(WRONG);
+        const r = await signIn({ username, password });
+        if (r.status === 'complete') return;
+        if (r.userError.error === 'RATE_LIMITED') throw new Refusal('로그인을 너무 자주 시도했습니다. 1분쯤 뒤에 다시 해 주세요.');
+        if (r.userError.error === 'OTHER_ERROR') throw new Refusal(errorText(r.userError.cause));
+        throw new Refusal(WRONG);
+      };
+      doSignUp = async (username, password, nickname) => {
+        const r = await client.mutation(api.users.signUp, { username, password, nickname });
+        await setSession(r.tokens);
       };
       doSignOut = async () => { await signOut(); };
-    }, [signIn, signOut]);
+    }, [signIn, setSession, signOut]);
     useEffect(() => {
-      const error = flowError ? (FLOW_ERRORS[flowError.error] ?? '로그인하지 못했습니다. 다시 시도해 주세요.') : null;
-      if (isLoading || (isAuthenticated && me === undefined)) set({ status: 'loading', nickname: null, error });
-      else if (isAuthenticated && me) set({ status: 'in', nickname: me.nickname, error: null });
-      else set({ status: 'out', nickname: null, error });
-    }, [isLoading, isAuthenticated, me, flowError]);
+      if (isLoading || (isAuthenticated && me === undefined)) set({ status: 'loading', nickname: null });
+      else if (isAuthenticated && me) set({ status: 'in', nickname: me.nickname });
+      else set({ status: 'out', nickname: null });
+    }, [isLoading, isAuthenticated, me]);
     return null;
   }
 
@@ -63,10 +69,8 @@ export function connect(url: string): Online {
   return {
     account: () => account,
     onAccount: (f) => { watchers.push(f); },
-    signIn: async () => {
-      const error = await doSignIn();
-      if (error) set({ ...account, error });
-    },
+    signIn: (username, password) => doSignIn(username, password),
+    signUp: (username, password, nickname) => doSignUp(username, password, nickname),
     signOut: () => doSignOut(),
     setNickname: (nickname) => client.mutation(api.users.setNickname, { nickname }),
     now: () => Date.now() + offset,

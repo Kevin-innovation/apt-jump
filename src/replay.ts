@@ -2,7 +2,7 @@ import { Game } from './game';
 import { STEP, type JumpInput } from './physics';
 
 /** Raise whenever a change makes an old replay play differently. */
-export const SIM_VERSION = 1;
+export const SIM_VERSION = 2;
 export const MAX_STEPS = Math.round((30 * 60) / STEP);
 export const MAX_REPLAY = 120_000;
 /** More presses a second than a person makes, averaged over a run. */

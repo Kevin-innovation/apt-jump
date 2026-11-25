@@ -2,8 +2,9 @@ import { defineSchema, defineTable } from 'convex/server';
 import { v } from 'convex/values';
 
 export default defineSchema({
-  // Only a nickname: the Google profile and email are not kept.
-  users: defineTable({ nickname: v.string(), nickKey: v.string() }).index('by_nickKey', ['nickKey']),
+  // Only a public nickname. The id and password hash live in Convex Auth's own components.
+  // A bare account, made without users.signUp, has no nickname and can't play online.
+  users: defineTable({ nickname: v.optional(v.string()), nickKey: v.optional(v.string()) }).index('by_nickKey', ['nickKey']),
 
   // One issued run. It can be handed in once, by the player it was issued to.
   runs: defineTable({
@@ -11,10 +12,11 @@ export default defineSchema({
     status: v.union(v.literal('open'), v.literal('claimed'), v.literal('done'), v.literal('rejected')),
   }).index('by_user_started', ['userId', 'startedAt']),
 
-  // Each player's best of each week. Past weeks stay.
+  // Each player's best of each week, for one version of the game's rules: scores made under others never mix.
+  // Past weeks and versions stay. Rows from before versions were recorded have none, and are on no board.
   scores: defineTable({
-    week: v.string(), userId: v.id('users'), score: v.number(), distance: v.number(), achievedAt: v.number(),
-  }).index('by_week_score', ['week', 'score']).index('by_week_user', ['week', 'userId']),
+    week: v.string(), version: v.optional(v.number()), userId: v.id('users'), score: v.number(), distance: v.number(), achievedAt: v.number(),
+  }).index('by_board_score', ['week', 'version', 'score']).index('by_board_user', ['week', 'version', 'userId']),
 
   // What a list needs; the map itself is read one at a time.
   maps: defineTable({

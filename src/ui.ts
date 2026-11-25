@@ -1,13 +1,16 @@
+import { drawPower, powerColor } from './art';
 import { COMBO_TIME, type Game } from './game';
-import { AIR_COOLDOWN } from './physics';
+import { POWER_KINDS, POWER_NAMES, POWER_TEXT, POWER_TIME, type PowerKind } from './items';
+import { medalFor, missionText, nextMedal } from './missions';
+import { AIR_COOLDOWN, canAirJump } from './physics';
 import type { Device, MenuAction } from './input';
 import type { SaveFile } from './storage';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
-export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking';
+export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'items';
 export type Act = 'start' | 'resume' | 'restart' | 'home' | 'settings' | 'credits' | 'back' | 'mute' | 'music' | 'sfx' | 'shake'
-  | 'maps' | 'ranking' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
-const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking'];
+  | 'maps' | 'ranking' | 'items' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
+const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'items'];
 const VOLUME = ['끔', '작게', '보통', '크게'];
 const KEYS: Record<Device, string> = {
   key: '점프 Space · ↑ · 클릭　　일시정지 P　　음소거 M',
@@ -30,12 +33,44 @@ export class UI {
   private device: Device = 'key';
   private pips = [...document.querySelectorAll<HTMLElement>('#boost i')];
   private cache = new Map<string, string>();
+  private chips = new Map<PowerKind, { el: HTMLElement; bar: HTMLElement; n: HTMLElement; on: boolean }>();
 
   constructor(private save: SaveFile) {
     for (const b of document.querySelectorAll<HTMLButtonElement>('[data-act]'))
       b.addEventListener('click', () => this.onAct(b.dataset.act as Act));
     $('btn-mute').addEventListener('click', () => { this.onAct('mute'); $('btn-mute').blur(); });
+    this.buildPowers();
     this.refresh();
+  }
+
+  /** A picture of an item, for the HUD and the list. */
+  private picture(kind: PowerKind): HTMLCanvasElement {
+    const c = document.createElement('canvas');
+    c.className = 'pic';
+    c.width = c.height = 19;
+    const g = c.getContext('2d');
+    if (g) drawPower(g, kind, 9, 9, 0);
+    return c;
+  }
+
+  private buildPowers(): void {
+    for (const kind of POWER_KINDS) {
+      const el = document.createElement('div');
+      el.hidden = true;
+      el.title = POWER_NAMES[kind];
+      const n = document.createElement('span'), box = document.createElement('i'), bar = document.createElement('b');
+      bar.style.background = powerColor(kind);
+      box.append(bar);
+      el.append(this.picture(kind), POWER_TIME[kind] ? box : n);
+      $('effects').append(el);
+      this.chips.set(kind, { el, bar, n, on: false });
+      const row = document.createElement('div'), words = document.createElement('p'), name = document.createElement('b');
+      name.textContent = POWER_NAMES[kind];
+      name.style.color = powerColor(kind);
+      words.append(name, document.createElement('br'), POWER_TEXT[kind]);
+      row.append(this.picture(kind), words);
+      $('item-list').append(row);
+    }
   }
 
   private text(id: string, v: string): void {
@@ -68,7 +103,7 @@ export class UI {
     const i = list.indexOf(document.activeElement as HTMLButtonElement);
     if (a === 'up' || a === 'down') list[(i + (a === 'up' ? -1 : 1) + list.length * 2) % list.length]?.focus();
     else if (a === 'back') {
-      if (this.screen === 'settings' || this.screen === 'credits') this.onAct('back');
+      if (this.screen === 'settings' || this.screen === 'credits' || this.screen === 'items') this.onAct('back');
       else if (this.screen === 'pause') this.onAct('resume');
       else if (this.screen === 'result' || this.screen === 'maps' || this.screen === 'ranking') this.onAct('home');
       else if (this.screen === 'editor') this.onAct('ed-back');
@@ -101,8 +136,18 @@ export class UI {
     this.text('coins', String(g.coins));
     this.text('lv', g.progress === null ? `속도 ${g.level}` : `${Math.floor(g.progress * 100)}%`);
     $('best').parentElement!.hidden = g.progress !== null;
-    $('air').classList.toggle('ready', g.player.airCooldown <= 0);
+    $('air').classList.toggle('ready', canAirJump(g.player));
     $('air-bar').style.transform = `scaleX(${1 - g.player.airCooldown / AIR_COOLDOWN})`;
+    for (const [kind, chip] of this.chips) {
+      const left = g.effect(kind), on = left > 0;
+      if (on !== chip.on) { chip.on = on; chip.el.hidden = !on; }
+      if (!on) continue;
+      if (POWER_TIME[kind]) chip.bar.style.transform = `scaleX(${Math.min(1, left / POWER_TIME[kind])})`;
+      else { const t = `x${left}`; if (chip.n.textContent !== t) chip.n.textContent = t; }
+    }
+    const m = g.mission;
+    $('mission').hidden = !m;
+    if (m) this.text('mission-text', `미션 ${missionText(m)} (${Math.min(m.goal, g.tally[m.what])}/${m.goal}) +${m.reward}`);
     $('combo').hidden = g.combo < 2;
     if (g.combo >= 2) {
       this.text('combo-n', String(g.combo));
@@ -136,6 +181,10 @@ export class UI {
     this.text('r-stomp', String(g.stomps));
     this.text('r-diamond', String(g.diamonds));
     this.text('r-risk', String(g.risks));
+    this.text('r-power', String(g.powers));
+    this.text('r-mission', String(g.missionsDone));
+    const medal = g.progress === null ? medalFor(g.score) : null, next = g.progress === null ? nextMedal(g.score) : null;
+    this.text('r-medal', [medal && `${medal} 획득!`, next && `${next.name}까지 ${num(next.left)}점`].filter(Boolean).join('　'));
     this.show('result');
   }
 }

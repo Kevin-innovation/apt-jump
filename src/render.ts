@@ -1,6 +1,8 @@
 import type { Game, GameEvent } from './game';
-import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawQuilt, drawRoad, drawRoadSign, drawScaffold, drawTank, drawWarning } from './art';
-import { BOOST_SPEED, enemyBox, paceSpeed, roofEnd } from './physics';
+import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawScaffold, drawTank, drawWarning, powerColor } from './art';
+import { MAGNET_RANGE, POWER_NAMES } from './items';
+import { missionText } from './missions';
+import { BOOST_SPEED, canAirJump, enemyBox, paceSpeed, roofEnd, timeRate } from './physics';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
 import { ROAD_DEPTH, type Roof } from './world';
@@ -343,6 +345,10 @@ export class Renderer {
         burst(18, e.x, e.y + 4, e.target === 'ac' ? ['#f4f1f8', '#bdb6d2', '#5a5480'] : e.target === 'drone' ? ['#e8465f', '#ffe14a', '#dfe9ff'] : ['#c9d0ea', '#9aa3c7', '#fff'], 130, 50);
         break;
       case 'stompBonus': pop(e.x - 8, e.y - 18, `밟기 +${e.points}`, '#ffe14a'); break;
+      case 'power': burst(20, e.x, e.y, [powerColor(e.kind), '#fff'], 130); pop(e.x - 10, e.y - 12, `${POWER_NAMES[e.kind]}! +${e.points}`, powerColor(e.kind)); break;
+      case 'dash': pop(e.x, e.y - 18, `질주 착지 +${e.points}`, '#ffd85a'); break;
+      case 'mission': burst(30, p.x + 5, p.y - 20, ['#ffd85a', '#9be36b', '#7dfff0', '#fff'], 150, 40); pop(p.x - 14, p.y - 58, `미션 완료! ${missionText(e.mission)} +${e.points}`, '#9be36b'); break;
+      case 'shielded': this.shake = Math.max(this.shake, 3); burst(24, e.x, e.y, ['#9be36b', '#fff6e0', '#fff'], 150, 30); pop(p.x - 6, p.y - 26, '안전모가 막았다!', '#9be36b'); break;
       case 'road': pop(e.x, e.y - 30, '도로 착지! 램프로 복귀', '#7dfff0'); break;
       case 'roadExit': pop(e.x, e.y - 30, '옥상 복귀!', '#9be36b'); break;
       case 'speedup': pop(p.x - 10, p.y - 44, `속도 UP! Lv.${e.level}`, '#ffb84a'); break;
@@ -363,7 +369,9 @@ export class Renderer {
     this.camY += (target - this.camY) * Math.min(1, dt * 5);
     this.shake = Math.max(0, this.shake - dt * 14);
     const sh = this.shakeOn ? this.shake : 0;
-    const look = this.W > this.H ? 0.25 : 0.18;
+    // The faster it goes, the more road ahead is shown.
+    const pace = Math.max(0, Math.min(1, (paceSpeed(p.pace, p.x) - 130) / 170));
+    const look = (this.W > this.H ? 0.25 : 0.18) - 0.07 * pace;
     const cx = Math.round(p.x - this.W * look + (Math.random() - 0.5) * sh * 2);
     const cy = Math.round(this.camY + (Math.random() - 0.5) * sh * 2);
 
@@ -421,6 +429,10 @@ export class Renderer {
       }
     }
 
+    for (const r of seen) for (const w of r.powers) {
+      const x = w.x - cx;
+      if (!w.taken && x > -12 && x < this.W + 12) drawPower(g, w.kind, x, w.y - cy, this.t);
+    }
     for (const r of seen) for (const e of r.enemies) {
       if (p.gone.includes(e.id)) continue;
       const b = enemyBox(e, p.x);
@@ -437,7 +449,7 @@ export class Renderer {
 
   private drawPlayer(game: Game, cx: number, cy: number, dt: number, moving: boolean): void {
     const g = this.g, p = game.player;
-    const boosted = p.boost >= 1;
+    const boosted = p.boost >= 1 || p.boostTime > 0;
     if (moving) {
       this.trail.push({ x: p.x, y: p.y });
       if (this.trail.length > 10) this.trail.shift();
@@ -455,7 +467,7 @@ export class Renderer {
     if (!p.ground) s = p.vy < 0 ? this.sprites.jump : this.sprites.fall;
     else if (moving) s = this.sprites.run[Math.floor(p.x / 13) % 4]!;
     if (p.stumble > 0 && Math.floor(this.t * 20) % 2) g.globalAlpha = 0.45;
-    if (p.airCooldown <= 0 && !p.ground && !p.airUsed && this.quality !== 'low') { g.fillStyle = '#8ff4ff'; g.fillRect(Math.round(p.x - cx) + 1, Math.round(p.y - cy) + 1, 2, 1); g.fillRect(Math.round(p.x - cx) + 7, Math.round(p.y - cy) + 1, 2, 1); }
+    if (canAirJump(p) && !p.ground && this.quality !== 'low') { g.fillStyle = '#8ff4ff'; g.fillRect(Math.round(p.x - cx) + 1, Math.round(p.y - cy) + 1, 2, 1); g.fillRect(Math.round(p.x - cx) + 7, Math.round(p.y - cy) + 1, 2, 1); }
     const w = Math.round(14 * (1 + this.squash * 1.5)), h = Math.round(16 * (1 - this.squash * 1.5));
     const px = Math.round(p.x - cx - 2 - (w - 14) / 2), py = Math.round(p.y - cy - h + 1);
     if (p.ground) { g.fillStyle = 'rgba(10,6,30,.35)'; g.fillRect(px + 1, Math.round(p.y - cy), 12, 1); }
@@ -467,12 +479,32 @@ export class Renderer {
       g.fillRect(px + 2 - i * 2, Math.round(py + 7 + yy), 2, i < 3 ? 2 : 1);
     }
     g.globalAlpha = 1;
+    this.drawAura(game, px, py);
     // Speed lines
-    const fast = (p.vx - paceSpeed(p.pace, p.x)) / BOOST_SPEED;
+    const fast = (p.vx - paceSpeed(p.pace, p.x)) / BOOST_SPEED + (timeRate(p) > 1 ? 3 : 0);
     if (moving && fast > 1.5 && this.quality === 'high') {
       g.fillStyle = 'rgba(255,255,255,.35)';
       for (let i = 0; i < fast * 2; i++) g.fillRect(Math.floor(Math.random() * this.W), Math.floor(Math.random() * this.H * 0.8), 14, 1);
     }
+  }
+
+  /** Shows which items are working on the runner. Blinks when one is about to end. */
+  private drawAura(game: Game, px: number, py: number): void {
+    const g = this.g, p = game.player, cx = px + 7, cy = py + 8;
+    const shown = (left: number) => left > 1.5 || (left > 0 && Math.floor(this.t * 10) % 2 === 0);
+    const ring = (r: number, color: string, n: number, spin: number) => {
+      g.fillStyle = color;
+      for (let i = 0; i < n; i++) {
+        const a = (i / n) * Math.PI * 2 + this.t * spin;
+        g.fillRect(Math.round(cx + Math.cos(a) * r), Math.round(cy + Math.sin(a) * r), 2, 2);
+      }
+    };
+    if (p.shield) { g.fillStyle = '#9be36b'; g.fillRect(px + 2, py - 2, 10, 3); g.fillRect(px + 4, py - 4, 6, 2); ring(13, '#9be36b', 10, 1.5); }
+    if (shown(game.magnetTime)) { const q = (this.t * 1.5) % 1; g.globalAlpha = 0.5 * q; ring(MAGNET_RANGE * (1 - q) * 0.6 + 8, '#ff5d6c', this.quality === 'low' ? 10 : 22, 0.5); g.globalAlpha = 1; }
+    if (shown(game.doubleTime)) ring(10, '#ff9be6', 4, -5);
+    if (shown(game.keepTime)) ring(17, '#ffb84a', 3, 3);
+    if (shown(p.slowTime)) { g.globalAlpha = 0.14; g.fillStyle = '#8fb8ff'; g.fillRect(0, 0, this.W, this.H); g.globalAlpha = 1; }
+    for (let i = 0; i < p.airBonus; i++) { g.fillStyle = '#7dfff0'; g.fillRect(px + 3 + i * 5, py + 18, 3, 2); }
   }
 
   private drawFx(cx: number, cy: number, dt: number, n: number): void {

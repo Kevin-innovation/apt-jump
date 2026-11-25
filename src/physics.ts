@@ -1,3 +1,4 @@
+import { BOOST_RATE, SLOW_RATE } from './items';
 import type { Enemy, Obstacle, Roof } from './world';
 
 // Units are virtual pixels and seconds. y grows downward; player.y is the feet.
@@ -33,8 +34,9 @@ const SNAP = 8;
 /** Falling this far below the last surface ends the run. */
 export const FALL_LIMIT = 150;
 
-export interface Pace { base: number; gain: number }
-export const DEFAULT_PACE: Readonly<Pace> = { base: 118, gain: 122 };
+/** half is the distance in pixels by which half the gain is reached. */
+export interface Pace { base: number; gain: number; half?: number }
+export const DEFAULT_PACE: Readonly<Pace> = { base: 130, gain: 175, half: 2400 };
 // The simulation uses only basic arithmetic (no exp or sin), so a replay gives the same run on every engine.
 /** Rises from 0 toward 1, halfway at `half`. */
 export function ease(x: number, half: number): number { const u = Math.max(0, x); return u / (u + half); }
@@ -44,7 +46,7 @@ export function wave(t: number): number {
   return s < 0.5 ? 16 * s * (0.5 - s) : -16 * (s - 0.5) * (1 - s);
 }
 export function paceSpeed(pace: Pace, x: number): number {
-  return pace.base + pace.gain * ease(x, 6000);
+  return pace.base + pace.gain * ease(x, pace.half ?? 6000);
 }
 /** Speed of an ordinary run at x, before any boost. */
 export function baseSpeed(x: number): number { return paceSpeed(DEFAULT_PACE, x); }
@@ -71,6 +73,13 @@ export interface Player {
   landedFromAir: boolean;
   airUsed: boolean;
   airCooldown: number;
+  /** Air jumps from items, beyond the ordinary one. */
+  airBonus: number;
+  /** Seconds left of the items that speed time up and slow it down. Never both. */
+  boostTime: number;
+  slowTime: number;
+  /** Will take the next collision. */
+  shield: boolean;
   /** Units and enemies already dealt with. Replaced, never mutated, so copies are safe. */
   gone: readonly number[];
   pace: Readonly<Pace>;
@@ -81,6 +90,7 @@ export interface JumpInput { pressed: boolean; held: boolean }
 export type PhysEvent =
   | { type: 'jump'; perfect: boolean; boost: number }
   | { type: 'airjump' }
+  | { type: 'shielded'; id: number; x: number; y: number }
   | { type: 'land'; surface: Surface; speed: number }
   | { type: 'stomp'; id: number; target: 'ac' | 'drone' | 'pigeon'; x: number; y: number }
   | { type: 'stumble'; id: number; by: 'ac' | 'tank' | 'drone' | 'pigeon' }
@@ -91,7 +101,7 @@ export function newPlayer(x: number, y: number, pace: Readonly<Pace> = DEFAULT_P
   return {
     x, y, vx: paceSpeed(pace, 0), vy: 0, ground: null, groundTime: 1, airTime: 0, coyote: 0, buffer: 0,
     holdTime: 0, jumping: false, boost: 0, stumble: 0, lastHit: -1, crashed: false, lastRoofY: y,
-    landedFromAir: false, airUsed: false, airCooldown: 0, gone: [], pace,
+    landedFromAir: false, airUsed: false, airCooldown: 0, airBonus: 0, boostTime: 0, slowTime: 0, shield: false, gone: [], pace,
   };
 }
 
@@ -154,11 +164,11 @@ function eachSurface(p: Player, roofs: readonly Roof[], visit: (s: Surface) => v
   }
 }
 
-function findLanding(p: Player, prevFeet: number, prevX: number, roofs: readonly Roof[]): Surface | null {
+function findLanding(p: Player, prevFeet: number, prevX: number, roofs: readonly Roof[], rampsOnly = false): Surface | null {
   let best: Surface | null = null, bestY = 0;
   const half = PW / 2;
   eachSurface(p, roofs, (s) => {
-    if (!overlaps(p, s.x0, s.x1)) return;
+    if ((rampsOnly && s.kind !== 'ramp') || !overlaps(p, s.x0, s.x1)) return;
     const y = surfaceY(s, p.x + half);
     if (prevFeet <= surfaceY(s, prevX + half) + 0.01 && p.y >= y && (!best || y < bestY)) { best = s; bestY = y; }
   });
@@ -186,9 +196,15 @@ function landsSoon(p: Player, roofs: readonly Roof[]): boolean {
   return findLanding(ahead, p.y, p.x, roofs) !== null;
 }
 
+/** How fast time passes for the runner. */
+export function timeRate(p: Player): number { return p.boostTime > 0 ? BOOST_RATE : p.slowTime > 0 ? SLOW_RATE : 1; }
+export function canAirJump(p: Player): boolean { return (!p.airUsed && p.airCooldown <= 0) || p.airBonus > 0; }
+
 /** One fixed step. Mutates p only, so a planner can run it on a copy. */
 export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], emit: (e: PhysEvent) => void): void {
-  const dt = STEP;
+  const dt = STEP * timeRate(p);
+  p.boostTime = Math.max(0, p.boostTime - STEP);
+  p.slowTime = Math.max(0, p.slowTime - STEP);
   p.buffer = Math.max(0, p.buffer - dt);
   p.stumble = Math.max(0, p.stumble - dt);
   p.airCooldown = Math.max(0, p.airCooldown - dt);
@@ -216,10 +232,11 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
     p.ground = null;
     p.coyote = 0; p.buffer = 0; p.holdTime = 0; p.airTime = 0; p.jumping = true; p.landedFromAir = false;
     emit({ type: 'jump', perfect, boost: p.boost });
-  } else if (input.pressed && !p.crashed && !p.airUsed && p.airCooldown <= 0 && !landsSoon(p, roofs)) {
+  } else if (input.pressed && !p.crashed && canAirJump(p) && !landsSoon(p, roofs)) {
     // A press just above a roof is a buffered jump, not a wasted air jump.
     p.vy = -AIR_JUMP_V;
-    p.airUsed = true; p.airCooldown = AIR_COOLDOWN;
+    if (!p.airUsed && p.airCooldown <= 0) { p.airUsed = true; p.airCooldown = AIR_COOLDOWN; }
+    else p.airBonus--;
     p.buffer = 0; p.holdTime = SECOND_HOLD; p.jumping = true;
     emit({ type: 'airjump' });
   }
@@ -254,7 +271,7 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
   if (!p.crashed) {
     for (const r of roofs) {
       if (r.kind === 'scaffold' || prevRight - 2 > r.x + 0.01 || p.x + PW - 2 <= r.x || p.y <= r.y) continue;
-      if (p.y - r.y <= LEDGE && p.vy >= 0) { p.y = r.y; lifted = true; break; }
+      if (p.y - r.y <= LEDGE) { p.y = r.y; lifted = p.vy >= 0; break; }
       if (!p.ground && prevFeet <= r.y) continue; // came over the corner: the landing check handles it
       p.x = r.x - PW + 2; p.vx = 0; p.crashed = true; p.jumping = false; p.ground = null;
       p.vy = Math.max(p.vy, 0);
@@ -278,8 +295,9 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
     } else {
       p.ground = null; p.coyote = COYOTE; p.airTime = 0; p.vy = 0; p.jumping = false;
     }
-  } else if (p.vy >= 0 && !p.crashed) {
-    const s = findLanding(p, lifted ? p.y : prevFeet, lifted ? p.x : prevX, roofs);
+  } else if (!p.crashed) {
+    // A ramp can also catch up with a fast runner who is still rising, so it counts then too.
+    const s = findLanding(p, lifted ? p.y : prevFeet, lifted ? p.x : prevX, roofs, p.vy < 0);
     if (s && s.kind === 'ac') {
       // Landing on an outdoor unit from above smashes it.
       p.y = s.y;
@@ -305,6 +323,12 @@ function touchHazards(
   bounce: () => void, remove: (id: number) => void,
 ): void {
   const trip = (id: number, by: 'ac' | 'tank' | 'drone' | 'pigeon') => {
+    if (p.shield) {
+      p.shield = false;
+      remove(id);
+      emit({ type: 'shielded', id, x: p.x + PW / 2, y: p.y - PH / 2 });
+      return;
+    }
     p.lastHit = id; p.stumble = STUMBLE_TIME; p.boost = 0; p.vx *= STUMBLE_FACTOR;
     emit({ type: 'stumble', id, by });
   };

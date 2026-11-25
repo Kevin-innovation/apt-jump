@@ -1,41 +1,84 @@
+import type { SignUpResult } from '@convex-dev/auth/methods/username-password/server';
 import { getAuthUserId } from '@convex-dev/auth/server';
-import { vGoogleProfile } from '@convex-dev/auth/methods/google/server';
+import { MINUTE, RateLimiter } from '@convex-dev/rate-limiter';
 import { ConvexError, v } from 'convex/values';
 import { cleanNickname, nicknameKey } from '../src/nickname';
+import { cleanUsername } from '../src/username';
+import { api, components } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
+
+// Guessing passwords is limited by the password component; this limits making accounts, however it is done.
+const limiter = new RateLimiter(components.rateLimiter, {
+  createAccount: { kind: 'token bucket', rate: 20, period: MINUTE, capacity: 40 },
+});
 
 /** The signed-in player, or an error. */
 export async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Id<'users'>> {
   const id = await getAuthUserId(ctx);
   if (id === null) throw new ConvexError('로그인이 필요합니다.');
-  return id as Id<'users'>;
+  return id;
+}
+/** The signed-in player, who must have a public name. */
+export async function requirePlayer(ctx: QueryCtx | MutationCtx): Promise<Id<'users'>> {
+  const id = await requireUser(ctx);
+  if (!(await ctx.db.get(id))?.nickname) throw new ConvexError('닉네임을 먼저 정해 주세요.');
+  return id;
 }
 
-const taken = async (ctx: MutationCtx, key: string) => (await ctx.db.query('users').withIndex('by_nickKey', (q) => q.eq('nickKey', key)).first()) ?? null;
+/** A nickname ready to store, or an error the player can read. */
+async function claimNickname(ctx: MutationCtx, raw: string, self: Id<'users'> | null, username: string | null) {
+  const nickname = cleanNickname(raw);
+  const nickKey = nickname === null ? '' : nicknameKey(nickname);
+  if (nickname === null || nickKey.length < 2) throw new ConvexError('닉네임은 2~16자의 글자·숫자로 정해 주세요.');
+  if (username !== null && nickKey === nicknameKey(username)) throw new ConvexError('닉네임은 공개되므로 아이디와 다르게 정해 주세요.');
+  const other = await ctx.db.query('users').withIndex('by_nickKey', (q) => q.eq('nickKey', nickKey)).first();
+  if (other && other._id !== self) throw new ConvexError('이미 쓰는 닉네임입니다.');
+  return { nickname, nickKey };
+}
 
+/** Called by Convex Auth for every new account. */
 export const createUser = internalMutation({
-  args: { method: v.object({ name: v.literal('google'), profile: vGoogleProfile }) },
+  args: { method: v.object({ name: v.literal('usernamePassword'), profile: v.object({}) }) },
   returns: v.id('users'),
-  // A made-up nickname: nothing from the Google profile becomes public.
   handler: async (ctx) => {
-    for (let i = 0; i < 20; i++) {
-      const nickname = `주자${100000 + Math.floor(Math.random() * 900000)}`;
-      const nickKey = nicknameKey(nickname);
-      if (await taken(ctx, nickKey)) continue;
-      return await ctx.db.insert('users', { nickname, nickKey });
-    }
-    throw new ConvexError('계정을 만들지 못했습니다. 다시 로그인해 주세요.');
+    if (!(await limiter.limit(ctx, 'createAccount')).ok) throw new ConvexError('가입이 몰리고 있습니다. 잠시 뒤 다시 시도해 주세요.');
+    return await ctx.db.insert('users', {});
+  },
+});
+
+const PASSWORD_ERRORS: Record<string, string> = {
+  PASSWORD_TOO_SHORT: '비밀번호는 10자 이상이어야 합니다.',
+  PASSWORD_TOO_LONG: '비밀번호는 100자까지입니다.',
+  PASSWORD_HAS_SURROUNDING_WHITESPACE: '비밀번호 앞뒤에는 공백을 둘 수 없습니다.',
+  PASSWORD_TOO_COMMON: '너무 흔한 비밀번호입니다. 다른 것으로 정해 주세요.',
+  USERNAME_TAKEN: '이미 쓰는 아이디입니다.',
+};
+
+/**
+ * Makes an account and its nickname together: everything here is one transaction, so a refusal leaves nothing behind.
+ * Hashing and the session are Convex Auth's.
+ */
+export const signUp = mutation({
+  args: { username: v.string(), password: v.string(), nickname: v.string() },
+  handler: async (ctx, args): Promise<Extract<SignUpResult, { status: 'complete' }>> => {
+    const username = cleanUsername(args.username);
+    if (username === null) throw new ConvexError('아이디는 영문으로 시작하는 4~20자의 영문·숫자·밑줄로 정해 주세요.');
+    const name = await claimNickname(ctx, args.nickname, null, username);
+    const r: SignUpResult = await ctx.runMutation(api.auth.signUpWithUsernamePassword, { username, password: args.password });
+    if (r.status === 'error') throw new ConvexError(PASSWORD_ERRORS[r.userError.error] ?? '가입하지 못했습니다. 입력한 내용을 확인해 주세요.');
+    await ctx.db.patch(r.tokens.userId as Id<'users'>, name);
+    return r;
   },
 });
 
 export const me = query({
   args: {},
-  returns: v.union(v.null(), v.object({ nickname: v.string() })),
+  returns: v.union(v.null(), v.object({ nickname: v.union(v.null(), v.string()) })),
   handler: async (ctx) => {
     const id = await getAuthUserId(ctx);
-    const user = id === null ? null : await ctx.db.get(id as Id<'users'>);
-    return user && { nickname: user.nickname };
+    const user = id === null ? null : await ctx.db.get(id);
+    return user && { nickname: user.nickname ?? null };
   },
 });
 
@@ -44,13 +87,11 @@ export const setNickname = mutation({
   returns: v.string(),
   handler: async (ctx, args) => {
     const id = await requireUser(ctx);
-    const nickname = cleanNickname(args.nickname);
-    if (nickname === null) throw new ConvexError('닉네임은 2~16자의 글자·숫자로 정해 주세요.');
-    const nickKey = nicknameKey(nickname);
-    if (nickKey.length < 2) throw new ConvexError('닉네임은 2~16자의 글자·숫자로 정해 주세요.');
-    const other = await taken(ctx, nickKey);
-    if (other && other._id !== id) throw new ConvexError('이미 쓰는 닉네임입니다.');
-    await ctx.db.patch(id, { nickname, nickKey });
-    return nickname;
+    // Convex Auth's own sign-up is reachable too, and takes any id: one this game wouldn't allow stays nameless.
+    const username = await ctx.runQuery(components.authUsername.public.getUsername, { userId: id });
+    if (username === null || cleanUsername(username) === null) throw new ConvexError('이 계정은 사용할 수 없습니다. 새로 가입해 주세요.');
+    const name = await claimNickname(ctx, args.nickname, id, username);
+    await ctx.db.patch(id, name);
+    return name.nickname;
   },
 });
