@@ -3,6 +3,7 @@ import { ConvexAuthProvider, useAuthActions } from '@convex-dev/auth/react';
 import { ConvexReactClient, useConvexAuth, useQuery } from 'convex/react';
 import { useEffect } from 'react';
 import { createRoot } from 'react-dom/client';
+import { Analytics } from '@vercel/analytics/react';
 import { api } from '../../convex/_generated/api';
 import type { Id } from '../../convex/_generated/dataModel';
 import { SIM_VERSION } from '../replay';
@@ -56,6 +57,7 @@ export function connect(url: string): Online {
   createRoot(host).render(
     <ConvexAuthProvider client={client} api={{ refreshSession: api.auth.refreshSession, signOut: api.auth.signOut, isAuthenticated: api.auth.isAuthenticated }}>
       <Bridge />
+      <Analytics />
     </ConvexAuthProvider>,
   );
   client.mutation(api.ranking.clock, {}).then((t) => { offset = t - Date.now(); }, () => {});
