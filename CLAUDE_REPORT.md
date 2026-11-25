@@ -48,15 +48,19 @@ t1n 테스트·빌드 뒤 앱 코드 변경은 `POWER_TEXT.double` 문구 한 �
 - 사용자가 커밋·푸시·main 병합과 **Vercel 배포**를 승인(t1n 전달), 로그인은 사용자가 직접 확인. 실행은 t1n, t3r은 설정과 문서만
 - 구성: Vercel 프런트엔드 + Convex production `honorable-guanaco-452`. Convex 배포 성공(t45, t1n 보고): auth·password·username·rateLimiter 설치. 게스트 조회(board·me)와 게스트 쓰기 거부 확인(t1n). production 계정은 만들지 않았고 가입·로그인은 사용자 확인 몫
 - Vercel 프로젝트에 `VITE_CONVEX_URL=https://honorable-guanaco-452.convex.cloud`(Production)를 Production·Preview에 설정함(t1n 보고). 연결된 프로젝트의 production 브랜치는 main
+- 커밋 `4c61113`을 feature에 푸시, 기준 커밋 `37fc610`에서 main을 만들어 fast-forward 병합·푸시, GitHub 기본 브랜치를 main으로 변경(t1n)
+- Vercel production 공개 완료(t47 exit 0, t1n 확인): `apt-jump-oj6zm8zq5-dlab-daegu.vercel.app`, 주소 <https://apt-jump-wine.vercel.app>. 브라우저에서 HTTP 200, 제목, 아이템 7종·미션 문구, 아이템 도감, 가입 폼(아이디·비밀번호·닉네임) 표시, pageerror 0. 실제 가입은 하지 않음
+- production 메타데이터(t1n 확인): `dpl_3w6NHQXXqw37J6ECgYe6ZZSAmaY4` READY, main, sha `4c6111327b2d2cd320eb32b8e7caab26286ef014`. 공개 번들 `index-CAtEdDHj.js`에 production Convex 주소가 있고 `127.0.0.1:3210`은 없음(t3r의 격리 빌드와 같은 파일 이름)
+- 브랜치 이름 `feature/flight-combat`은 상위 작업 공간에서 물려받은 이름일 뿐이며, 저장소·패키지·게임은 모두 `apt-jump`(아파트 점프). 이름은 바꾸지 않음
 - Patch 게시는 이전 계획으로만 남김. 중간에 만든 Vercel 자동 배포 차단과 Patch 릴리스 초안은 커밋 전에 되돌림
 - 로컬 `dist`는 로컬 Convex 주소로 빌드된 확인용. Vercel은 자체 빌드하므로 영향 없음
 - 현재 파일(로컬 환경 파일 제외)을 격리 폴더에 복사해 `npm ci` → `VITE_CONVEX_URL`을 준 빌드 → 테스트 191개 통과. 결과물에 production 주소 포함, 로컬 주소 없음
-- README를 플레이어용 안내로 새로 쓰고 개발·운영 내용은 `DEVELOPMENT.md`로 옮김. 새 버전의 실제 공개는 t1n 확인 대기(README 상단에도 안내)
+- README를 플레이어용 안내로 새로 쓰고 개발·운영 내용은 `DEVELOPMENT.md`로 옮김. 공개 확인 뒤 README 상단의 임시 안내를 지움
 - t3r이 문서 확인에 `web-fetch` 에이전트를 1회 사용함. 에이전트를 쓰지 말라는 지시를 어긴 것이며 파일 변경은 없음
 
 ## 남은 일 / 제한
 
-- 남은 운영: Vercel 배포, 사용자의 실제 로그인 확인. 위 "배포 준비" 참고
+- 남은 운영: 사용자의 실제 production 가입·로그인 확인. 위 "배포 준비" 참고
 - 설치된 pch에 게임 설정 명령이 없음(t1n 확인: `pch game settings --help`가 기본 도움말로 넘어감). `connects_to`는 Patch MCP 또는 API로 등록
 - 비밀번호 찾기 없음(이메일을 받지 않으므로). 로그인 시도 제한은 계정별이라 남이 일부러 잠글 수 있음(1분에 1회씩 회복)
 - 가입 제한은 전역(분당 20, 최대 40)이라 대량 공격 시 정상 가입도 늦어짐

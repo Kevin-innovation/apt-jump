@@ -20,9 +20,9 @@
 - [x] P9 운영: Convex production 함수 배포(t45, t1n 보고, `honorable-guanaco-452`)
 - [x] 최종 배포 방향(사용자, t1n 전달): Vercel 프런트엔드 + Convex production. Patch 게시는 이전 계획으로만 남김
 - [x] 플레이어용 README, 개발 문서는 `DEVELOPMENT.md`로 분리
-- [ ] P9 공개 확인 뒤 README 상단 안내 문구 제거
-- [ ] P9 커밋·푸시·main 병합 (t1n)
+- [x] P9 공개 확인 뒤 README 상단 안내 문구 제거
+- [x] P9 커밋 `4c61113`, 푸시, main 생성·fast-forward 병합, GitHub 기본 브랜치 main (t1n)
 - [x] P9 운영: Vercel `VITE_CONVEX_URL` 설정(t1n 보고)
-- [ ] P9 운영: Vercel 배포와 공개 확인 (t1n)
+- [x] P9 운영: Vercel 배포와 공개 확인 (t47, t1n)
 - [ ] P9 운영: 사용자의 실제 가입·로그인 확인
 - [ ] P9 사람이 직접: 새 난이도 체감, 소리, 실제 휴대폰·패드

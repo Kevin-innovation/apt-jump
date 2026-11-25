@@ -41,7 +41,7 @@ CONVEX_AGENT_MODE=anonymous npx convex dev
 | Convex 팀 / 프로젝트 | `kevin-park-e828f` / `apt-jump` | 완료 |
 | Convex production | `honorable-guanaco-452` | 함수 배포 완료, 게스트 조회와 게스트 쓰기 거부 확인(t1n 보고) |
 | Vercel 환경 변수 `VITE_CONVEX_URL` (Production·Preview) | `https://honorable-guanaco-452.convex.cloud` | 설정됨(t1n 보고) |
-| Vercel 배포 | <https://apt-jump-wine.vercel.app> | 새 버전 공개 확인 대기 |
+| Vercel 배포 | <https://apt-jump-wine.vercel.app> | 공개 완료: `4c61113`, 2026-11-25 (t1n 확인) |
 | production 가입·로그인 | | 사용자 확인 대기 |
 | `SITE_ORIGINS` (Convex) | Google 로그인 때의 값 | 이제 쓰지 않음(지워도 됨) |
 
