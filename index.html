@@ -41,21 +41,18 @@
 
   <section class="screen" id="title" hidden>
     <h1><span>아파트</span><span>점프</span></h1>
-    <p class="lead">노을 진 옥상을 달려라. 누르는 길이가 곧 점프 높이!</p>
+    <p class="release-announcement" role="status" hidden></p>
+    <p class="lead">노을 진 옥상, 한 번의 점프!</p>
     <ul class="tips">
-      <li>짧게 누르면 낮게, 길게 누르면 높게</li>
-      <li>착지 <b>직후</b> 다시 뛰면 <b class="cy">퍼펙트 가속</b></li>
-      <li>공중에서 한 번 더: <b class="cy">2단 점프</b>(3초 충전)</li>
-      <li>실외기·방해꾼은 위에서 <b class="ye">밟아서</b> 격파</li>
-      <li>동전을 이어 먹으면 <b class="ye">콤보 배율</b></li>
-      <li>캡슐 <b class="ye">아이템</b> 6가지와 이어지는 <b class="cy">미션</b></li>
-      <li>달릴수록 <b class="pk">빠르게</b> 속도가 오름</li>
-      <li>물탱크·빨랫줄·먼 옥상은 <b class="pk">위험 보너스</b></li>
+      <li>짧게 누르면 낮게 · 길게 누르면 높게</li>
+      <li>공중에서 한 번 더 · 2단 점프</li>
+      <li>착지 직후 점프 · 퍼펙트 가속</li>
     </ul>
     <nav>
       <button type="button" data-act="start" class="primary">달리기 시작</button>
       <button type="button" data-act="ranking">주간 순위</button>
-      <button type="button" data-act="signup" id="title-account">회원가입 · 로그인</button>
+      <button type="button" data-act="signup" id="title-account">회원가입</button>
+      <button type="button" data-act="login" id="title-login">로그인</button>
       <button type="button" data-act="maps">유저 맵</button>
       <button type="button" data-act="items">아이템 도감</button>
       <button type="button" data-act="settings">설정</button>
@@ -77,7 +74,7 @@
   </section>
 
   <section class="screen" id="welcome" hidden>
-    <div class="welcome-card"><p class="cy">아파트 점프에 오신 것을 환영해요!</p><h2>내 닉네임으로<br>옥상을 달려요</h2><p>회원가입하면 주간 순위에 도전하고<br>직접 만든 맵을 공유할 수 있어요.</p><nav><button type="button" class="primary" data-act="signup">회원가입</button><button type="button" data-act="login">이미 계정이 있어요 · 로그인</button><button type="button" data-act="guest">가입 없이 먼저 플레이</button><button type="button" data-act="ranking">주간 순위 먼저 보기</button></nav><p class="keys">혼자 달리기와 맵 만들기는 가입 없이도 가능해요.</p></div>
+    <div class="welcome-card"><p class="release-announcement" role="status" hidden></p><p class="cy">옥상 달리기</p><h2>아파트 점프</h2><p>가입하고 주간 순위에 도전하세요.</p><nav><button type="button" class="primary" data-act="signup">회원가입</button><button type="button" data-act="login">로그인</button><button type="button" data-act="guest">가입 없이 플레이</button><button type="button" data-act="ranking">주간 순위</button></nav><p class="keys">가입 없이도 플레이할 수 있어요.</p></div>
   </section>
   <section id="update-notice" hidden role="alertdialog" aria-modal="true" aria-labelledby="update-title"><div class="welcome-card"><h2 id="update-title">새 버전이 도착했어요</h2><p id="update-message"></p><nav><button type="button" id="update-now" class="primary">지금 업데이트</button><button type="button" id="update-export" hidden>맵 파일로 저장하고 업데이트</button></nav></div></section>
   <section class="screen" id="result" hidden>
@@ -123,8 +120,8 @@
 
   <section class="screen" id="ranking" hidden>
     <h2>주간 순위</h2>
+    <p class="release-announcement" role="status" hidden></p>
     <p id="rank-reset" class="keys"></p>
-    <div id="rank-board-controls"><label for="rank-version">난이도 구분</label> <select id="rank-version" aria-label="난이도별 주간 순위"></select><p id="rank-version-note" class="keys"></p></div>
     <p id="rank-mine" class="ye"></p>
     <div id="rank-list"></div>
     <p id="rank-off" class="warn"></p>

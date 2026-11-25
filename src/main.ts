@@ -63,8 +63,20 @@ let updating = false;
 
 function syncEntry(): void {
   const account = onlineUi.online?.account();
+  const release = onlineUi.online?.release();
+  document.querySelectorAll<HTMLElement>('.release-announcement').forEach(el => {
+    el.hidden = !release;
+    if (release) {
+      const detail = `새 난이도가 적용되어 리더보드가 초기화되었습니다. ${new Date(release.builtAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}부터 새 기록을 집계합니다.`;
+      el.textContent = el.closest('#title, #welcome') ? '새 난이도 적용 · 리더보드 초기화' : detail;
+      el.title = detail;
+    }
+  });
   const button = document.getElementById('title-account')!;
-  button.textContent = account?.status === 'in' ? `${account.nickname ?? '닉네임 설정'} · 내 계정` : '회원가입 · 로그인';
+  button.textContent = account?.status === 'in' ? '내 계정' : '회원가입';
+  const login = document.getElementById('title-login')!;
+  login.textContent = account?.status === 'in' ? '내 순위' : '로그인';
+  login.dataset.act = account?.status === 'in' ? 'ranking' : 'login';
   if (booted && !testing && !updating && phase === 'title' && ui.screen === 'title' && account && firstVisit.shouldShow(account.status)) ui.show('welcome');
   if (account?.status === 'in' && ui.screen === 'welcome') title();
 }
@@ -197,7 +209,10 @@ function act(a: Act): void {
     case 'signup': case 'login':
       firstVisit.dismiss();
       ui.show('ranking'); onlineUi.openRanking(); onlineUi.setJoining(a === 'signup');
-      requestAnimationFrame(() => { document.getElementById('auth-form')!.scrollIntoView({ block: 'start' }); document.getElementById('auth-id')!.focus(); });
+      requestAnimationFrame(() => {
+        const field = document.getElementById(onlineUi.signedIn ? 'nick' : 'auth-id')!;
+        field.scrollIntoView({ block: 'center' }); field.focus();
+      });
       break;
     case 'start': mode = { kind: 'endless' }; startRun(); break;
     case 'restart': startRun(); break;
@@ -453,7 +468,7 @@ function offerUpdate(version: string): void {
     now.hidden = true; exportMap.focus(); return;
   }
   let seconds = 5;
-  const text = () => { message.textContent = `${seconds}초 뒤 새 버전으로 자동 새로고침합니다.${wasRunning ? ' 진행 중인 판은 종료되며 순위에 등록되지 않습니다.' : ''} 저장된 맵과 로그인은 유지됩니다.`; };
+  const text = () => { message.textContent = `새 난이도가 적용되며 리더보드가 초기화됩니다. ${seconds}초 뒤 자동 새로고침합니다.${wasRunning ? ' 진행 중인 판은 종료되며 순위에 등록되지 않습니다.' : ''} 저장된 맵과 로그인은 유지됩니다.`; };
   text(); now.focus();
   const timer = setInterval(() => { seconds--; text(); if (seconds <= 0) { clearInterval(timer); reload(); } }, 1000);
 }

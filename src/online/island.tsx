@@ -22,6 +22,17 @@ export function connect(url: string): Online {
   };
   let account: Account = { status: 'loading', nickname: null };
   const watchers: (() => void)[] = [];
+  type ReleaseInfo = { id: string; builtAt: number };
+  let release: ReleaseInfo | null = null;
+  let syncing: Promise<ReleaseInfo | null> | null = null;
+  const ensureRelease = (): Promise<ReleaseInfo | null> => {
+    if (release) return Promise.resolve(release);
+    if (syncing) return syncing;
+    syncing = client.action(api.ranking.syncRelease, {}).then(info => {
+      release = info; watchers.forEach(f => f()); return info;
+    }, () => null).finally(() => { syncing = null; });
+    return syncing;
+  };
   const notYet = async () => { throw new Refusal('아직 준비 중입니다. 잠시 뒤 다시 시도해 주세요.'); };
   let doSignIn: (username: string, password: string) => Promise<void> = notYet;
   let doSignUp: (username: string, password: string, nickname: string) => Promise<void> = notYet;
@@ -71,19 +82,24 @@ export function connect(url: string): Online {
     </ConvexAuthProvider>,
   );
   client.mutation(api.ranking.clock, {}).then((t) => { offset = t - Date.now(); }, () => {});
+  void ensureRelease();
 
   return {
     pending: () => pending > 0,
     account: () => account,
+    release: () => release,
     onAccount: (f) => { watchers.push(f); },
     signIn: (username, password) => write(() => doSignIn(username, password)),
     signUp: (username, password, nickname) => write(() => doSignUp(username, password, nickname)),
     signOut: () => write(doSignOut),
     setNickname: (nickname) => write(() => client.mutation(api.users.setNickname, { nickname })),
     now: () => Date.now() + offset,
-    start: () => write(() => client.mutation(api.ranking.start, { version: SIM_VERSION })),
+    start: () => write(async () => {
+      if (!await ensureRelease()) throw new Refusal('새 난이도를 확인하는 중입니다. 잠시 뒤 다시 시작해 주세요.');
+      return await client.mutation(api.ranking.start, { version: SIM_VERSION });
+    }),
     finish: (runId, replay) => write(() => client.action(api.ranking.finish, { runId: runId as Id<'runs'>, replay })),
-    board: (week, version) => client.query(api.ranking.board, { week, ...(version === undefined ? {} : { version }) }),
+    board: async (week) => { await ensureRelease(); return await client.query(api.ranking.board, { week }); },
     listMaps: (order, cursor) => client.query(api.maps.list, { order, paginationOpts: { numItems: 10, cursor } }),
     getMap: (id) => client.query(api.maps.get, { id: id as Id<'maps'> }),
     publishMap: (json) => write(() => client.mutation(api.maps.publish, { json })),

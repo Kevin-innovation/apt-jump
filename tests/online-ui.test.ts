@@ -4,7 +4,6 @@ import html from '../index.html?raw';
 import { MapStore } from '../src/mapstore';
 import { OnlineScreens } from '../src/online/screens';
 import { onlineUrl, type Online } from '../src/online/types';
-import { SIM_VERSION } from '../src/replay';
 
 const TURN = Date.UTC(2026, 10, 29, 15); // Monday 00:00 in Korea
 const el = (id: string) => document.getElementById(id) as HTMLElement;
@@ -76,19 +75,10 @@ it('never connects a real build to a local address', () => {
   for (const bad of [undefined, '', 'nope', 'javascript:alert(1)']) expect(onlineUrl(bad, true)).toBeNull();
 });
 
-it('shows preserved previous-difficulty records when the new board is empty, and allows selecting new rules', async () => {
-  const s = screens();
+it('shows one weekly board without difficulty controls', async () => {
+  const s = screens(), { online } = fakeOnline();
   el('ranking').hidden = false;
-  const board = vi.fn(async (_week: string, version = SIM_VERSION) => version === SIM_VERSION
-    ? { top: [], mine: null, previousVersion: SIM_VERSION - 1 }
-    : { top: [{ rank: 1, nickname: '기존주자', score: 100000, distance: 1000, mine: false }], mine: null });
-  const online = { account: () => ({ status: 'out', nickname: null }), onAccount() {}, now: () => Date.now(), board } as unknown as Online;
   s.attach(online); s.openRanking(); await vi.advanceTimersByTimeAsync(0);
-  expect(el('rank-list').textContent).toContain('기존주자');
-  expect(el('rank-version-note').textContent).toContain('기존 기록');
-  const select = el('rank-version') as HTMLSelectElement;
-  expect(select.value).toBe(String(SIM_VERSION - 1));
-  select.value = String(SIM_VERSION); select.dispatchEvent(new Event('change')); await vi.advanceTimersByTimeAsync(0);
-  expect(el('rank-list').textContent).not.toContain('기존주자');
-  expect(select.value).toBe(String(SIM_VERSION));
+  expect(document.querySelector('#rank-version')).toBeNull();
+  expect(el('rank-list').textContent).toContain('기록');
 });

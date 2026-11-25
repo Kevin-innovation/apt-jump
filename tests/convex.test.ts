@@ -1,7 +1,7 @@
 // @vitest-environment edge-runtime
 import { convexTest } from 'convex-test';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { api } from '../convex/_generated/api';
+import { api, internal } from '../convex/_generated/api';
 import schema from '../convex/schema';
 import { Bot } from '../src/bot';
 import { Game } from '../src/game';
@@ -40,7 +40,7 @@ function play(seed: number, seconds: number) {
 }
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW); });
-afterEach(() => { vi.useRealTimers(); });
+afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
 const start = async (p: { as: Awaited<ReturnType<typeof setup>>['a']['as'] }) => p.as.mutation(api.ranking.start, { version: SIM_VERSION });
 
@@ -56,6 +56,35 @@ describe('accounts', () => {
 });
 
 describe('ranked runs', () => {
+  it('resets on a new production release, rejects pre-reset runs and never rolls back to an older release', async () => {
+    const { t, a } = await setup();
+    await t.run(ctx => ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, release: 'initial', userId: a.id, score: 100000, distance: 1000, achievedAt: NOW }));
+    expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top).toHaveLength(1);
+    const old = await start(a);
+    await t.mutation(internal.ranking.activateRelease, { id: 'new-release', builtAt: NOW });
+    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null });
+    await expect(a.as.action(api.ranking.finish, { runId: old.runId, replay: 'A9' })).rejects.toThrow('초기화');
+    const fresh = await start(a), run = play(fresh.seed, 5);
+    vi.setSystemTime(NOW + run.ms + 1000);
+    await a.as.action(api.ranking.finish, { runId: fresh.runId, replay: run.text });
+    const before = await a.as.query(api.ranking.board, { week: '2026-11-23' });
+    expect(before.top).toHaveLength(1);
+    expect(await t.mutation(internal.ranking.activateRelease, { id: 'stale-release', builtAt: NOW - 1000 })).toEqual({ id: 'new-release', builtAt: NOW });
+    await t.mutation(internal.ranking.activateRelease, { id: 'new-release', builtAt: NOW });
+    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual(before);
+    await t.mutation(internal.ranking.activateRelease, { id: 'next-release', builtAt: NOW + run.ms });
+    expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([]);
+  });
+  it('takes its release only from the canonical production manifest, never from player arguments', async () => {
+    const { t } = await setup();
+    const id = `abcdef123456-${NOW.toString(36)}`;
+    const fetcher = vi.fn(async (_input: RequestInfo | URL, _init?: RequestInit) => new Response(JSON.stringify({ id })));
+    vi.stubGlobal('fetch', fetcher);
+    expect(await t.action(api.ranking.syncRelease, {})).toEqual({ id, builtAt: NOW });
+    expect(fetcher.mock.calls[0]?.[0]).toBe('https://apt-jump-wine.vercel.app/version.json');
+    vi.stubGlobal('fetch', vi.fn(async () => new Response('{"id":"bad"}')));
+    await expect(t.action(api.ranking.syncRelease, {})).rejects.toThrow('버전 정보');
+  });
   it('score what the replay really did', async () => {
     const { a } = await setup();
     const { runId, seed } = await start(a);
@@ -147,13 +176,10 @@ describe('ranked runs', () => {
     const { t, a, b } = await setup();
     await t.run(async (ctx) => {
       for (const version of [undefined, SIM_VERSION - 1, SIM_VERSION + 1]) for (const p of [a, b])
-        await ctx.db.insert('scores', { week: '2026-11-23', version, userId: p.id, score: 1e9, distance: 1, achievedAt: NOW });
+        await ctx.db.insert('scores', { week: '2026-11-23', version, release: 'initial', userId: p.id, score: 1e9, distance: 1, achievedAt: NOW });
     });
-    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null, previousVersion: SIM_VERSION - 1 });
-    const previous = await a.as.query(api.ranking.board, { week: '2026-11-23', version: SIM_VERSION - 1 });
-    expect(previous.top).toHaveLength(2);
-    expect(previous.top.every(row => row.score === 1e9)).toBe(true);
-    await expect(a.as.query(api.ranking.board, { week: '2026-11-23', version: SIM_VERSION + 1 })).rejects.toThrow('순위 구분');
+    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null });
+    expect(await a.as.query(api.ranking.board, { week: '2026-11-23', version: SIM_VERSION - 1 })).toEqual({ top: [], mine: null });
     const { runId, seed } = await start(a);
     const run = play(seed, 5);
     vi.setSystemTime(NOW + run.ms + 1000);
@@ -177,9 +203,9 @@ describe('ranked runs', () => {
     await t.run(async (ctx) => {
       for (let i = 0; i < 60; i++) {
         const userId = await ctx.db.insert('users', { nickname: `p${i}`, nickKey: `p${i}` });
-        await ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, userId, score: 1000 + i, distance: 1, achievedAt: NOW });
+        await ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, release: 'initial', userId, score: 1000 + i, distance: 1, achievedAt: NOW });
       }
-      await ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, userId: a.id, score: 5, distance: 1, achievedAt: NOW });
+      await ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, release: 'initial', userId: a.id, score: 5, distance: 1, achievedAt: NOW });
     });
     const { top, mine } = await a.as.query(api.ranking.board, { week: '2026-11-23' });
     expect(top).toHaveLength(50);

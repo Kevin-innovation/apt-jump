@@ -5,7 +5,7 @@ import { MAX_REPLAY, SIM_VERSION, verifyReplay } from '../src/replay';
 import { isWeekKey, weekKey } from '../src/week';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
-import { action, internalMutation, mutation, query } from './_generated/server';
+import { action, internalMutation, mutation, query, type QueryCtx, type MutationCtx } from './_generated/server';
 import { requirePlayer, requireUser } from './users';
 
 export const TOP = 50;
@@ -16,6 +16,39 @@ const START_WINDOW = 10 * 60_000;
 const STARTS_PER_WINDOW = 60;
 /** Clock and network slack when comparing a run's length with the time it took. */
 const SLACK = 4000;
+const RESET_MESSAGE = '새 난이도가 적용되어 리더보드가 초기화되었습니다. 새로 시작해 주세요.';
+
+async function activeRelease(ctx: QueryCtx | MutationCtx): Promise<string> {
+  return (await ctx.db.query('leaderboardState').withIndex('by_key', q => q.eq('key', 'current')).unique())?.release ?? 'initial';
+}
+
+/** Only this server's trusted production manifest can select a new board. Clients supply no release id. */
+export const syncRelease = action({
+  args: {},
+  returns: v.object({ id: v.string(), builtAt: v.number() }),
+  handler: async (ctx): Promise<{ id: string; builtAt: number }> => {
+    const response = await fetch('https://apt-jump-wine.vercel.app/version.json', { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+    if (!response.ok) throw new ConvexError('새 버전을 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
+    const data: unknown = await response.json();
+    if (!data || typeof data !== 'object' || !('id' in data) || typeof data.id !== 'string' || !/^[a-f0-9]{12}-[a-z0-9]+$/.test(data.id)) throw new ConvexError('새 버전 정보를 확인하지 못했습니다.');
+    const builtAt = parseInt(data.id.slice(data.id.lastIndexOf('-') + 1), 36);
+    if (!Number.isSafeInteger(builtAt) || builtAt < 1 || builtAt > Date.now() + 60_000) throw new ConvexError('새 버전 시간이 잘못되었습니다.');
+    return await ctx.runMutation(internal.ranking.activateRelease, { id: data.id, builtAt });
+  },
+});
+
+export const activateRelease = internalMutation({
+  args: { id: v.string(), builtAt: v.number() },
+  returns: v.object({ id: v.string(), builtAt: v.number() }),
+  handler: async (ctx, { id, builtAt }) => {
+    const old = await ctx.db.query('leaderboardState').withIndex('by_key', q => q.eq('key', 'current')).unique();
+    // A delayed response from an older deployment must not reactivate its scores.
+    if (old && old.builtAt >= builtAt) return { id: old.release, builtAt: old.builtAt };
+    if (old) await ctx.db.patch(old._id, { release: id, builtAt });
+    else await ctx.db.insert('leaderboardState', { key: 'current', release: id, builtAt });
+    return { id, builtAt };
+  },
+});
 
 export const clock = mutation({ args: {}, returns: v.number(), handler: async () => Date.now() });
 
@@ -35,7 +68,8 @@ export const start = mutation({
     const old = await ctx.db.query('runs').withIndex('by_user_started', (q) => q.eq('userId', userId).lt('startedAt', now - 24 * 3_600_000)).take(5);
     for (const r of old) await ctx.db.delete(r._id);
     const seed = Math.floor(Math.random() * 2 ** 31);
-    const runId = await ctx.db.insert('runs', { userId, seed, version, startedAt: now, status: 'open' });
+    const release = await activeRelease(ctx);
+    const runId = await ctx.db.insert('runs', { userId, seed, version, release, startedAt: now, status: 'open' });
     return { runId, seed };
   },
 });
@@ -49,6 +83,7 @@ export const claim = internalMutation({
     const run = await ctx.db.get(runId);
     if (!run || run.userId !== userId) throw new ConvexError('기록을 찾을 수 없습니다.');
     if (run.status !== 'open') throw new ConvexError('이미 제출했거나 무효가 된 기록입니다.');
+    if (run.release !== await activeRelease(ctx)) throw new ConvexError(RESET_MESSAGE);
     const elapsed = Date.now() - run.startedAt;
     const late = elapsed > RUN_LIFE || run.version !== SIM_VERSION;
     await ctx.db.patch(runId, { status: 'claimed' });
@@ -62,14 +97,15 @@ export const settle = internalMutation({
   handler: async (ctx, { runId, result }) => {
     const run = await ctx.db.get(runId);
     if (!run || run.status !== 'claimed') return { best: false };
+    if (result && run.release !== await activeRelease(ctx)) throw new ConvexError(RESET_MESSAGE);
     await ctx.db.patch(runId, { status: result ? 'done' : 'rejected' });
     if (!result) return { best: false };
     const now = Date.now();
     const week = weekKey(now);
-    const old = await ctx.db.query('scores').withIndex('by_board_user', (q) => q.eq('week', week).eq('version', run.version).eq('userId', run.userId)).unique();
+    const old = await ctx.db.query('scores').withIndex('by_release_user', (q) => q.eq('week', week).eq('release', run.release).eq('version', run.version).eq('userId', run.userId)).unique();
     if (old && old.score >= result.score) return { best: false };
     if (old) await ctx.db.patch(old._id, { ...result, achievedAt: now });
-    else await ctx.db.insert('scores', { week, version: run.version, userId: run.userId, ...result, achievedAt: now });
+    else await ctx.db.insert('scores', { week, release: run.release, version: run.version, userId: run.userId, ...result, achievedAt: now });
     return { best: true };
   },
 });
@@ -94,15 +130,16 @@ export const finish = action({
 
 const entry = v.object({ rank: v.number(), nickname: v.string(), score: v.number(), distance: v.number(), mine: v.boolean() });
 
-/** Separate boards retain old records when difficulty changes. */
+/** One current weekly board, reset automatically for every new production release. */
 export const board = query({
+  // Accept the old field during the rolling upgrade, but it cannot select archived records.
   args: { week: v.string(), version: v.optional(v.number()) },
-  returns: v.object({ top: v.array(entry), previousVersion: v.optional(v.number()), mine: v.union(v.null(), v.object({ rank: v.union(v.null(), v.number()), score: v.number(), distance: v.number() })) }),
-  handler: async (ctx, { week, version = SIM_VERSION }) => {
+  returns: v.object({ top: v.array(entry), mine: v.union(v.null(), v.object({ rank: v.union(v.null(), v.number()), score: v.number(), distance: v.number() })) }),
+  handler: async (ctx, { week }) => {
     if (!isWeekKey(week)) throw new ConvexError('잘못된 주간입니다.');
-    if (!Number.isInteger(version) || version < 1 || version > SIM_VERSION) throw new ConvexError('잘못된 순위 구분입니다.');
+    const release = await activeRelease(ctx);
     const me = (await getAuthUserId(ctx)) as Id<'users'> | null;
-    const rows = await ctx.db.query('scores').withIndex('by_board_score', (q) => q.eq('week', week).eq('version', version)).order('desc').take(TOP);
+    const rows = await ctx.db.query('scores').withIndex('by_release_score', (q) => q.eq('week', week).eq('release', release).eq('version', SIM_VERSION)).order('desc').take(TOP);
     const top: { rank: number; nickname: string; score: number; distance: number; mine: boolean }[] = [];
     for (const r of rows) {
       const user = await ctx.db.get(r.userId);
@@ -110,15 +147,12 @@ export const board = query({
       const prev: (typeof top)[number] | undefined = top[top.length - 1];
       top.push({ rank: prev && prev.score === r.score ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', score: r.score, distance: r.distance, mine: r.userId === me });
     }
-    const own = me && (await ctx.db.query('scores').withIndex('by_board_user', (q) => q.eq('week', week).eq('version', version).eq('userId', me)).unique());
+    const own = me && (await ctx.db.query('scores').withIndex('by_release_user', (q) => q.eq('week', week).eq('release', release).eq('version', SIM_VERSION).eq('userId', me)).unique());
     let mine = null;
     if (own) {
-      const above = await ctx.db.query('scores').withIndex('by_board_score', (q) => q.eq('week', week).eq('version', version).gt('score', own.score)).take(RANK_CAP);
+      const above = await ctx.db.query('scores').withIndex('by_release_score', (q) => q.eq('week', week).eq('release', release).eq('version', SIM_VERSION).gt('score', own.score)).take(RANK_CAP);
       mine = { rank: above.length < RANK_CAP ? above.length + 1 : null, score: own.score, distance: own.distance };
     }
-    const previous = !top.length && version > 1
-      ? await ctx.db.query('scores').withIndex('by_board_score', (q) => q.eq('week', week).eq('version', version - 1)).first()
-      : null;
-    return { top, mine, ...(previous ? { previousVersion: version - 1 } : {}) };
+    return { top, mine };
   },
 });
