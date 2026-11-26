@@ -71,4 +71,5 @@
   - 각 도전과제 카드에 `progress/goal`, 획득률(소수 최대 2자리), `earned/participants`를 표시합니다. 분모 문구는 '일반 모드 기록 제출 회원 · 업데이트 이후부터 집계', 0명이면 '집계 시작 전'입니다. 게스트 로그인 안내도 표시합니다.
   - DOM은 `textContent`/`replaceChildren`만 사용(XSS 방지). CSS는 root에 붙은 `.achievement-view` 하위 `.achievement-*`로만 한정했고, 짧은 의미 단위 `nowrap` span, `word-break: keep-all`, `text-wrap: balance`, 320px 가로 넘침 방지를 넣었습니다. 화면 제목·홈 버튼·main·nav는 만들지 않았습니다.
   - 도전과제 목록은 전달된 배열 길이만큼 동적으로 그리며, `전체 / 진행 중 / 획득 완료` 필터로 장문 스크롤을 줄일 수 있습니다. 카운트 80/30은 모듈에 하드코딩하지 않았습니다.
+  - 탭은 `도전과제 ${achievements.length}` / `칭호 ${titles.length}` 동적 라벨이며 기본은 도전과제 탭입니다. 선택한 section만 렌더해 30개 칭호를 지나야 과제를 보는 문제를 없앴고, 탭 위에 현재 장착 칭호 한 줄 요약을 표시합니다. 탭 전환 후 새 버튼에 `focus({ preventScroll: true })`로 포커스를 복구합니다. 칭호 요구 목록과 기존 필터는 유지됩니다.
 - 검증: 변경 반영 후 `npx tsc --noEmit` 1회 성공. 기존 backend 테스트/빌드는 반복하지 않았고 root가 실제 브라우저 1회 확인 예정. 커밋/푸시/배포 없이 freeze 후 `t1n`에 보고.

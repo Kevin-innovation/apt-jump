@@ -42,8 +42,42 @@
   color: #7dfff0;
 }
 .achievement-view .achievement-summary-note { color: #cfc4ee; font-size: .85em; }
+.achievement-view .achievement-equipped {
+  display: inline-block;
+  max-width: 100%;
+  margin: 0 0 .45em;
+  color: #ffcf8a;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  word-break: keep-all;
+}
+.achievement-view .achievement-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: .35em;
+  margin-bottom: .55em;
+  min-width: 0;
+}
+.achievement-view .achievement-tab {
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 40px;
+  padding: .25em .5em;
+  color: inherit;
+  background: #2c2052;
+  border: 2px solid #7a68b8;
+  font: inherit;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  touch-action: manipulation;
+}
+.achievement-view .achievement-tab[aria-selected='true'] { color: #7dfff0; background: #3a2c6a; border-color: #7dfff0; }
+.achievement-view .achievement-tab:disabled { opacity: .55; cursor: not-allowed; }
+.achievement-view .achievement-tab:focus-visible { outline: 2px solid #7dfff0; outline-offset: 2px; }
 
-.achievement-view .achievement-section { min-width: 0; margin-top: .8em; }
+.achievement-view .achievement-section { min-width: 0; margin-top: .3em; }
 .achievement-view .achievement-section-title {
   margin: 0 0 .35em;
   font-size: 1em;

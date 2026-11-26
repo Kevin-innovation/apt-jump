@@ -26,6 +26,7 @@ export interface AchievementViewCallbacks {
 type CatalogAchievement = AchievementCatalog['achievements'][number];
 type CatalogTitle = AchievementCatalog['titles'][number];
 type AchievementFilter = 'all' | 'locked' | 'unlocked';
+type AchievementTab = 'achievements' | 'titles';
 
 const el = (tag: string, cls = '', text = ''): HTMLElement => {
   const node = document.createElement(tag);
@@ -64,6 +65,7 @@ export class AchievementView {
   private notice = '';
   private pending = false;
   private filter: AchievementFilter = 'all';
+  private tab: AchievementTab = 'achievements';
 
   constructor(private readonly root: HTMLElement, private readonly callbacks: AchievementViewCallbacks) {
     this.root.classList.add('achievement-view');
@@ -97,7 +99,17 @@ export class AchievementView {
     this.notice = '';
     this.pending = false;
     this.filter = 'all';
+    this.tab = 'achievements';
     this.root.replaceChildren();
+  }
+
+  private setTab(tab: AchievementTab): void {
+    if (this.tab === tab) return;
+    this.tab = tab;
+    this.render();
+    // render() replaces children; refocus the new tab without scrolling the page.
+    this.root.querySelector<HTMLButtonElement>(`.achievement-tab[data-achievement-tab="${tab}"]`)
+      ?.focus({ preventScroll: true });
   }
 
   private async equip(titleId: string | null): Promise<void> {
@@ -137,11 +149,35 @@ export class AchievementView {
       el('span', 'achievement-summary-item', `기준 회원 ${num(data.participants)}명`),
       el('span', 'achievement-summary-note', '분모: 일반 모드 기록 제출 회원 · 업데이트 이후부터 집계'),
     );
-    this.root.append(summary);
+    const equippedName = data.equipped === null ? '없음' : (TITLE_BY_ID.get(data.equipped)?.name ?? data.equipped);
+    this.root.append(
+      summary,
+      el('p', 'achievement-equipped', `현재 장착 칭호: ${equippedName}`),
+      this.tabBar(data),
+    );
     if (!this.callbacks.signedIn()) {
       this.root.append(el('p', 'achievement-login', '로그인하면 내 진행 상황과 칭호 장착을 볼 수 있어요.'));
     }
-    this.root.append(this.titleSection(data), this.achievementSection(data));
+    this.root.append(this.tab === 'achievements' ? this.achievementSection(data) : this.titleSection(data));
+  }
+
+  private tabBar(data: AchievementCatalog): HTMLElement {
+    const bar = el('div', 'achievement-tabs');
+    bar.setAttribute('role', 'tablist');
+    const tabs: { key: AchievementTab; label: string }[] = [
+      { key: 'achievements', label: `도전과제 ${data.achievements.length}` },
+      { key: 'titles', label: `칭호 ${data.titles.length}` },
+    ];
+    for (const tab of tabs) {
+      const control = button('achievement-tab', tab.label);
+      control.dataset.achievementTab = tab.key;
+      control.setAttribute('role', 'tab');
+      control.setAttribute('aria-selected', String(this.tab === tab.key));
+      control.disabled = this.pending;
+      control.addEventListener('click', () => this.setTab(tab.key));
+      bar.append(control);
+    }
+    return bar;
   }
 
   private titleSection(data: AchievementCatalog): HTMLElement {
