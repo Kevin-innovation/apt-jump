@@ -89,6 +89,8 @@ export class Renderer {
   private popups: Popup[] = [];
   private squash = 0;
   private trail: { x: number; y: number }[] = [];
+  /** Reused every frame so drawing the city does not allocate a fresh list. */
+  private seen: Roof[] = [];
 
   constructor(private el: HTMLCanvasElement) {
     this.g = el.getContext('2d', { alpha: false })!;
@@ -312,6 +314,31 @@ export class Renderer {
     return layers;
   }
 
+  /** Painted into the cached sky: the orbs move in the same 40 dusk steps as its bands. */
+  private drawOrbs(g: Ctx, k: number): void {
+    const disc = (cx: number, cy: number, r: number, color: string, stripes: boolean) => {
+      g.fillStyle = color;
+      for (let y = -r; y <= r; y++) {
+        if (stripes && y > 0 && y % 5 >= 4) continue;
+        const w = Math.floor(Math.sqrt(r * r - y * y));
+        g.fillRect(cx - w, cy + y, w * 2 + 1, 1);
+      }
+    };
+    const sunY = Math.round(this.H * (0.38 + 0.5 * k));
+    if (k < 0.95) {
+      g.globalAlpha = 0.18; disc(Math.round(this.W * 0.7), sunY, 33, '#ffe08a', false);
+      g.globalAlpha = 1; disc(Math.round(this.W * 0.7), sunY, 25, '#fff0a0', true);
+    }
+    if (k > 0.3) {
+      const a = (k - 0.3) / 0.7;
+      const mx = Math.round(this.W * 0.22), my = Math.round(this.H * (0.5 - 0.3 * a));
+      g.globalAlpha = a * 0.12; disc(mx, my, 20, '#cfe3ff', false);
+      g.globalAlpha = a; disc(mx, my, 12, '#f4f1dc', false);
+      g.fillStyle = '#d8d3b8'; g.fillRect(mx - 5, my - 3, 4, 3); g.fillRect(mx + 2, my + 3, 3, 3); g.fillRect(mx + 3, my - 6, 2, 2);
+      g.globalAlpha = 1;
+    }
+  }
+
   private skyOf(theme: Theme, n: number): HTMLCanvasElement {
     const key = Math.round(n * 40);
     if (key !== theme.skyKey || !theme.sky) {
@@ -339,6 +366,7 @@ export class Renderer {
         }
         g.globalAlpha = 1;
       }
+      this.drawOrbs(g, k);
       theme.sky = c;
       theme.skyKey = key;
     }
@@ -351,28 +379,6 @@ export class Renderer {
     g.globalAlpha = this.leaving ? this.fade : 1;
     g.drawImage(this.skyOf(this.theme!, n), 0, 0);
     g.globalAlpha = 1;
-    // Sun sinks while the moon climbs.
-    const disc = (cx: number, cy: number, r: number, color: string, stripes: boolean) => {
-      g.fillStyle = color;
-      for (let y = -r; y <= r; y++) {
-        if (stripes && y > 0 && y % 5 >= 4) continue;
-        const w = Math.floor(Math.sqrt(r * r - y * y));
-        g.fillRect(cx - w, cy + y, w * 2 + 1, 1);
-      }
-    };
-    const sunY = Math.round(this.H * (0.38 + 0.5 * n));
-    if (n < 0.95) {
-      g.globalAlpha = 0.18; disc(Math.round(this.W * 0.7), sunY, 33, '#ffe08a', false);
-      g.globalAlpha = 1; disc(Math.round(this.W * 0.7), sunY, 25, '#fff0a0', true);
-    }
-    if (n > 0.3) {
-      const a = (n - 0.3) / 0.7;
-      const mx = Math.round(this.W * 0.22), my = Math.round(this.H * (0.5 - 0.3 * a));
-      g.globalAlpha = a * 0.12; disc(mx, my, 20, '#cfe3ff', false);
-      g.globalAlpha = a; disc(mx, my, 12, '#f4f1dc', false);
-      g.fillStyle = '#d8d3b8'; g.fillRect(mx - 5, my - 3, 4, 3); g.fillRect(mx + 2, my + 3, 3, 3); g.fillRect(mx + 3, my - 6, 2, 2);
-      g.globalAlpha = 1;
-    }
     if (this.quality !== 'low') {
       g.fillStyle = n < 0.5 ? '#ffc2a0' : '#4a4a8f';
       g.globalAlpha = 0.45;
@@ -624,7 +630,8 @@ export class Renderer {
     this.drawLayers(this.theme!, cx, cy, n, this.leaving ? this.fade : 1);
 
     // Buildings and scaffolds first, then streets over the scaffold feet, then everything on top.
-    const seen: Roof[] = [];
+    const seen = this.seen;
+    seen.length = 0;
     for (const r of game.world.roofs) {
       const x = r.x - cx;
       if (x > this.W + 700 || roofEnd(r) - cx < -260) { if (x + r.w < -600) this.roofs.delete(r.id); continue; }
@@ -760,14 +767,29 @@ export class Renderer {
 
   private drawFx(cx: number, cy: number, dt: number, n: number): void {
     const g = this.g;
-    if (this.particles.length > 220) this.particles.splice(0, this.particles.length - 220);
-    this.particles = this.particles.filter((q) => (q.life += dt) < q.max);
-    for (const q of this.particles) {
+    // Compact in place: filtering two lists every frame churns the GC on slow machines.
+    const particles = this.particles;
+    const skip = particles.length - (this.quality === 'low' ? 80 : 220);
+    let kept = 0;
+    for (let i = 0; i < particles.length; i++) {
+      const q = particles[i]!;
+      if ((q.life += dt) >= q.max || i < skip) continue;
+      particles[kept++] = q;
+    }
+    particles.length = kept;
+    for (const q of particles) {
       q.vy += q.g * dt; q.x += q.vx * dt; q.y += q.vy * dt;
       g.fillStyle = q.color;
       g.fillRect(Math.round(q.x - cx), Math.round(q.y - cy), q.size, q.size);
     }
-    this.popups = this.popups.filter((q) => (q.life += dt) < 0.9);
+    const popups = this.popups;
+    kept = 0;
+    for (let i = 0; i < popups.length; i++) {
+      const q = popups[i]!;
+      if ((q.life += dt) >= 0.9) continue;
+      popups[kept++] = q;
+    }
+    popups.length = kept;
     g.font = FONT;
     g.textBaseline = 'alphabetic';
     for (const q of this.popups) {

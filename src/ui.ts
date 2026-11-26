@@ -34,6 +34,10 @@ export class UI {
   private device: Device = 'key';
   private pips = [...document.querySelectorAll<HTMLElement>('#boost i')];
   private cache = new Map<string, string>();
+  /** The HUD updates every frame: look elements up once, and skip writes that change nothing. */
+  private nodes = new Map<string, HTMLElement>();
+  private styles = new Map<string, string>();
+  private attrs = new Map<string, string>();
   private chips = new Map<PowerKind, { el: HTMLElement; bar: HTMLElement; n: HTMLElement; on: boolean }>();
 
   constructor(private save: SaveFile) {
@@ -74,10 +78,37 @@ export class UI {
     }
   }
 
+  private el(id: string): HTMLElement {
+    let node = this.nodes.get(id);
+    if (!node) { node = $(id); this.nodes.set(id, node); }
+    return node;
+  }
+
   private text(id: string, v: string): void {
     if (this.cache.get(id) === v) return;
     this.cache.set(id, v);
-    $(id).textContent = v;
+    this.el(id).textContent = v;
+  }
+
+  /** Changing a style or attribute marks the DOM dirty even when the value is identical. */
+  private style(id: string, prop: string, v: string): void {
+    const key = `${id}.${prop}`;
+    if (this.styles.get(key) === v) return;
+    this.styles.set(key, v);
+    (this.el(id).style as unknown as Record<string, string>)[prop] = v;
+  }
+
+  private attr(id: string, name: string, v: string): void {
+    const key = `${id}.${name}`;
+    if (this.attrs.get(key) === v) return;
+    this.attrs.set(key, v);
+    this.el(id).setAttribute(name, v);
+  }
+
+  /** Read the live flag so a change made elsewhere is never overwritten from a stale cache. */
+  private hidden(id: string, hide: boolean): void {
+    const node = this.el(id);
+    if (node.hidden !== hide) node.hidden = hide;
   }
 
   show(name: ScreenName | null): void {
@@ -90,7 +121,7 @@ export class UI {
   hud(on: boolean): void { $('hud').hidden = !on; }
   hint(on: boolean): void { $('hint').hidden = !on; }
   count(n: number | null): void {
-    $('count').hidden = n === null;
+    this.hidden('count', n === null);
     if (n !== null) this.text('count', String(n));
   }
 
@@ -136,18 +167,20 @@ export class UI {
 
   update(g: Game, held = false): void {
     const charge = held && g.player.vy < 0 ? Math.min(1, g.player.holdTime / HOLD_MAX) : 0;
-    $('jump-fill').style.transform = `scaleX(${charge})`;
-    $('jump-pressure').setAttribute('aria-valuenow', String(Math.round(charge * 100)));
-    $('jump-meter').classList.toggle('charging', charge > 0);
-    $('jump-meter').classList.toggle('full', charge >= 0.99);
+    this.style('jump-fill', 'transform', `scaleX(${charge})`);
+    this.attr('jump-pressure', 'aria-valuenow', String(Math.round(charge * 100)));
+    const meter = this.el('jump-meter');
+    meter.classList.toggle('charging', charge > 0);
+    meter.classList.toggle('full', charge >= 0.99);
     this.text('jump-label', charge >= 0.99 ? '최대 높이!' : charge > 0 ? '꾹 누르는 중…' : '길게 누를수록 높게');
     this.text('score', num(g.score));
     this.text('dist', `${Math.floor(g.distance)}m`);
     this.text('coins', String(g.coins));
     this.text('lv', g.progress === null ? `속도 ${g.level}` : `${Math.floor(g.progress * 100)}%`);
-    $('best').parentElement!.hidden = g.progress !== null;
-    $('air').classList.toggle('ready', canAirJump(g.player));
-    $('air-bar').style.transform = `scaleX(${1 - g.player.airCooldown / AIR_COOLDOWN})`;
+    const bestRow = this.el('best').parentElement!;
+    if (bestRow.hidden !== (g.progress !== null)) bestRow.hidden = g.progress !== null;
+    this.el('air').classList.toggle('ready', canAirJump(g.player));
+    this.style('air-bar', 'transform', `scaleX(${1 - g.player.airCooldown / AIR_COOLDOWN})`);
     for (const [kind, chip] of this.chips) {
       const left = g.effect(kind), on = left > 0;
       if (on !== chip.on) { chip.on = on; chip.el.hidden = !on; }
@@ -157,13 +190,13 @@ export class UI {
     }
     this.district(g);
     const m = g.mission;
-    $('mission').hidden = !m;
+    this.hidden('mission', !m);
     if (m) this.text('mission-text', `미션 ${missionText(m)} (${Math.min(m.goal, g.tally[m.what])}/${m.goal}) +${m.reward}`);
-    $('combo').hidden = g.combo < 2;
+    this.hidden('combo', g.combo < 2);
     if (g.combo >= 2) {
       this.text('combo-n', String(g.combo));
       this.text('combo-x', `x${g.mult}`);
-      $('combo-bar').style.transform = `scaleX(${Math.max(0, g.comboTimer / COMBO_TIME)})`;
+      this.style('combo-bar', 'transform', `scaleX(${Math.max(0, g.comboTimer / COMBO_TIME)})`);
     }
     this.pips.forEach((p, i) => p.classList.toggle('on', g.player.boost >= i + 0.5));
   }
@@ -171,14 +204,15 @@ export class UI {
   /** The district under the runner, its goal and the way to the next: endless runs only. */
   private district(g: Game): void {
     const info = g.districtGoal;
-    $('district').hidden = !info;
+    const box = this.el('district');
+    this.hidden('district', !info);
     if (!info) return;
     const d = info.district;
     this.text('district-name', d.lap > 1 ? `${d.name} ${d.lap}회차` : d.name);
     this.text('district-left', `다음 ${Math.ceil(d.remaining)}m`);
     this.text('district-goal', info.done ? '목표 달성' : `${GOAL_NAMES[d.goal.what]} ${info.current}/${info.goal}`);
-    $('district').classList.toggle('done', info.done);
-    $('district').style.borderColor = d.palette.accent;
+    box.classList.toggle('done', info.done);
+    this.style('district', 'borderColor', d.palette.accent);
   }
 
   onlineNote(t: string): void { this.text('r-online', t); }
