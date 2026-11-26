@@ -1,5 +1,5 @@
 import { baseSpeed, CEILING, ease, jumpHeightAt, jumpReach, jumpTime, PX_PER_M, roofEnd } from './physics';
-import { districtAt, type DistrictKind } from './progression';
+import { districtAt, lapEvent, type DistrictKind, type LapEvent } from './progression';
 import { POWER_KINDS, type Power, type PowerKind } from './items';
 import { Rng } from './rng';
 
@@ -17,9 +17,16 @@ export interface Enemy { id: number; kind: 'drone' | 'pigeon'; x: number; y: num
 export interface Route { id: number; x: number; hatch: number; y: number; rampStart: number; rampEnd: number }
 /** A street under a run of scaffolds, with a ramp back up to the next building. */
 export interface Road { id: number; x: number; y: number; rampStart: number; rampEnd: number; rampY: number; traffic?: boolean }
+/** Rising air in a gap: it lifts a runner inside its column up to `top`. */
+export interface Vent { x: number; w: number; top: number }
+/** Water on a roof: sliding through it splashes for points and speed. */
+export interface Puddle { id: number; x: number; w: number }
 export interface Roof {
   id: number; kind: 'building' | 'scaffold'; x: number; w: number; y: number; style: number; seed: number; number: number;
   obstacles: Obstacle[]; lines: Line[]; coins: Coin[]; powers: Power[]; enemies: Enemy[]; road: Road | null; route?: Route;
+  vent?: Vent; puddles?: Puddle[];
+  /** Gives way under a runner who stays on it too long. */
+  cracked?: boolean;
   /** Gap to the next roof and its height change. */
   gap: number; nextDy: number;
 }
@@ -56,8 +63,26 @@ export const SLIDE_SPACING = 1.15;
 export const ROUTE_START = 1500;
 export const ROUTE_DEPTH = 48;
 export const HATCH_W = 44;
+/** How high above the lower roof an updraft carries. */
+export const VENT_HEIGHT = 90;
 
 export function difficulty(x: number): number { return ease(x, 2600); }
+
+/**
+ * The city is built in stretches this long, each from its own seed. A ranked run gets each seed from the server only
+ * shortly before anyone could reach it, so no run can be planned far ahead.
+ */
+export const SEGMENT = 4000;
+/** Where a seed comes from: a stretch's number gives its seed, or null when it isn't known yet. */
+export type SeedSource = (segment: number) => number | null;
+/** The seeds of an unranked city, all from one: the first is that seed itself. */
+export function segmentSeed(seed: number, k: number): number {
+  if (k === 0) return seed >>> 0;
+  let h = (seed ^ Math.imul(k, 0x9e3779b1)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
 export function enemyChance(x: number): number {
   return x < ENEMY_START ? 0 : 0.22 + 0.65 * ease(x - ENEMY_START, 2500);
 }
@@ -94,7 +119,8 @@ function zoneAt(x: number) {
   const d = districtAt(Math.max(0, (x - 60) / PX_PER_M));
   const rest = d.progress >= 0.85;
   const surge = !rest && d.progress >= 0.5;
-  return { profile: PROFILES[d.kind], rest, surge, lap: Math.min(0.06, (d.lap - 1) * 0.03) };
+  // Each lap presses harder, up to the fifth.
+  return { profile: PROFILES[d.kind], kind: d.kind, rest, surge, lap: Math.min(0.12, (d.lap - 1) * 0.03), event: lapEvent(d.lap) as LapEvent };
 }
 
 /** Deterministic city: each gap is sized from what an unboosted, fully held single jump can cross. */
@@ -102,6 +128,10 @@ export class World implements City {
   roofs: Roof[] = [];
   readonly goalX = null;
   private rng: Rng;
+  private segment = 0;
+  private seeds: SeedSource;
+  /** A stretch was built without its seed: the run can't be checked against the server's city. */
+  fallback = false;
   private nextId = 1;
   private sinceRoad = 0;
   private sinceDiamond = 0;
@@ -113,8 +143,11 @@ export class World implements City {
   private scaffolds = 0;
   private roadOwner: Roof | null = null;
 
-  constructor(seed: number) {
-    this.rng = new Rng(seed);
+  constructor(seed: number | SeedSource) {
+    const s0 = typeof seed === 'number' ? seed : seed(0);
+    this.seeds = typeof seed === 'number' ? (k) => segmentSeed(seed, k) : seed;
+    if (s0 === null) this.fallback = true;
+    this.rng = new Rng(s0 ?? 0);
     const first = this.blank(-200, START_ROOF + 200, 0);
     this.roofs.push(first);
     for (let i = 0; i < 6; i++) this.coin(first, 200 + i * 16, -10);
@@ -143,10 +176,10 @@ export class World implements City {
     this.sincePower = 0;
   }
 
-  /** A rare pickup: one every four to six roofs. */
+  /** A pickup every three to five roofs. */
   private maybePower(r: Roof): void {
     this.sincePower++;
-    if (this.sincePower < 4 || (this.sincePower < 6 && !this.rng.chance(0.25))) return;
+    if (this.sincePower < 3 || (this.sincePower < 5 && !this.rng.chance(0.3))) return;
     // Low enough to run through, or a short hop up, before anything stands in the way.
     const room = Math.min(landingZone(r.x), r.w - 30);
     this.power(r, r.x + this.rng.range(0.45, 0.9) * room, r.y - (this.rng.chance(0.6) ? 14 : 38));
@@ -175,7 +208,12 @@ export class World implements City {
       id: this.nextId++, kind: 'drone', over: true, x: Math.round(edge + r.gap / 2 - 8), y: Math.min(r.y, r.y + dy) - 22, amp: 3, phase: this.rng.next(),
     });
 
-    if (!overRoad && !hover && r.gap >= 56 && this.rng.chance(0.2 + 0.2 * d + z.profile.line)) {
+    // Rising air over a gap: often in a windy lap, now and then otherwise. A way up to gold over the rooftops.
+    if (!overRoad && !hover && edge >= ROUTE_START && r.gap >= 50 && this.rng.chance(z.event === 'wind' ? 0.5 : 0.06)) {
+      const top = Math.min(r.y, r.y + dy) - VENT_HEIGHT;
+      r.vent = { x: edge + 4, w: r.gap - 8, top };
+      for (let i = 0; i < 4; i++) this.coin(r, Math.round(edge + r.gap * (0.1 + i * 0.3)), top + 6 + (i % 2) * 10, 'gold');
+    } else if (!overRoad && !hover && r.gap >= 56 && this.rng.chance(0.2 + 0.2 * d + z.profile.line)) {
       const w = Math.max(28, Math.round(r.gap * 0.42));
       const y = r.y - 26 + Math.round(Math.min(0, dy) / 2);
       const x = Math.round(edge + r.gap * 0.28);
@@ -232,6 +270,13 @@ export class World implements City {
       }
       placed = true;
     }
+    // Rain leaves water in the clear stretch just past the edge, where nothing else stands.
+    if (z.event === 'rain' && this.rng.chance(0.7)) {
+      const w = 40, px = Math.round(r.x + this.rng.range(0.15, 0.45) * Math.max(0, landingZone(r.x) - w));
+      r.puddles = [{ id: this.nextId++, x: px, w }];
+    }
+    // The end of each lap's last district pays a line of gold for the way through.
+    if (z.rest && z.kind === 'highrise') for (let i = 0; i < 8; i++) this.coin(r, Math.round(r.x + 40 + i * 22), r.y - 40, 'gold');
     if (!placed) {
       this.sinceDiamond++;
       if (r.w > 300 && (this.sinceDiamond >= 5 || this.rng.chance(0.35))) {
@@ -295,9 +340,20 @@ export class World implements City {
     this.roadOwner = null;
   }
 
+  /** From a stretch's first roof on, everything is drawn from that stretch's seed. */
+  private enter(x: number): void {
+    const k = Math.floor(Math.max(0, x) / SEGMENT);
+    if (k <= this.segment) return;
+    this.segment = k;
+    const s = this.seeds(k);
+    if (s === null) this.fallback = true;
+    this.rng = new Rng(s ?? segmentSeed(k, k));
+  }
+
   private addNext(): void {
     const last = this.roofs[this.roofs.length - 1]!;
     const x = last.x + last.w + last.gap;
+    this.enter(x);
     const y = last.y + last.nextDy;
     const d = difficulty(x);
     const speed = baseSpeed(x);
@@ -325,6 +381,7 @@ export class World implements City {
     const w = Math.round(speed * this.rng.range(1.2 - 0.2 * d, 2.3 - 0.7 * d) * z.profile.width * (z.rest ? 1.2 : 1));
     const wide = this.rng.chance(0.6 + 0.3 * d) ? landingZone(x) + runupZone(x + 600) + this.rng.int(60, 200) : 0;
     const r = this.blank(x, Math.max(w, wide), y);
+    if (z.event === 'crumble' && !z.rest && !this.roadOwner && this.rng.chance(0.4)) r.cracked = true;
     this.closeRoad(r);
     this.furnish(r);
     this.maybePower(r);

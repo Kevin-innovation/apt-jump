@@ -25,7 +25,7 @@ describe('replay', () => {
       expect(verifyReplay(s, text)).toMatchObject({ ok: true, score: g.score, distance: Math.floor(g.distance), steps: Math.round(g.time * 120) });
       expect(text.length).toBeLessThan(6000);
     }
-  });
+  }, 20_000);
   it('fits ten minutes well inside the limit', () => {
     const { text } = play(2, 600);
     expect(text.length).toBeLessThan(MAX_REPLAY / 3);

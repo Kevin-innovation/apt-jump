@@ -1,10 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import { Bot } from '../src/bot';
-import { COIN_POINTS, COMBO_TIME, Game } from '../src/game';
+import { COIN_POINTS, COMBO_TIME, FEVER_FILL, FEVER_TIME, Game } from '../src/game';
 import { BOOST_RATE, DASH_POINTS, MAX_AIR_BONUS, POWER_KINDS, POWER_POINTS, POWER_TIME, type PowerKind } from '../src/items';
 import { buildCourse, PRACTICE, checkMap, parseMap, serializeMap, type GameMap } from '../src/maps';
-import { medalFor, MEDALS, MISSIONS, nextMedal } from '../src/missions';
-import { baseSpeed, jumpReach, newPlayer, STEP, stepPlayer, type Player } from '../src/physics';
+import { medalFor, MEDALS, MISSIONS, missionText, nextMedal } from '../src/missions';
+import { baseSpeed, jumpReach, newPlayer, STEP, stepPlayer, type PhysEvent, type Player } from '../src/physics';
 import { Recorder, verifyReplay } from '../src/replay';
 import { World, type Roof } from '../src/world';
 
@@ -238,11 +238,14 @@ describe('missions and medals', () => {
     expect(g.drain().filter((e) => e.type === 'mission')).toHaveLength(1);
   });
   it('are not part of made maps', () => { expect(new Game(buildCourse(PRACTICE)).mission).toBeNull(); });
-  it('run out without trouble', () => {
+  it('go on for ever after the list, each counted from where the run stands', () => {
     const g = bare();
     g.missionsDone = MISSIONS.length;
     g.step(idle);
-    expect(g.mission).toBeNull();
+    const m = g.mission!;
+    expect(m.from).toBe(g.tally[m.what]);
+    expect(m.goal).toBeGreaterThan(g.tally[m.what]);
+    expect(missionText(m)).toBe('동전 150개');
   });
   it('medals rise with the score', () => {
     expect(medalFor(0)).toBeNull();
@@ -252,10 +255,24 @@ describe('missions and medals', () => {
   });
 });
 
+it('a combo save keeps a long combo through a stumble, and a full gauge starts a fever that doubles points', () => {
+  const g = bare(), inner = g as unknown as { onPhys(e: PhysEvent): void; award(base: number): number };
+  g.combo = 30; g.comboTimer = 2; g.comboSaves = 1;
+  inner.onPhys({ type: 'stumble', id: 1, by: 'ac' });
+  expect([g.combo, g.comboSaves]).toEqual([30, 0]);
+  inner.onPhys({ type: 'stumble', id: 2, by: 'ac' });
+  expect(g.combo).toBe(0);
+  g.combo = 25;
+  inner.award(FEVER_FILL);
+  expect(g.feverTime).toBe(FEVER_TIME);
+  expect(g.drain().map((e) => e.type)).toEqual(expect.arrayContaining(['comboSaved', 'comboLost', 'fever']));
+  expect(inner.award(10)).toBe(10 * g.mult * 2);
+});
+
 it('a replay reproduces every item, effect and mission exactly', () => {
   const kinds = new Set<string>();
   let missions = 0, shields = 0, dashes = 0;
-  for (let s = 1; s <= 14; s++) {
+  for (let s = 1; s <= 24; s++) {
     const g = new Game(s), b = new Bot(), rec = new Recorder();
     b.wantPerfect = s % 2 === 0;
     b.want.add('stomp');

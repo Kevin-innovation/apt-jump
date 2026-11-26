@@ -1,4 +1,4 @@
-import { BOOST_RATE } from './items';
+import { BOOST_RATE, GLIDE_FALL, SLOW_RATE } from './items';
 import type { Enemy, Obstacle, Roof } from './world';
 import { roadCars } from './traffic';
 
@@ -49,6 +49,9 @@ const ACCEL = 320;
 const SNAP = 8;
 /** Falling this far below the last surface ends the run. */
 export const FALL_LIMIT = 150;
+/** An updraft pushes up this hard, up to this rising speed. */
+export const UPDRAFT = 2400;
+export const VENT_RISE = 260;
 
 /** half is the distance in pixels by which half the gain is reached. */
 export interface Pace { base: number; gain: number; half?: number; stageGain?: number }
@@ -98,6 +101,10 @@ export interface Player {
   boostTime: number;
   /** Will take the next collision. */
   shield: boolean;
+  /** Seconds left of the glider and of slow motion; and a wire hook kept for the next fall. */
+  glideTime: number;
+  slowTime: number;
+  hook: boolean;
   /** Units and enemies already dealt with. Replaced, never mutated, so copies are safe. */
   gone: readonly number[];
   /** Seconds left of the slide; above zero the body is low. */
@@ -133,13 +140,14 @@ export type PhysEvent =
   | { type: 'breakout'; x: number; y: number }
   | { type: 'wall' }
   | { type: 'trafficHit'; x: number; y: number }
+  | { type: 'hooked'; x: number; y: number; tx: number; ty: number }
   | { type: 'fell' };
 
 export function newPlayer(x: number, y: number, pace: Readonly<Pace> = DEFAULT_PACE): Player {
   return {
     time: 0, x, y, vx: paceSpeed(pace, 0), vy: 0, ground: null, groundTime: 1, airTime: 0, coyote: 0, buffer: 0,
     holdTime: 0, jumping: false, boost: 0, stumble: 0, lastHit: -1, crashed: false, lastRoofY: y,
-    landedFromAir: false, airUsed: false, airCooldown: 0, airBonus: 0, boostTime: 0, shield: false, gone: [], pace,
+    landedFromAir: false, airUsed: false, airCooldown: 0, airBonus: 0, boostTime: 0, shield: false, glideTime: 0, slowTime: 0, hook: false, gone: [], pace,
     slide: 0, slideCooldown: 0, slideBuffer: 0, under: 0, passed: [], inside: 0, road: 0, grace: 0, spared: [],
   };
 }
@@ -253,7 +261,15 @@ function landsSoon(p: Player, roofs: readonly Roof[]): boolean {
 }
 
 /** How fast time passes for the runner. */
-export function timeRate(p: Player): number { return p.boostTime > 0 ? BOOST_RATE : 1; }
+export function timeRate(p: Player): number { return (p.boostTime > 0 ? BOOST_RATE : 1) * (p.slowTime > 0 ? SLOW_RATE : 1); }
+/** Whether rising air lifts the runner here: inside a vent's column, below its top. */
+export function inUpdraft(p: Player, roofs: readonly Roof[]): boolean {
+  return roofs.some((r) => r.vent !== undefined && p.x + PW > r.vent.x && p.x < r.vent.x + r.vent.w && p.y > r.vent.top);
+}
+/** Whether a street lies under the runner anywhere along it: falling there is a drop, not a fall. */
+function streetUnder(p: Player, roofs: readonly Roof[]): boolean {
+  return roofs.some((r) => r.road && p.x + PW > r.road.x && p.x < r.road.rampEnd);
+}
 export function canAirJump(p: Player): boolean { return (!p.airUsed && p.airCooldown <= 0) || p.airBonus > 0; }
 
 /** One fixed step. Mutates p only, so a planner can run it on a copy. */
@@ -261,6 +277,8 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
   const dt = STEP * timeRate(p);
   p.time += dt;
   p.boostTime = Math.max(0, p.boostTime - STEP);
+  p.glideTime = Math.max(0, p.glideTime - STEP);
+  p.slowTime = Math.max(0, p.slowTime - STEP);
   p.buffer = Math.max(0, p.buffer - dt);
   p.stumble = Math.max(0, p.stumble - dt);
   p.airCooldown = Math.max(0, p.airCooldown - dt);
@@ -331,7 +349,12 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
         p.holdTime += dt;
       } else p.jumping = false;
     }
-    p.vy = Math.min(MAX_FALL, p.vy + g * dt);
+    if (inUpdraft(p, roofs)) p.vy = Math.max(-VENT_RISE, p.vy - UPDRAFT * dt);
+    else {
+      p.vy = Math.min(MAX_FALL, p.vy + g * dt);
+      // A held glider, once the jump itself is spent, only drifts down.
+      if (p.glideTime > 0 && input.held && !p.jumping && p.vy > GLIDE_FALL) p.vy = GLIDE_FALL;
+    }
   }
 
   if (p.crashed) p.vx = 0;
@@ -396,7 +419,20 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
   if (!p.crashed) passage(p, roofs, emit);
   if (!p.crashed) touchHazards(p, prevFeet, prevX, roofs, emit, bounce, remove);
   if (!p.crashed) traffic(p, roofs, emit);
+  if (p.hook) hook(p, roofs, emit);
   if (p.y > p.lastRoofY + FALL_LIMIT) emit({ type: 'fell' });
+}
+
+/** A runner caught below the next roof's top, short of it, is pulled up onto it once. Never on a street. */
+function hook(p: Player, roofs: readonly Roof[], emit: (e: PhysEvent) => void): void {
+  if (p.ground || p.vy <= 0 || streetUnder(p, roofs)) return;
+  const next = roofs.find((r) => r.x + r.w > p.x + PW);
+  if (!next || p.x + PW - 2 > next.x || p.y <= next.y + 4) return;
+  p.hook = false;
+  p.y = next.y - 30; p.vy = -140; p.crashed = false; p.jumping = false;
+  p.vx = Math.max(p.vx, paceSpeed(p.pace, p.x) * 0.8);
+  p.lastRoofY = next.y; p.airUsed = false; p.airCooldown = 0;
+  emit({ type: 'hooked', x: p.x + PW / 2, y: p.y - PH / 2, tx: next.x + 2, ty: next.y });
 }
 
 /** Breaking into a marked roof's passage, its ceiling, and coming out at the far end. */

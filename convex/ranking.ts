@@ -2,7 +2,7 @@ import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
 import { titleById } from '../src/achievements';
 import { STEP } from '../src/physics';
-import { MAX_REPLAY, SIM_VERSION, verifyReplay } from '../src/replay';
+import { MAX_REPLAY, pauseAllowanceMs, releasedSeeds, SEGMENT_SEEDS, SIM_VERSION, verifyReplay } from '../src/replay';
 import { isWeekKey, weekKey } from '../src/week';
 import { awardVerified } from './achievements';
 import { internal } from './_generated/api';
@@ -97,10 +97,10 @@ async function bestOf(ctx: QueryCtx | MutationCtx, week: string, userId: Id<'use
 
 export const clock = mutation({ args: {}, returns: v.number(), handler: async () => Date.now() });
 
-/** Issues a run: the server picks the city, and starts timing. */
+/** Issues a run: the server picks the city, and starts timing. Only the first stretches are known at the start. */
 export const start = mutation({
   args: { version: v.number() },
-  returns: v.object({ runId: v.id('runs'), seed: v.number() }),
+  returns: v.object({ runId: v.id('runs'), seed: v.number(), seeds: v.array(v.number()) }),
   handler: async (ctx, { version }) => {
     const userId = await requirePlayer(ctx);
     if (version !== SIM_VERSION) throw new ConvexError('게임이 업데이트되었습니다. 새로고침해 주세요.');
@@ -112,22 +112,35 @@ export const start = mutation({
     for (const r of recent) if (r.status === 'open') await ctx.db.patch(r._id, { status: 'rejected' });
     const old = await ctx.db.query('runs').withIndex('by_user_started', (q) => q.eq('userId', userId).lt('startedAt', now - 24 * 3_600_000)).take(5);
     for (const r of old) await ctx.db.delete(r._id);
-    const seed = Math.floor(Math.random() * 2 ** 31);
+    const seeds = Array.from({ length: SEGMENT_SEEDS }, () => Math.floor(Math.random() * 2 ** 31));
+    const seed = seeds[0]!;
     const release = await activeRelease(ctx);
-    const runId = await ctx.db.insert('runs', { userId, seed, version, release, startedAt: now, status: 'open' });
+    const runId = await ctx.db.insert('runs', { userId, seed, seeds, version, release, startedAt: now, status: 'open' });
     await touch(ctx, userId, true);
     const day = new Date(now + 9 * 3_600_000).toISOString().slice(0, 10);
     const today = await ctx.db.query('dailyStats').withIndex('by_day', (q) => q.eq('day', day)).unique();
     if (today) await ctx.db.patch(today._id, { plays: today.plays + 1 });
     else await ctx.db.insert('dailyStats', { day, plays: 1 });
-    return { runId, seed };
+    return { runId, seed, seeds: seeds.slice(0, releasedSeeds(0)) };
+  },
+});
+
+/** The stretch seeds of an open run released so far: one more every few seconds, never ahead of the clock. */
+export const seeds = mutation({
+  args: { runId: v.id('runs') },
+  returns: v.array(v.number()),
+  handler: async (ctx, { runId }) => {
+    const userId = await requireUser(ctx);
+    const run = await ctx.db.get(runId);
+    if (!run || run.userId !== userId || run.status !== 'open' || !run.seeds) throw new ConvexError('기록을 찾을 수 없습니다.');
+    return run.seeds.slice(0, releasedSeeds(Date.now() - run.startedAt));
   },
 });
 
 /** Takes a run out of circulation before anything is computed, so it can't be handed in twice. */
 export const claim = internalMutation({
   args: { runId: v.id('runs') },
-  returns: v.object({ seed: v.number(), elapsed: v.number() }),
+  returns: v.object({ seed: v.number(), seeds: v.union(v.null(), v.array(v.number())), elapsed: v.number() }),
   handler: async (ctx, { runId }) => {
     const userId = await requireUser(ctx);
     const run = await ctx.db.get(runId);
@@ -137,7 +150,7 @@ export const claim = internalMutation({
     const elapsed = Date.now() - run.startedAt;
     const late = elapsed > RUN_LIFE || run.version !== SIM_VERSION;
     await ctx.db.patch(runId, { status: 'claimed' });
-    return { seed: run.seed, elapsed: late ? -1 : elapsed };
+    return { seed: run.seed, seeds: run.seeds ?? null, elapsed: late ? -1 : elapsed };
   },
 });
 
@@ -173,12 +186,15 @@ export const finish = action({
   returns: v.object({ score: v.number(), best: v.boolean() }),
   handler: async (ctx, { runId, replay }): Promise<{ score: number; best: boolean }> => {
     if (replay.length > MAX_REPLAY) throw new ConvexError('기록이 너무 깁니다.');
-    const run: { seed: number; elapsed: number } = await ctx.runMutation(internal.ranking.claim, { runId });
-    const verdict = run.elapsed < 0 ? null : verifyReplay(run.seed, replay);
-    const real = verdict?.ok && verdict.steps * STEP * 1000 <= run.elapsed + SLACK;
-    if (!verdict?.ok || !real) {
+    const run: { seed: number; seeds: number[] | null; elapsed: number } = await ctx.runMutation(internal.ranking.claim, { runId });
+    const verdict = run.elapsed < 0 ? null : verifyReplay(run.seeds ?? run.seed, replay);
+    const gameMs = verdict?.ok ? verdict.steps * STEP * 1000 : 0;
+    const real = verdict?.ok && gameMs <= run.elapsed + SLACK;
+    // A run that took far longer than it lasted was stopped to be worked out, not paused for a moment.
+    const paced = !run.seeds || run.elapsed <= gameMs + pauseAllowanceMs(gameMs) + SLACK;
+    if (!verdict?.ok || !real || !paced) {
       await ctx.runMutation(internal.ranking.settle, { runId, result: null });
-      throw new ConvexError(run.elapsed < 0 ? '너무 오래된 기록입니다.' : '확인되지 않는 기록이라 등록하지 않았습니다.');
+      throw new ConvexError(run.elapsed < 0 ? '너무 오래된 기록입니다.' : verdict?.ok && real ? '일시정지가 너무 길어 순위에 등록하지 않았습니다.' : '확인되지 않는 기록이라 등록하지 않았습니다.');
     }
     const saved: { best: boolean } = await ctx.runMutation(internal.ranking.settle, { runId, result: { score: verdict.score, distance: verdict.distance, stats: verdict.stats } });
     return { score: verdict.score, best: saved.best };

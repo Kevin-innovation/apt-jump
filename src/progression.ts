@@ -3,6 +3,21 @@ export const DISTRICT_LENGTH = 400;
 export const LAP_LENGTH = DISTRICT_LENGTH * 5;
 
 export type DistrictKind = 'residential' | 'construction' | 'neon' | 'riverside' | 'highrise';
+/**
+ * From the second lap on, each lap changes one thing about the city, in turn: updrafts between roofs, a blackout that
+ * pays double for coins, rain with puddles to slide through, and cracked roofs that give way under a runner who stays.
+ */
+export type LapEvent = 'none' | 'wind' | 'night' | 'rain' | 'crumble';
+const LAP_EVENTS: readonly Exclude<LapEvent, 'none'>[] = ['wind', 'night', 'rain', 'crumble'];
+export const LAP_EVENT_NAMES: Record<LapEvent, string> = { none: '', wind: '강풍', night: '정전', rain: '폭우', crumble: '균열' };
+export const LAP_EVENT_TEXT: Record<LapEvent, string> = {
+  none: '',
+  wind: '상승 기류를 타고 하늘길로',
+  night: '어둠 속 동전 점수 2배',
+  rain: '물웅덩이에서 ↓ 물보라 가속',
+  crumble: '금 간 옥상은 오래 서 있으면 무너져요',
+};
+export function lapEvent(lap: number): LapEvent { return lap < 2 ? 'none' : LAP_EVENTS[(lap - 2) % LAP_EVENTS.length]!; }
 export type DistrictGoalKind = 'coins' | 'perfects' | 'stomps' | 'risks';
 
 export interface DistrictGoal {
@@ -87,6 +102,10 @@ const DISTRICTS: readonly DistrictData[] = [
   },
 ];
 
+function lapGoal(g: DistrictGoal, lap: number): DistrictGoal {
+  return lap === 1 ? g : goal(g.what, Math.round(g.goal * (1 + 0.5 * (lap - 1))), g.reward * lap);
+}
+
 /** Pure lookup: no randomness, no time, no mutable state. */
 export function districtAt(distance: number): District {
   const metres = Number.isFinite(distance) ? Math.max(0, distance) : 0;
@@ -100,7 +119,8 @@ export function districtAt(distance: number): District {
     lap: Math.floor(index / DISTRICTS.length) + 1,
     progress: Math.min(1, (metres - start) / DISTRICT_LENGTH),
     remaining: Math.max(0, start + DISTRICT_LENGTH - metres),
-    goal: data.goal,
+    // Each lap asks a little more and pays a lap's worth more.
+    goal: lapGoal(data.goal, Math.floor(index / DISTRICTS.length) + 1),
     palette: data.palette,
   };
 }

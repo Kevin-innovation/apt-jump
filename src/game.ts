@@ -1,13 +1,31 @@
-import { DASH_POINTS, MAGNET_RANGE, MAGNET_SPEED, MAX_AIR_BONUS, POWER_POINTS, POWER_TIME, type PowerKind } from './items';
-import { MISSIONS, type Mission, type Tally } from './missions';
+import { DASH_POINTS, MAGNET_RANGE, MAGNET_SPEED, MAX_AIR_BONUS, POWER_POINTS, POWER_TIME, RUSH_RANGE, type PowerKind } from './items';
+import { missionAt, type Mission, type Tally } from './missions';
 import {
-  DEFAULT_PACE, jumpReach, newPlayer, paceSpeed, PH, PW, PX_PER_M, STEP, stepPlayer, timeRate,
-  type JumpInput, type Pace, type PhysEvent, type Player, type SurfaceKind,
+  BOOST_SPEED, DEFAULT_PACE, jumpReach, MAX_BOOST, newPlayer, paceSpeed, PH, PW, PX_PER_M, roofEnd, STEP, stepPlayer, STUMBLE_FACTOR,
+  STUMBLE_TIME, timeRate, type JumpInput, type Pace, type PhysEvent, type Player, type SurfaceKind,
 } from './physics';
-import { districtAt, type District } from './progression';
-import { World, type City, type CoinKind } from './world';
+import { DISTRICT_LENGTH, districtAt, LAP_LENGTH, lapEvent as eventOfLap, type District, type LapEvent } from './progression';
+import { World, type City, type CoinKind, type SeedSource } from './world';
 
 export const COMBO_TIME = 4;
+/** A perfect jump buys a little more time than anything else. */
+export const PERFECT_COMBO_TIME = 5;
+/** From this combo the multiplier is full, and points fill the fever gauge instead. */
+export const FEVER_COMBO = 20;
+/** Base points (before any multiplier) that fill the gauge, and the seconds a fever doubles everything. */
+export const FEVER_FILL = 1200;
+export const FEVER_TIME = 8;
+/** Combo saves held at most, and how many diamonds earn one. */
+export const MAX_SAVES = 3;
+export const DIAMONDS_PER_SAVE = 3;
+/** A combo this long or longer is saved, and paid out at each district's border. */
+export const SAVED_COMBO = 5;
+export const CASH_COMBO = 10;
+export const CASH_PER_COMBO = 5;
+export const LAP_BONUS = 1000;
+export const SPLASH_POINTS = 40;
+/** Seconds a runner may stand on a cracked roof before it gives way. */
+export const CRACK_TIME = 1;
 export const COIN_VALUE: Record<CoinKind, number> = { coin: 1, gold: 5, diamond: 20 };
 export const COIN_POINTS = 10;
 export const PERFECT_POINTS = 25;
@@ -44,7 +62,15 @@ export type GameEvent =
   | { type: 'goal' }
   | { type: 'district'; district: District }
   | { type: 'districtGoal'; district: District; points: number }
-  | { type: 'comboLost'; combo: number };
+  | { type: 'comboLost'; combo: number }
+  | { type: 'comboSaved'; combo: number }
+  | { type: 'saveGained'; saves: number }
+  | { type: 'comboCash'; combo: number; points: number }
+  | { type: 'fever' }
+  | { type: 'lap'; lap: number; event: LapEvent; points: number }
+  | { type: 'splash'; points: number; x: number; y: number }
+  | { type: 'crumble'; id: number; x: number; y: number }
+  | { type: 'rush'; count: number };
 
 export interface Course { city: City; pace: Readonly<Pace>; startY: number }
 /** The challenge of the district being run: counted from the moment it was entered. */
@@ -66,6 +92,14 @@ export class Game {
   slides = 0;
   combo = 0;
   comboTimer = 0;
+  /** The fever gauge, 0 to 1, and the seconds left of a fever. */
+  fever = 0;
+  feverTime = 0;
+  /** Each keeps a combo that would have ended. */
+  comboSaves = 0;
+  /** Cracked roofs that gave way, and puddles already splashed. */
+  crumbled = new Set<number>();
+  splashed = new Set<number>();
   maxCombo = 0;
   perfects = 0;
   risks = 0;
@@ -73,6 +107,8 @@ export class Game {
   powers = 0;
   /** Missions finished; also which one is next. */
   missionsDone = 0;
+  /** The tally when the current mission began: endless missions count from it. */
+  private missionStart: Tally = { coins: 0, powers: 0, perfects: 0, stomps: 0, risks: 0, diamonds: 0, maxCombo: 0, distance: 0 };
   /** Seconds left of each item that isn't the runner's own. */
   magnetTime = 0;
   doubleTime = 0;
@@ -84,9 +120,9 @@ export class Game {
   /** The district being run: its number, what the tally read on the way in, and whether its goal is paid. */
   private zone = { index: 0, from: {} as Partial<Tally>, done: false };
 
-  /** A seed plays the endless city, a course plays a made map. */
-  constructor(source: number | Course) {
-    const course = typeof source === 'number' ? { city: new World(source), pace: DEFAULT_PACE, startY: 0 } : source;
+  /** A seed (or the server's seeds, stretch by stretch) plays the endless city; a course plays a made map. */
+  constructor(source: number | SeedSource | Course) {
+    const course = typeof source === 'object' ? source : { city: new World(source), pace: DEFAULT_PACE, startY: 0 };
     this.world = course.city;
     this.player = newPlayer(START_X, course.startY, course.pace);
     this.world.ensure(0, 1400);
@@ -98,7 +134,9 @@ export class Game {
   get score(): number { return Math.floor(this.distance) + this.bonus; }
   get mult(): number { return multiplier(this.combo); }
   /** The mission under way: endless runs only. */
-  get mission(): Mission | null { return this.world.goalX === null ? MISSIONS[this.missionsDone] ?? null : null; }
+  get mission(): Mission | null { return this.world.goalX === null ? missionAt(this.missionsDone, this.missionStart) : null; }
+  /** What this lap does to the city: endless runs only. */
+  get lapEvent(): LapEvent { const d = this.district; return d ? eventOfLap(d.lap) : 'none'; }
   get tally(): Tally {
     return {
       coins: this.coins, powers: this.powers, perfects: this.perfects, stomps: this.stomps, risks: this.risks,
@@ -122,8 +160,21 @@ export class Game {
     const district = this.district;
     if (!district) return;
     if (district.index !== this.zone.index) {
+      // A long combo carried over a border is paid out, flat, by the lap.
+      if (this.combo >= CASH_COMBO) {
+        const points = this.combo * CASH_PER_COMBO * district.lap;
+        this.bonus += points;
+        this.events.push({ type: 'comboCash', combo: this.combo, points });
+      }
+      const lapBefore = Math.floor(this.zone.index / (LAP_LENGTH / DISTRICT_LENGTH)) + 1;
       this.zone = { index: district.index, from: this.tally, done: false };
       this.events.push({ type: 'district', district });
+      if (district.lap > lapBefore) {
+        const points = LAP_BONUS * lapBefore;
+        this.bonus += points;
+        this.events.push({ type: 'lap', lap: district.lap, event: eventOfLap(district.lap), points });
+        this.startFever();
+      }
       return;
     }
     const { what, goal, reward } = district.goal;
@@ -144,6 +195,11 @@ export class Game {
       case 'keep': return this.keepTime;
       case 'shield': return p.shield ? 1 : 0;
       case 'recharge': return p.airBonus;
+      case 'glider': return p.glideTime;
+      case 'slowmo': return p.slowTime;
+      case 'hook': return p.hook ? 1 : 0;
+      // Shown by the combo (the fever and the saves), or over at once.
+      case 'fever': case 'amulet': case 'rush': return 0;
     }
   }
   /** Share of a made map already run, 0 to 1. */
@@ -157,14 +213,54 @@ export class Game {
     this.comboTimer = COMBO_TIME;
     this.maxCombo = Math.max(this.maxCombo, this.combo);
   }
-  private loseCombo(): void {
+  /** A save keeps a combo worth keeping; nothing keeps one through a crash. */
+  private loseCombo(fatal = false): void {
+    if (!fatal && this.comboSaves > 0 && this.combo >= SAVED_COMBO) {
+      this.comboSaves--;
+      this.comboTimer = COMBO_TIME;
+      this.events.push({ type: 'comboSaved', combo: this.combo });
+      return;
+    }
     if (this.combo > 0) this.events.push({ type: 'comboLost', combo: this.combo });
-    this.combo = 0; this.comboTimer = 0;
+    this.combo = 0; this.comboTimer = 0; this.fever = 0;
+  }
+  private gainSave(): void {
+    if (this.comboSaves >= MAX_SAVES) return;
+    this.comboSaves++;
+    this.events.push({ type: 'saveGained', saves: this.comboSaves });
+  }
+  private startFever(): void {
+    this.fever = 0;
+    this.feverTime = FEVER_TIME;
+    this.events.push({ type: 'fever' });
   }
   private award(base: number): number {
-    const pts = base * this.mult * (this.doubleTime > 0 ? 2 : 1);
+    const pts = base * this.mult * (this.doubleTime > 0 ? 2 : 1) * (this.feverTime > 0 ? 2 : 1);
     this.bonus += pts;
+    // With the multiplier full, points fill the fever gauge.
+    if (this.feverTime <= 0 && this.combo >= FEVER_COMBO && (this.fever += base / FEVER_FILL) >= 1) this.startFever();
     return pts;
+  }
+  /** Everything ahead that stands in the way, and every enemy, turns into gold where it was. */
+  private rush(): void {
+    const p = this.player, from = p.x + 24, to = p.x + RUSH_RANGE;
+    let count = 0;
+    for (const r of this.world.roofs) {
+      if (r.x > to || roofEnd(r) < from) continue;
+      r.obstacles = r.obstacles.filter((o) => {
+        if (o.x + o.w < from || o.x > to || p.gone.includes(o.id)) return true;
+        r.coins.push({ x: o.x + o.w / 2, y: o.kind === 'bar' ? o.y + o.h - 2 : o.y + o.h / 2, kind: 'gold', taken: false });
+        count++;
+        return false;
+      });
+      r.enemies = r.enemies.filter((e) => {
+        if (e.x < from || e.x > to || p.gone.includes(e.id)) return true;
+        r.coins.push({ x: e.x + 8, y: e.y + 4, kind: 'gold', taken: false });
+        count++;
+        return false;
+      });
+    }
+    this.events.push({ type: 'rush', count });
   }
   private risk(kind: RiskKind, base: number): void {
     this.risks++;
@@ -181,6 +277,12 @@ export class Game {
       case 'keep': this.keepTime = time; if (this.combo > 0) this.comboTimer = COMBO_TIME; break;
       case 'shield': p.shield = true; break;
       case 'recharge': p.airCooldown = 0; p.airUsed = false; p.airBonus = Math.min(MAX_AIR_BONUS, p.airBonus + 1); break;
+      case 'glider': p.glideTime = time; break;
+      case 'slowmo': p.slowTime = time; break;
+      case 'fever': this.startFever(); break;
+      case 'amulet': this.gainSave(); break;
+      case 'rush': this.rush(); break;
+      case 'hook': p.hook = true; break;
     }
   }
 
@@ -211,6 +313,7 @@ export class Game {
     this.magnetTime = Math.max(0, this.magnetTime - STEP);
     this.doubleTime = Math.max(0, this.doubleTime - STEP);
     this.keepTime = Math.max(0, this.keepTime - STEP);
+    this.feverTime = Math.max(0, this.feverTime - STEP);
 
     // Counted in the runner's simulation time.
     if (this.combo > 0 && this.keepTime <= 0) {
@@ -232,11 +335,14 @@ export class Game {
         if (c.taken || c.x < p.x - 5 || c.x > p.x + PW + 5 || c.y < p.y - PH - 6 || c.y > p.y + 5) continue;
         c.taken = true;
         this.coins += COIN_VALUE[c.kind];
-        if (c.kind === 'diamond') this.diamonds++;
+        if (c.kind === 'diamond' && ++this.diamonds % DIAMONDS_PER_SAVE === 0) this.gainSave();
         this.addCombo();
-        this.events.push({ type: 'coin', kind: c.kind, points: this.award(COIN_POINTS * COIN_VALUE[c.kind]), x: c.x, y: c.y });
+        // In a blackout every coin is worth twice as much.
+        const base = COIN_POINTS * COIN_VALUE[c.kind] * (this.lapEvent === 'night' ? 2 : 1);
+        this.events.push({ type: 'coin', kind: c.kind, points: this.award(base), x: c.x, y: c.y });
       }
     }
+    this.underfoot();
     if (this.onRoad && p.ground && p.ground.kind !== 'road' && p.ground.kind !== 'ramp') {
       this.onRoad = false;
       this.events.push({ type: 'roadExit', x: p.x, y: p.y });
@@ -250,6 +356,7 @@ export class Game {
     if (mission && this.tally[mission.what] >= mission.goal) {
       // A flat reward: the combo and the score item don't change it.
       this.missionsDone++;
+      this.missionStart = this.tally;
       this.bonus += mission.reward;
       this.events.push({ type: 'mission', mission, points: mission.reward });
     }
@@ -262,6 +369,29 @@ export class Game {
     this.world.ensure(p.x, p.x + 1400);
   }
 
+  /** A cracked roof gives way under a runner who stays; a slide through a puddle splashes forward. */
+  private underfoot(): void {
+    const p = this.player, s = p.ground;
+    if (!s || s.kind !== 'roof') return;
+    const r = this.world.roofs.find((q) => q.id === s.id);
+    if (!r) return;
+    if (r.cracked && !this.crumbled.has(r.id) && p.groundTime > CRACK_TIME) {
+      this.crumbled.add(r.id);
+      p.stumble = STUMBLE_TIME; p.vx *= STUMBLE_FACTOR; p.boost = 0;
+      this.events.push({ type: 'crumble', id: r.id, x: p.x + PW / 2, y: p.y });
+      this.loseCombo();
+    }
+    if (p.slide <= 0 || !r.puddles) return;
+    for (const w of r.puddles) {
+      if (this.splashed.has(w.id) || p.x + PW <= w.x || p.x >= w.x + w.w) continue;
+      this.splashed.add(w.id);
+      p.boost = Math.min(MAX_BOOST, Math.floor(p.boost) + 1);
+      p.vx = Math.max(p.vx, paceSpeed(p.pace, p.x) + p.boost * BOOST_SPEED);
+      this.addCombo();
+      this.events.push({ type: 'splash', points: this.award(SPLASH_POINTS), x: w.x + w.w / 2, y: r.y });
+    }
+  }
+
   private onPhys(e: PhysEvent): void {
     const p = this.player;
     this.events.push(e);
@@ -270,6 +400,7 @@ export class Game {
         if (!e.perfect) break;
         this.perfects++;
         this.addCombo();
+        this.comboTimer = PERFECT_COMBO_TIME;
         this.events.push({ type: 'perfectBonus', points: this.award(PERFECT_POINTS), x: p.x, y: p.y - PH });
         break;
       case 'stomp':
@@ -289,7 +420,7 @@ export class Game {
         break;
       case 'land': this.onLand(e.surface.kind, e.surface.id); break;
       case 'stumble': case 'wall': this.loseCombo(); break;
-      case 'trafficHit': this.loseCombo(); this.deathCause = 'traffic'; this.dead = true; break;
+      case 'trafficHit': this.loseCombo(true); this.deathCause = 'traffic'; this.dead = true; break;
       case 'fell': this.deathCause = 'fall'; this.dead = true; break;
     }
   }

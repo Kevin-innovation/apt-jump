@@ -6,7 +6,7 @@ import schema from '../convex/schema';
 import { Bot } from '../src/bot';
 import { Game } from '../src/game';
 import { PRACTICE, serializeMap } from '../src/maps';
-import { Recorder, SIM_VERSION, verifyReplay } from '../src/replay';
+import { pauseAllowanceMs, Recorder, releasedSeeds, SIM_VERSION, verifyReplay } from '../src/replay';
 import { STEP } from '../src/physics';
 
 // Real sign-in is in auth.test.ts. Here the caller's identity names the user row directly, without password
@@ -23,13 +23,13 @@ async function setup() {
   const t = convexTest(schema, modules);
   const player = async (nickname: string) => {
     const id = await t.run((ctx) => ctx.db.insert('users', { nickname, nickKey: nickname }));
-    return { id, as: t.withIdentity({ subject: id }) };
+    return { id, as: t.withIdentity({ subject: id }), t };
   };
   return { t, player, a: await player('에이'), b: await player('비이') };
 }
 /** A real run: someone who plays a while, then lets go. */
-function play(seed: number, seconds: number) {
-  const g = new Game(seed), bot = new Bot(), rec = new Recorder();
+function play(seed: number | readonly number[], seconds: number) {
+  const g = new Game(typeof seed === 'number' ? seed : (k) => seed[k] ?? null), bot = new Bot(), rec = new Recorder();
   while (!g.dead) {
     const j = g.time < seconds ? bot.next(g) : { pressed: false, held: false };
     rec.add(j);
@@ -42,7 +42,13 @@ function play(seed: number, seconds: number) {
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW); });
 afterEach(() => { vi.useRealTimers(); vi.unstubAllGlobals(); });
 
-const start = async (p: { as: Awaited<ReturnType<typeof setup>>['a']['as'] }) => p.as.mutation(api.ranking.start, { version: SIM_VERSION });
+type Player = Awaited<ReturnType<typeof setup>>['a'];
+/** Starts a run; `seed` is the whole city the server holds for it, as a player would get it stretch by stretch. */
+const start = async (p: Player) => {
+  const issued = await p.as.mutation(api.ranking.start, { version: SIM_VERSION });
+  const run = await p.t.run((ctx) => ctx.db.get(issued.runId));
+  return { ...issued, first: issued.seed, seed: run!.seeds! };
+};
 
 describe('accounts', () => {
   it('guests can look but not act', async () => {
@@ -160,10 +166,21 @@ describe('ranked runs', () => {
     await expect(a.as.action(api.ranking.finish, { runId, replay: play(seed, 5).text })).rejects.toThrow('이미 제출');
     expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([]);
   });
+  it('hands the city out stretch by stretch, and refuses a run stopped far longer than it lasted', async () => {
+    const { a } = await setup();
+    const r = await start(a);
+    expect(r.seeds).toEqual(r.seed.slice(0, releasedSeeds(0)));
+    vi.setSystemTime(NOW + 30_000);
+    expect(await a.as.mutation(api.ranking.seeds, { runId: r.runId })).toEqual(r.seed.slice(0, releasedSeeds(30_000)));
+    expect(releasedSeeds(30_000)).toBeGreaterThan(r.seeds.length);
+    const run = play(r.seed, 5);
+    vi.setSystemTime(NOW + run.ms + pauseAllowanceMs(run.ms) + 10_000);
+    await expect(a.as.action(api.ranking.finish, { runId: r.runId, replay: run.text })).rejects.toThrow('일시정지');
+  });
   it('inputs from another city earn only what they do in this one', async () => {
     const { a } = await setup();
     const { runId, seed } = await start(a);
-    const other = play(seed + 1, 20);
+    const other = play(seed.map((s) => s + 1), 20);
     const verdict = verifyReplay(seed, other.text);
     vi.setSystemTime(NOW + other.ms + 1000);
     const sent = a.as.action(api.ranking.finish, { runId, replay: other.text });
@@ -279,7 +296,7 @@ describe('shared maps', () => {
     const { t, a } = await setup();
     const id = await a.as.mutation(api.maps.publish, { json: serializeMap(PRACTICE) });
     const list = await t.query(api.maps.list, { paginationOpts: page, order: 'new' });
-    expect(list.page).toEqual([{ id, title: '연습 옥상', segments: PRACTICE.segments.length, updatedAt: expect.closeTo(NOW, -2), mine: false, author: '에이', best: null }]);
+    expect(list.page).toEqual([{ id, title: '연습 옥상', segments: PRACTICE.segments.length, updatedAt: expect.closeTo(NOW, -2), mine: false, author: '에이', best: null, bestBy: null, bestTied: 0 }]);
     expect(JSON.parse((await t.query(api.maps.get, { id }))!)).toEqual(PRACTICE);
     expect((await a.as.query(api.maps.list, { paginationOpts: page, order: 'new' })).page[0]!.mine).toBe(true);
   });

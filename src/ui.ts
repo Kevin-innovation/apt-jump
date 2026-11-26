@@ -1,16 +1,18 @@
 import { drawPower, powerColor } from './art';
-import { COMBO_TIME, type Game } from './game';
+import { COMBO_TIME, FEVER_COMBO, FEVER_TIME, SAVED_COMBO, type Game } from './game';
+import { LAP_EVENT_NAMES, LAP_EVENT_TEXT } from './progression';
 import { POWER_KINDS, POWER_NAMES, POWER_TEXT, POWER_TIME, type PowerKind } from './items';
 import { medalFor, missionText, nextMedal } from './missions';
+import { PATCH_NOTES, VERSION } from './version';
 import { AIR_COOLDOWN, canAirJump, HOLD_MAX } from './physics';
 import type { Device, MenuAction } from './input';
 import type { SaveFile } from './storage';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
-export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'maptimes' | 'items' | 'welcome' | 'achievements';
+export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'maptimes' | 'items' | 'welcome' | 'achievements' | 'notes';
 export type Act = 'start' | 'resume' | 'restart' | 'home' | 'settings' | 'credits' | 'back' | 'mute' | 'music' | 'sfx' | 'shake'
-  | 'maps' | 'ranking' | 'achievements' | 'account' | 'admin' | 'logout' | 'items' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
-const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome', 'achievements'];
+  | 'maps' | 'ranking' | 'achievements' | 'account' | 'admin' | 'logout' | 'items' | 'notes' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
+const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome', 'achievements', 'notes'];
 const GOAL_NAMES = { coins: '동전', perfects: '퍼펙트', stomps: '밟기', risks: '위험' } as const;
 const VOLUME = ['끔', '작게', '보통', '크게'];
 const KEYS: Record<Device, string> = {
@@ -45,8 +47,26 @@ export class UI {
       b.addEventListener('click', () => this.onAct(b.dataset.act as Act));
     $('btn-mute').addEventListener('click', () => { this.onAct('mute'); $('btn-mute').blur(); });
     this.buildPowers();
+    this.buildNotes();
     this.refresh();
   }
+
+  /** The version on the title, and every release's notes on their own screen. */
+  private buildNotes(): void {
+    $('version-label').textContent = `v${VERSION}`;
+    $('notes-list').replaceChildren(...PATCH_NOTES.map((n, i) => {
+      const card = document.createElement('article');
+      card.className = i === 0 ? 'note latest' : 'note';
+      const head = document.createElement('h3'), when = document.createElement('small'), list = document.createElement('ul');
+      head.textContent = `v${n.version} · ${n.title}`;
+      when.textContent = n.date;
+      for (const t of n.notes) { const li = document.createElement('li'); li.textContent = t; list.append(li); }
+      card.append(head, when, list);
+      return card;
+    }));
+  }
+  /** A word about a release just applied, next to the version. */
+  versionNews(t: string): void { this.text('version-news', t); }
 
   /** A picture of an item, for the HUD and the list. */
   private picture(kind: PowerKind): HTMLCanvasElement {
@@ -141,7 +161,7 @@ export class UI {
     const i = list.indexOf(document.activeElement as HTMLButtonElement);
     if (a === 'up' || a === 'down') list[(i + (a === 'up' ? -1 : 1) + list.length * 2) % list.length]?.focus();
     else if (a === 'back') {
-      if (this.screen === 'settings' || this.screen === 'credits' || this.screen === 'items') this.onAct('back');
+      if (this.screen === 'settings' || this.screen === 'credits' || this.screen === 'items' || this.screen === 'notes') this.onAct('back');
       else if (this.screen === 'pause') this.onAct('resume');
       else if (this.screen === 'welcome') this.onAct('guest');
       else if (this.screen === 'result' || this.screen === 'maps' || this.screen === 'ranking' || this.screen === 'achievements' || this.screen === 'account') this.onAct('home');
@@ -206,15 +226,37 @@ export class UI {
     this.hidden('route-note', p.inside !== 0 || !g.world.roofs.some((r) => r.route && r.route.x + r.route.hatch > p.x && r.route.x - p.x < p.vx * 2.5));
     const m = g.mission;
     this.hidden('mission', !m);
-    if (m) this.text('mission-text', `미션 ${missionText(m)} (${Math.min(m.goal, g.tally[m.what])}/${m.goal}) +${m.reward}`);
-    this.hidden('combo', g.combo < 2);
-    if (g.combo >= 2) {
-      this.text('combo-n', String(g.combo));
-      this.text('combo-x', `x${g.mult}`);
-      this.style('combo-bar', 'transform', `scaleX(${Math.max(0, g.comboTimer / COMBO_TIME)})`);
+    if (m) {
+      const from = m.from ?? 0;
+      this.text('mission-text', `미션 ${missionText(m)} (${Math.min(m.goal, g.tally[m.what]) - from}/${m.goal - from}) +${num(m.reward)}`);
     }
+    this.combo(g);
     this.pips.forEach((p, i) => p.classList.toggle('on', g.player.boost >= i + 0.5));
   }
+
+  /** The combo, its clock (red when it is about to run out), the saves that keep it, and the fever gauge. */
+  private combo(g: Game): void {
+    const fever = g.feverTime > 0, gauge = g.combo >= FEVER_COMBO || g.fever > 0 || fever;
+    this.hidden('combo', g.combo < 2 && g.comboSaves === 0 && !fever);
+    this.el('combo').classList.toggle('fever-on', fever);
+    this.text('combo-n', String(g.combo));
+    this.text('combo-x', `x${g.mult}`);
+    this.style('combo-bar', 'transform', `scaleX(${Math.max(0, Math.min(1, g.comboTimer / COMBO_TIME))})`);
+    this.el('combo-timer').classList.toggle('danger', this.danger(g));
+    const saves = this.el('saves');
+    if (saves.dataset.n !== String(g.comboSaves)) {
+      saves.dataset.n = String(g.comboSaves);
+      saves.setAttribute('aria-label', `콤보 세이브 ${g.comboSaves}칸`);
+      saves.querySelectorAll('i').forEach((i, n) => i.classList.toggle('on', n < g.comboSaves));
+      saves.hidden = g.comboSaves === 0;
+    }
+    this.hidden('fever', !gauge);
+    this.el('fever').classList.toggle('on', fever);
+    this.text('fever-label', fever ? `피버 x2 ${Math.ceil(g.feverTime)}초` : '피버');
+    this.style('fever-bar', 'transform', `scaleX(${fever ? g.feverTime / FEVER_TIME : Math.min(1, g.fever)})`);
+  }
+  /** A combo worth keeping with under a second left on its clock. */
+  danger(g: Game): boolean { return g.combo >= SAVED_COMBO && g.keepTime <= 0 && g.comboTimer > 0 && g.comboTimer < 1; }
 
   /** The district under the runner, its goal and the way to the next: endless runs only. */
   private district(g: Game): void {
@@ -228,9 +270,16 @@ export class UI {
     this.text('district-goal', info.done ? '목표 달성' : `${GOAL_NAMES[d.goal.what]} ${info.current}/${info.goal}`);
     box.classList.toggle('done', info.done);
     this.style('district', 'borderColor', d.palette.accent);
+    const event = g.lapEvent;
+    this.hidden('district-event', event === 'none');
+    if (event !== 'none') {
+      this.text('district-event', `${LAP_EVENT_NAMES[event]} · ${LAP_EVENT_TEXT[event]}`);
+      this.el('district-event').dataset.event = event;
+    }
   }
 
   onlineNote(t: string): void { this.text('r-online', t); }
+  pauseNote(t: string): void { this.text('pause-note', t); }
   /** Replaces the result's line about the best score, for runs ranked otherwise. */
   bestNote(t: string): void { this.text('r-best', t); }
   wait(t: string): void {

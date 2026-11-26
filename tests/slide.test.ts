@@ -158,7 +158,7 @@ describe('marked buildings', () => {
 
 it('replays a run with slides exactly, with the numbers achievements use', () => {
   let slid = 0;
-  for (const seed of [2, 5]) {
+  for (const seed of [2, 5, 8, 11]) {
     const g = new Game(seed), bot = new Bot(), rec = new Recorder();
     while (!g.dead) { const j = g.time < 45 ? bot.next(g) : idle; rec.add(j); g.step(j); g.drain(); }
     slid += g.slides;

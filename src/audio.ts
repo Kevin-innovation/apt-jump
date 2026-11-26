@@ -18,7 +18,8 @@ const LEAD = [
 ];
 const BPM = 138;
 
-export type Sfx = 'jump' | 'land' | 'perfect' | 'coin' | 'gold' | 'risk' | 'stumble' | 'fall' | 'ui' | 'count' | 'best' | 'air' | 'stomp' | 'diamond' | 'goal' | 'up' | 'power' | 'boost' | 'shield' | 'mission';
+export type Sfx = 'jump' | 'land' | 'perfect' | 'coin' | 'gold' | 'risk' | 'stumble' | 'fall' | 'ui' | 'count' | 'best' | 'air' | 'stomp' | 'diamond' | 'goal' | 'up' | 'power' | 'boost' | 'shield' | 'mission'
+  | 'fever' | 'save' | 'warn' | 'hook' | 'lap' | 'splash' | 'crumble' | 'rush';
 
 export class Audio8 {
   private ctx: AudioContext | null = null;
@@ -162,6 +163,14 @@ export class Audio8 {
       case 'shield': this.tone('square', 900, t, 0.2, 0.25, o, 300); this.hiss(t, 0.2, 0.3, 2500, o); break;
       case 'mission': run([72, 79, 84, 88, 91], 0.07, 0.2); break;
       case 'best': run([72, 76, 79, 84, 79, 84, 88], 0.09); break;
+      case 'fever': this.tone('sawtooth', 300, t, 0.3, 0.16, o, 1200); run([79, 83, 86, 91, 95], 0.045, 0.18); break;
+      case 'save': run([88, 84, 91], 0.06, 0.2); this.tone('triangle', 660, t, 0.25, 0.2, o, 990); break;
+      case 'warn': this.tone('square', 1320, t, 0.05, 0.12, o); break;
+      case 'hook': this.tone('square', 200, t, 0.15, 0.2, o, 1600); this.hiss(t, 0.1, 0.2, 3000, o); break;
+      case 'lap': run([72, 76, 79, 84, 88, 91, 96, 100], 0.06, 0.2); break;
+      case 'splash': this.hiss(t, 0.22, 0.3, 1800, o); run([91, 96], 0.05, 0.12); break;
+      case 'crumble': this.hiss(t, 0.35, 0.35, 400, o); this.tone('sawtooth', 120, t, 0.3, 0.2, o, 50); break;
+      case 'rush': run([84, 88, 91, 96, 100, 103], 0.035, 0.16); break;
     }
   }
 }

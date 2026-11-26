@@ -17,15 +17,16 @@
     <div class="left">
       <div class="score"><span id="score">0</span><small>점</small></div>
       <div class="sub"><span id="dist">0m</span><span id="lv">속도 1</span><span>최고 <b id="best">0</b></span></div>
-      <div id="district" aria-label="구역 안내" hidden><b id="district-name"></b><span id="district-left"></span><span id="district-goal"></span></div>
+      <div id="district" aria-label="구역 안내" hidden><b id="district-name"></b><span id="district-left"></span><span id="district-goal"></span><span id="district-event" hidden></span></div>
       <div id="effects" aria-label="작동 중인 아이템"></div>
     </div>
     <div class="mid">
       <div id="route-note" role="status" hidden>앞 유리에서 ↓ 보너스</div>
       <div id="mission" hidden><span id="mission-text"></span></div>
       <div id="combo" hidden>
-        <div><b id="combo-n">0</b> 콤보 <em id="combo-x">x1</em></div>
-        <div class="bar"><i id="combo-bar"></i></div>
+        <div class="combo-line"><b id="combo-n">0</b><span>콤보</span><em id="combo-x">x1</em><span id="saves" role="img" aria-label="콤보 세이브 0칸"><i></i><i></i><i></i></span></div>
+        <div class="bar" id="combo-timer"><i id="combo-bar"></i></div>
+        <div id="fever" hidden><span id="fever-label">피버</span><div class="bar"><i id="fever-bar"></i></div></div>
       </div>
     </div>
     <button id="btn-slide" type="button" aria-label="슬라이드" hidden><b>↓</b><small>슬라이드</small></button>
@@ -44,7 +45,7 @@
 
   <section class="screen" id="title" hidden>
     <h1><span>아파트</span><span>점프</span></h1>
-    <p class="release-announcement" role="status" hidden></p>
+    <button type="button" class="version-chip" data-act="notes" aria-label="패치노트 보기"><b id="version-label"></b><span id="version-news"></span><em>패치노트 ▸</em></button>
     <p class="lead">노을 진 옥상, 한 번의 점프!</p>
     <ul class="tips">
       <li>짧게 누르면 낮게 · 길게 누르면 높게</li>
@@ -69,6 +70,7 @@
 
   <section class="screen" id="pause" hidden>
     <h2>일시정지</h2>
+    <p id="pause-note" class="ye" role="status"></p>
     <nav>
       <button type="button" data-act="resume" class="primary">이어 달리기</button>
       <button type="button" data-act="restart">처음부터</button>
@@ -263,9 +265,22 @@
     </nav>
   </section>
 
+  <section class="screen" id="notes" hidden>
+    <h2>패치노트</h2>
+    <div id="notes-list"></div>
+    <nav><button type="button" data-act="back" class="primary">돌아가기</button></nav>
+  </section>
+
   <section class="screen" id="items" hidden>
     <h2>아이템 도감</h2>
     <div id="item-list"></div>
+    <h3>게임 규칙</h3>
+    <div id="rule-list">
+      <p><b class="pk">피버 타임</b>콤보 20부터는 얻는 점수가 피버 게이지를 채워요. 가득 차면 8초 동안 모든 점수 2배! 새 랩에 들어서도 바로 피버.</p>
+      <p><b style="color:#ff8fa3">콤보 세이브 ♥</b>콤보 5 이상이 끊길 때 한 칸을 써서 지켜 줘요. 다이아 3개마다, 또는 콤보 부적으로 1칸 (최대 3칸).</p>
+      <p><b class="ye">콤보 정산 · 퍼펙트</b>구역 경계를 콤보 10 이상으로 넘으면 정산 보너스. 퍼펙트 착지는 콤보 시간을 5초로 채워요. 시간이 1초 남으면 빨갛게 깜빡여요.</p>
+      <p><b class="cy">랩 이벤트</b>2km마다 랩이 바뀌어요. 강풍(상승 기류 하늘길) → 정전(동전 점수 2배) → 폭우(물웅덩이에서 ↓ 가속) → 균열(1초 넘게 서 있으면 무너짐) 순서로 돌아요.</p>
+    </div>
     <nav><button type="button" data-act="back" class="primary">돌아가기</button></nav>
   </section>
 

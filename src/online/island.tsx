@@ -116,6 +116,7 @@ export function connect(url: string): Online {
       await ensureRelease();
       return await client.mutation(api.ranking.start, { version: SIM_VERSION });
     }),
+    seeds: (runId) => client.mutation(api.ranking.seeds, { runId: runId as Id<'runs'> }),
     finish: (runId, replay) => write(() => client.action(api.ranking.finish, { runId: runId as Id<'runs'>, replay })),
     board: async (week) => { await ensureRelease(); return await client.query(api.ranking.board, { week }); },
     catalog: () => client.query(api.achievements.catalog, {}),

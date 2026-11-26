@@ -3,7 +3,8 @@ import type { AchievementCatalog } from './achievementview';
 /** What the game uses of the online side. The vanilla game never imports Convex or React itself. */
 export interface BoardEntry { rank: number; nickname: string; title?: string | null; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
-export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null }
+/** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
+export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number }
 export interface MapBoard { title: string; top: { rank: number; nickname: string; timeMs: number; mine: boolean }[]; mine: { rank: number | null; timeMs: number } | null }
 export interface SharedPage { page: SharedMapInfo[]; isDone: boolean; continueCursor: string }
 
@@ -42,7 +43,10 @@ export interface Online {
   setNickname(v: string): Promise<string>;
   /** Server's clock, in milliseconds. */
   now(): number;
-  start(): Promise<{ runId: string; seed: number }>;
+  /** A ranked run and the seeds of its first stretches of city. */
+  start(): Promise<{ runId: string; seed: number; seeds: number[] }>;
+  /** The run's stretch seeds released so far. */
+  seeds(runId: string): Promise<number[]>;
   finish(runId: string, replay: string): Promise<{ score: number; best: boolean }>;
   board(week: string): Promise<Board>;
   /** Anyone may look; only a signed-in player has progress and can wear a title. */

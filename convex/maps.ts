@@ -3,7 +3,7 @@ import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { LIMITS, parseMap, serializeMap } from '../src/maps';
 import type { Doc, Id } from './_generated/dataModel';
-import { mutation, query, type MutationCtx } from './_generated/server';
+import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import { requirePlayer } from './users';
 
 export const MAPS_PER_PLAYER = 20;
@@ -66,6 +66,15 @@ export const remove = mutation({
 });
 
 /** Titles and authors only, newest or oldest first, a small page at a time. Open to guests. */
+/** A map's best time and who holds it: the first to reach it, and how many share it. */
+async function fastest(ctx: QueryCtx, bodyId: Id<'mapBodies'>): Promise<{ best: number | null; bestBy: string | null; bestTied: number }> {
+  const top = await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', bodyId)).first();
+  if (!top) return { best: null, bestBy: null, bestTied: 0 };
+  const tied = await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', bodyId).eq('timeMs', top.timeMs)).take(50);
+  const first = tied.reduce((a, b) => (b.achievedAt < a.achievedAt ? b : a), top);
+  return { best: top.timeMs, bestBy: (await ctx.db.get(first.userId))?.nickname ?? '(탈퇴)', bestTied: tied.length };
+}
+
 export const list = query({
   args: { paginationOpts: paginationOptsValidator, order: v.union(v.literal('new'), v.literal('old')) },
   handler: async (ctx, args) => {
@@ -75,7 +84,7 @@ export const list = query({
     const page = await Promise.all(r.page.map(async (m) => ({
       id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, mine: m.ownerId === me,
       author: (await ctx.db.get(m.ownerId))?.nickname ?? '(탈퇴)',
-      best: (await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', m.bodyId)).first())?.timeMs ?? null,
+      ...(await fastest(ctx, m.bodyId)),
     })));
     return { page, isDone: r.isDone, continueCursor: r.continueCursor };
   },

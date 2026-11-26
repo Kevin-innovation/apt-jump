@@ -1,9 +1,9 @@
 import { START_X, type Game, type GameEvent } from './game';
 import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawRoute, drawScaffold, drawTank, drawWarning, powerColor } from './art';
-import { MAGNET_RANGE, POWER_NAMES } from './items';
+import { GLIDE_FALL, MAGNET_RANGE, POWER_NAMES } from './items';
 import { missionText } from './missions';
 import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, SLIDE_TIME, timeRate } from './physics';
-import { districtAt, type District, type DistrictKind } from './progression';
+import { districtAt, LAP_EVENT_NAMES, LAP_LENGTH, type District, type DistrictKind, type LapEvent } from './progression';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
 import { ROAD_DEPTH, type Roof } from './world';
@@ -12,7 +12,7 @@ import { roadCars } from './traffic';
 type Ctx = CanvasRenderingContext2D;
 type RGB = [number, number, number];
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; g: number }
-interface Popup { x: number; y: number; life: number; text: string; color: string }
+interface Popup { x: number; y: number; life: number; text: string; color: string; big?: boolean }
 interface Pair { day: HTMLCanvasElement; night: HTMLCanvasElement }
 interface Layer { pair: Pair; speed: number; base: number }
 type Palette = District['palette'];
@@ -24,6 +24,8 @@ const ROOF_CACHE = 80;
 const KINDS: readonly DistrictKind[] = ['residential', 'construction', 'neon', 'riverside', 'highrise'];
 
 const FONT = '11px Galmuri11, "Malgun Gothic", sans-serif';
+const BIG_FONT = '22px Galmuri11, "Malgun Gothic", sans-serif';
+const FEVER_COLORS = ['#ff7a3d', '#ffd85a', '#7dfff0', '#ff9be6'];
 const HEAD = 54;
 export const RISK_NAMES = { tank: '위험한 길: 물탱크', line: '위험한 길: 빨랫줄', far: '먼 옥상 점프', inside: '창문 돌파' } as const;
 const hex = (h: string): RGB => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -93,6 +95,10 @@ export class Renderer {
   private seen: Roof[] = [];
   /** Passages whose glass has been gone through. */
   private broken = new Set<number>();
+  /** Wires of a hook that pulled the runner up, shown for a moment. */
+  private wires: { x: number; y: number; tx: number; ty: number; life: number }[] = [];
+  /** The dark of a blackout, with holes for the runner's light and the coins. */
+  private shade: HTMLCanvasElement | null = null;
 
   constructor(private el: HTMLCanvasElement) {
     this.g = el.getContext('2d', { alpha: false })!;
@@ -111,6 +117,8 @@ export class Renderer {
     this.el.height = this.H;
     this.el.style.width = `${(this.W * s) / dpr}px`;
     this.el.style.height = `${(this.H * s) / dpr}px`;
+    // One game pixel in CSS pixels: the HUD is sized by it, so zooming the browser out never uncovers more of the city.
+    document.documentElement.style.setProperty('--gp', `${s / dpr}px`);
     this.dropScenery();
   }
 
@@ -569,7 +577,12 @@ export class Renderer {
         this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - up, life: 0, max: 0.3 + Math.random() * 0.35, color: colors[i % colors.length]!, size: Math.random() < 0.4 ? 2 : 1, g: grav });
       }
     };
-    const pop = (x: number, y: number, text: string, color: string) => this.popups.push({ x, y, life: 0, text, color });
+    const pop = (x: number, y: number, text: string, color: string, big = false) => {
+      // The same big news again while it is still up only starts it over.
+      const same = big && this.popups.find((q) => q.big && q.text === text);
+      if (same) same.life = 0;
+      else this.popups.push({ x, y, life: 0, text, color, big });
+    };
     switch (e.type) {
       case 'jump':
         this.squash = -0.1;
@@ -615,6 +628,15 @@ export class Renderer {
       case 'wall': this.shake = 5; burst(12, p.x + 10, p.y - 8, ['#e9dcd0', '#b98a7c'], 110, 20); break;
       case 'fell': this.shake = 6; break;
       case 'comboLost': if (e.combo >= 3) pop(p.x, p.y - 34, '콤보 끊김', '#b7b0d8'); break;
+      case 'comboSaved': this.shake = Math.max(this.shake, 2); burst(18, p.x + 5, p.y - 10, ['#ff6b81', '#fff6e0', '#ffd85a'], 120, 30); pop(p.x - 14, p.y - 40, `콤보 세이브! ${e.combo}콤보 유지`, '#ff8fa3'); break;
+      case 'saveGained': pop(p.x - 8, p.y - 46, `콤보 세이브 +1 (${e.saves}/3)`, '#ff8fa3'); break;
+      case 'comboCash': burst(16, p.x + 5, p.y - 20, ['#ffd85a', '#fff'], 120, 30); pop(p.x - 14, p.y - 82, `콤보 정산 ${e.combo} +${e.points}`, '#ffd85a'); break;
+      case 'fever': this.shake = Math.max(this.shake, 3); burst(36, p.x + 5, p.y - 10, FEVER_COLORS, 170, 50); pop(p.x - 30, p.y - 62, '피버 타임! x2', '#ff7a3d', true); break;
+      case 'lap': burst(40, p.x + 5, p.y - 20, FEVER_COLORS, 180, 60); pop(p.x - 40, p.y - 96, `${e.lap}랩${e.event === 'none' ? '' : ` · ${LAP_EVENT_NAMES[e.event]}`}!`, '#7dfff0', true); pop(p.x - 10, p.y - 70, `랩 보너스 +${e.points}`, '#ffd85a'); break;
+      case 'splash': burst(18, e.x, e.y - 2, ['#5fb7e6', '#bff6ff', '#ffffff'], 120, 70); pop(e.x - 8, e.y - 20, `물보라 +${e.points}`, '#8fd8ff'); break;
+      case 'crumble': this.shake = Math.max(this.shake, 4); burst(20, e.x, e.y, ['#b98a7c', '#e9dcd0', '#6f5a66'], 110, 20); pop(e.x - 10, e.y - 26, '와르르!', '#ff9a7a'); break;
+      case 'rush': if (e.count) { burst(24, p.x + 40, p.y - 10, ['#f5c440', '#fff6c0'], 160, 30); pop(p.x - 10, p.y - 50, `코인 러시! 금화 ${e.count}개`, '#f5c440'); } break;
+      case 'hooked': this.wires.push({ x: e.x, y: e.y, tx: e.tx, ty: e.ty, life: 0 }); burst(10, e.tx, e.ty, ['#d8dbe5', '#fff'], 80, 20); pop(e.x - 8, e.y - 20, '와이어 훅!', '#e6e9f5'); break;
     }
   }
 
@@ -674,6 +696,9 @@ export class Renderer {
         if (p.x > d.x - 220 && p.x < d.rampStart && roadCars(d, p.time).some((c) => c.x - cx > this.W && c.x - p.x < this.W + p.vx * 1.6))
           drawWarning(g, this.W - 14, Math.max(60, Math.min(this.H - 12, Math.round(d.y - cy - 8))), this.t);
       }
+      if (r.vent) this.drawVent(r.vent.x - cx, r.vent.w, r.vent.top - cy, r.y - cy);
+      if (r.puddles) for (const w of r.puddles) this.drawPuddle(Math.round(w.x - cx), Math.round(r.y - cy), w.w, game.splashed.has(w.id));
+      if (r.cracked) this.drawCracks(game, r, x, Math.round(r.y - cy));
       const w = r.route;
       if (w) drawRoute(g, Math.round(w.x - cx), Math.round(r.y - cy), w.rampStart - w.x, w.rampEnd - w.rampStart, w.y - r.y, w.hatch, this.broken.has(w.id) || p.inside === r.id, this.t);
       for (const l of r.lines) {
@@ -717,12 +742,145 @@ export class Renderer {
     }
 
     this.drawPlayer(game, cx, cy, dt, moving);
+    this.drawWires(cx, cy, dt);
+    this.drawWeather(game, cx, cy);
+    if (p.slowTime > 0) { g.fillStyle = 'rgba(80,110,255,.12)'; g.fillRect(0, 0, this.W, this.H); }
+    if (game.feverTime > 0) this.drawFeverFrame(game.feverTime);
     this.drawFx(cx, cy, dt, n);
+  }
+
+  /** How strongly a lap's weather shows: it comes in over the lap's first 40 m and goes in its last 20 m. */
+  private weather(game: Game): { event: LapEvent; k: number } {
+    const event = game.lapEvent;
+    if (event === 'none') return { event, k: 0 };
+    const into = game.distance % LAP_LENGTH;
+    return { event, k: Math.max(0, Math.min(1, into / 40, (LAP_LENGTH - into) / 20)) };
+  }
+
+  private drawWeather(game: Game, cx: number, cy: number): void {
+    const { event, k } = this.weather(game);
+    if (k <= 0) return;
+    const g = this.g, p = game.player;
+    if (event === 'rain') {
+      g.fillStyle = `rgba(20,30,70,${0.2 * k})`; g.fillRect(0, 0, this.W, this.H);
+      g.fillStyle = 'rgba(180,210,255,.55)';
+      const n = Math.round((this.quality === 'low' ? 40 : 90) * k);
+      for (let i = 0; i < n; i++) {
+        const x = (((i * 97.3 - this.t * 140 - cx * 0.3) % (this.W + 40)) + this.W + 40) % (this.W + 40) - 20;
+        const y = (((i * 61.7 + this.t * 420) % (this.H + 20)) + this.H + 20) % (this.H + 20) - 10;
+        g.fillRect(Math.round(x), Math.round(y), 1, 4); g.fillRect(Math.round(x) - 1, Math.round(y) + 4, 1, 2);
+      }
+    } else if (event === 'wind') {
+      g.fillStyle = 'rgba(255,255,255,.35)';
+      for (let i = 0; i < Math.round(14 * k); i++) {
+        const x = (((i * 131 - this.t * 520) % (this.W + 60)) + this.W + 60) % (this.W + 60) - 30;
+        g.fillRect(Math.round(x), Math.round((i * 47) % this.H), 10 + (i % 3) * 4, 1);
+      }
+    } else if (event === 'night') {
+      this.drawShade(game, cx, cy, k, Math.round(p.x - cx + 5), Math.round(p.y - cy - 8));
+    }
+  }
+
+  /** A blackout: dark everywhere but around the runner, with coins, items and enemies still glowing. */
+  private drawShade(game: Game, cx: number, cy: number, k: number, px: number, py: number): void {
+    if (!this.shade || this.shade.width !== this.W || this.shade.height !== this.H) this.shade = canvas(this.W, this.H);
+    const s = ctxOf(this.shade);
+    s.globalCompositeOperation = 'source-over';
+    s.clearRect(0, 0, this.W, this.H);
+    s.fillStyle = `rgba(6,4,24,${0.7 * k})`;
+    s.fillRect(0, 0, this.W, this.H);
+    s.globalCompositeOperation = 'destination-out';
+    const hole = (x: number, y: number, r: number, a: number) => { s.globalAlpha = a; s.beginPath(); s.arc(x, y, r, 0, Math.PI * 2); s.fill(); };
+    hole(px + 30, py, 120, 0.3); hole(px + 22, py, 92, 0.55); hole(px + 14, py, 64, 1);
+    for (const r of game.world.roofs) {
+      if (r.x - cx > this.W + 20 || roofEnd(r) - cx < -20) continue;
+      for (const c of r.coins) if (!c.taken) hole(c.x - cx, c.y - cy, 5, 0.85);
+      for (const w of r.powers) if (!w.taken) hole(w.x - cx, w.y - cy, 10, 0.9);
+      for (const e of r.enemies) if (!game.player.gone.includes(e.id)) { const b = enemyBox(e, game.player.x); hole(b.x - cx + b.w / 2, b.y - cy + b.h / 2, 10, 0.6); }
+    }
+    s.globalAlpha = 1;
+    s.globalCompositeOperation = 'source-over';
+    this.g.drawImage(this.shade, 0, 0);
+  }
+
+  /** Rising air: streaks climbing out of the gap up to where the lift ends, and a row of arrows there. */
+  private drawVent(x: number, w: number, top: number, floor: number): void {
+    const g = this.g, bottom = Math.min(this.H, floor + 120);
+    if (x > this.W || x + w < 0) return;
+    g.fillStyle = 'rgba(220,245,255,.5)';
+    for (let i = 0; i < 6; i++) {
+      const sx = Math.round(x + ((i + 0.5) * w) / 6), span = bottom - top;
+      for (let j = 0; j < 3; j++) {
+        const y = Math.round(bottom - ((this.t * 150 + i * 37 + j * span / 3) % span));
+        g.fillRect(sx, y, 1, 6);
+      }
+    }
+    g.fillStyle = '#bff6ff';
+    const bob = Math.floor(this.t * 4) % 2;
+    for (let ax = x + 6; ax < x + w - 4; ax += 14) {
+      const ay = Math.round(top - 4 - bob);
+      g.fillRect(ax + 2, ay, 1, 1); g.fillRect(ax + 1, ay + 1, 3, 1); g.fillRect(ax, ay + 2, 5, 1);
+    }
+  }
+
+  /** A puddle on a roof: a strip of water with a glint, flattened once splashed. */
+  private drawPuddle(x: number, y: number, w: number, splashed: boolean): void {
+    if (x > this.W || x + w < 0) return;
+    const g = this.g;
+    g.fillStyle = '#2d5f8a'; g.fillRect(x + 2, y - 1, w - 4, 2); g.fillRect(x, y, w, 1);
+    if (splashed) return;
+    g.fillStyle = '#5fb7e6'; g.fillRect(x + 3, y - 1, w - 6, 1);
+    g.fillStyle = '#bff6ff';
+    const ripple = Math.floor(this.t * 6) % 4;
+    g.fillRect(x + 6 + ripple * 6, y - 1, 3, 1); g.fillRect(x + w - 10 - ripple * 3, y - 1, 2, 1);
+  }
+
+  /** Cracks across a roof's top that shake before it gives way, and a broken edge after. */
+  private drawCracks(game: Game, r: Roof, x: number, y: number): void {
+    if (x > this.W || x + r.w < 0) return;
+    const g = this.g, p = game.player, gone = game.crumbled.has(r.id);
+    const warn = !gone && p.ground?.id === r.id && p.groundTime > 0.55 && Math.floor(this.t * 16) % 2 === 0;
+    g.fillStyle = gone ? '#140c2e' : warn ? '#ff5566' : '#2a1c40';
+    for (let cx = x + 18; cx < x + r.w - 12; cx += 34) {
+      g.fillRect(cx, y, 1, 2); g.fillRect(cx + 1, y + 1, 1, 2); g.fillRect(cx + 2, y + 2, 2, 1); g.fillRect(cx - 2, y + 2, 2, 1); g.fillRect(cx - 3, y + 3, 1, 2);
+      if (gone) { g.fillRect(cx - 4, y, 9, 1); g.fillStyle = '#6f5a66'; g.fillRect(cx + 5, y - 2, 2, 2); g.fillStyle = '#140c2e'; }
+    }
+  }
+
+  private drawWires(cx: number, cy: number, dt: number): void {
+    const g = this.g;
+    this.wires = this.wires.filter((w) => (w.life += dt) < 0.5);
+    for (const w of this.wires) {
+      g.globalAlpha = 1 - w.life * 2;
+      g.fillStyle = '#e6e9f5';
+      const steps = 16;
+      for (let i = 0; i <= steps; i++) {
+        const t = i / steps;
+        g.fillRect(Math.round(w.x + (w.tx - w.x) * t - cx), Math.round(w.y + (w.ty - w.y) * t - cy), 1, 1);
+      }
+      g.fillRect(Math.round(w.tx - cx) - 1, Math.round(w.ty - cy) - 1, 3, 3);
+    }
+    g.globalAlpha = 1;
+  }
+
+  /** A fever: a frame of light running round the screen. */
+  private drawFeverFrame(left: number): void {
+    const g = this.g, W = this.W, H = this.H;
+    if (left < 1.5 && Math.floor(this.t * 10) % 2) return;
+    const seg = 12, phase = Math.floor(this.t * 20);
+    for (let i = 0; i * seg < W; i++) {
+      g.fillStyle = FEVER_COLORS[(i + phase) % FEVER_COLORS.length]!;
+      g.fillRect(i * seg, 0, seg, 2); g.fillRect(W - (i + 1) * seg, H - 2, seg, 2);
+    }
+    for (let i = 0; i * seg < H; i++) {
+      g.fillStyle = FEVER_COLORS[(i + phase + 2) % FEVER_COLORS.length]!;
+      g.fillRect(0, H - (i + 1) * seg, 2, seg); g.fillRect(W - 2, i * seg, 2, seg);
+    }
   }
 
   private drawPlayer(game: Game, cx: number, cy: number, dt: number, moving: boolean): void {
     const g = this.g, p = game.player;
-    const boosted = p.boost >= 1 || p.boostTime > 0;
+    const boosted = p.boost >= 1 || p.boostTime > 0 || game.feverTime > 0;
     if (moving) {
       this.trail.push({ x: p.x, y: p.y });
       if (this.trail.length > 10) this.trail.shift();
@@ -750,6 +908,13 @@ export class Renderer {
     const px = Math.round(p.x - cx) - (low ? 5 : 2 + Math.round((w - 14) / 2)), py = Math.round(p.y - cy - h + 1);
     if (p.ground) { g.fillStyle = 'rgba(10,6,30,.35)'; g.fillRect(px + 1, Math.round(p.y - cy), low ? w - 2 : 12, 1); }
     g.drawImage(s, px, py, w, h);
+    // A glider canopy over the head while drifting down on it.
+    if (p.glideTime > 0 && !p.ground && Math.abs(p.vy - GLIDE_FALL) < 0.5) {
+      g.fillStyle = '#1a1230'; g.fillRect(px - 5, py - 10, 24, 4); g.fillRect(px - 1, py - 12, 16, 2);
+      g.fillStyle = '#6ec8ff'; g.fillRect(px - 4, py - 9, 22, 2); g.fillRect(px, py - 11, 14, 2);
+      g.fillStyle = '#fff6e0'; g.fillRect(px + 4, py - 11, 6, 1); g.fillRect(px + 2, py - 9, 2, 2); g.fillRect(px + 10, py - 9, 2, 2);
+      g.fillStyle = '#d8dbe5'; g.fillRect(px - 2, py - 7, 1, 4); g.fillRect(px + 15, py - 7, 1, 4);
+    }
     if (p.vy < 0 && (p.jumping || p.holdTime >= HOLD_MAX)) {
       const fill = Math.min(1, p.holdTime / HOLD_MAX);
       g.fillStyle = '#140c2e'; g.fillRect(px - 5, py - 9, 25, 5);
@@ -791,6 +956,8 @@ export class Renderer {
     if (shown(game.magnetTime)) { const q = (this.t * 1.5) % 1; g.globalAlpha = 0.5 * q; ring(MAGNET_RANGE * (1 - q) * 0.6 + 8, '#ff5d6c', this.quality === 'low' ? 10 : 22, 0.5); g.globalAlpha = 1; }
     if (shown(game.doubleTime)) ring(10, '#ff9be6', 4, -5);
     if (shown(game.keepTime)) ring(17, '#ffb84a', 3, 3);
+    if (shown(p.slowTime)) ring(15, '#b8a8ff', 6, 0.6);
+    if (p.hook) { g.fillStyle = '#d8dbe5'; g.fillRect(px + 12, py - 3, 1, 4); g.fillRect(px + 11, py, 3, 1); }
     for (let i = 0; i < p.airBonus; i++) { g.fillStyle = '#7dfff0'; g.fillRect(px + 3 + i * 5, py + 18, 3, 2); }
   }
 
@@ -815,15 +982,18 @@ export class Renderer {
     kept = 0;
     for (let i = 0; i < popups.length; i++) {
       const q = popups[i]!;
-      if ((q.life += dt) >= 0.9) continue;
+      if ((q.life += dt) >= (q.big ? 1.5 : 0.9)) continue;
       popups[kept++] = q;
     }
     popups.length = kept;
-    g.font = FONT;
     g.textBaseline = 'alphabetic';
+    let bigs = 0;
     for (const q of this.popups) {
-      const x = Math.round(q.x - cx - 8), y = Math.round(q.y - cy - q.life * 24);
-      g.globalAlpha = Math.min(1, (0.9 - q.life) * 4);
+      g.font = q.big ? BIG_FONT : FONT;
+      // Big news stands in the middle of the screen, stacked when it comes together; the rest floats where it happened.
+      const x = q.big ? Math.round((this.W - g.measureText(q.text).width) / 2) : Math.round(q.x - cx - 8);
+      const y = q.big ? Math.round(this.H * 0.42 + 26 * bigs++ - q.life * 10) : Math.round(q.y - cy - q.life * 24);
+      g.globalAlpha = Math.min(1, ((q.big ? 1.5 : 0.9) - q.life) * 4);
       g.fillStyle = '#1a1230';
       for (const [a, b] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]] as const) g.fillText(q.text, x + a, y + b);
       g.fillStyle = q.color;

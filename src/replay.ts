@@ -1,11 +1,28 @@
 import type { VerifiedRunStats } from './achievements';
 import { Game } from './game';
+import { SEGMENT, World } from './world';
 import { STEP, type JumpInput } from './physics';
 
 /** Raise whenever a change makes an old replay play differently. */
-export const SIM_VERSION = 6;
+export const SIM_VERSION = 7;
 export const MAX_STEPS = Math.round((30 * 60) / STEP);
 export const MAX_REPLAY = 120_000;
+/**
+ * A ranked city's stretch seeds come from the server as the run goes: each one some seconds before even the fastest
+ * possible runner could need it. Released seeds after `elapsedMs` of a run.
+ */
+export const SEGMENT_SEEDS = 330;
+export const RELEASE_LEAD = 15;
+/** Faster than any runner moves on screen: top pace, full boost and the speed item together. */
+export const RELEASE_SPEED = 760;
+export function releasedSeeds(elapsedMs: number): number {
+  return Math.max(1, Math.min(SEGMENT_SEEDS, Math.floor((Math.max(0, elapsedMs) / 1000 + RELEASE_LEAD) * RELEASE_SPEED / SEGMENT) + 1));
+}
+/** How much longer than the run itself it may take to hand it in: pauses and waits, not time to plan ahead. */
+export const PAUSE_ALLOWANCE_MS = 60_000;
+export const PAUSE_SHARE = 0.05;
+export function pauseAllowanceMs(gameMs: number): number { return PAUSE_ALLOWANCE_MS + gameMs * PAUSE_SHARE; }
+
 /** More presses a second than a person makes, averaged over a run. */
 const MAX_PRESS_RATE = 14;
 
@@ -60,12 +77,12 @@ export function readReplay(text: string): { ok: true; runs: Runs; steps: number 
   return { ok: true, runs, steps };
 }
 
-/** Plays a recorded run again and says what it really scored. */
-export function verifyReplay(seed: number, text: string): Verdict {
+/** Plays a recorded run again and says what it really scored: on one seed's city, or on the server's stretch seeds. */
+export function verifyReplay(seed: number | readonly number[], text: string): Verdict {
   const read = readReplay(text);
   if (!read.ok) return read;
   const { runs, steps } = read;
-  const g = new Game(seed);
+  const g = new Game(typeof seed === 'number' ? seed : (k) => seed[k] ?? null);
   for (const [code, count] of runs) {
     const j = inputOf(code);
     for (let i = 0; i < count; i++) {
@@ -75,6 +92,8 @@ export function verifyReplay(seed: number, text: string): Verdict {
     }
   }
   if (!g.dead) return { ok: false, reason: 'unfinished' };
+  // A city that ran past the seeds it was given isn't the one that was issued.
+  if (g.world instanceof World && g.world.fallback) return { ok: false, reason: 'format' };
   const score = g.score, distance = Math.floor(g.distance);
   const stats: VerifiedRunStats = { score, distance, slides: g.slides, stomps: g.stomps, maxCombo: g.maxCombo, perfects: g.perfects };
   return { ok: true, score, distance, steps, stats };

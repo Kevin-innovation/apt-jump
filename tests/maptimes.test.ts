@@ -52,7 +52,7 @@ describe('map times', () => {
     await expect(b.as.action(api.maptimes.finish, { runId, replay: run.text })).rejects.toThrow('이미 제출');
     expect((await b.as.query(api.maptimes.board, { mapId }))!.mine).toEqual({ rank: 1, timeMs: run.ms });
     expect((await t.query(api.maptimes.board, { mapId }))!.top).toEqual([{ rank: 1, nickname: '비이', timeMs: run.ms, mine: false }]);
-    expect((await a.as.query(api.maps.list, { order: 'new', paginationOpts: { numItems: 10, cursor: null } })).page[0]!.best).toBe(run.ms);
+    expect((await a.as.query(api.maps.list, { order: 'new', paginationOpts: { numItems: 10, cursor: null } })).page[0]).toMatchObject({ best: run.ms, bestTied: 1 });
   });
 
   it('refuses unfinished, too quick and suspended submissions', async () => {

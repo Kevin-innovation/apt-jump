@@ -14,7 +14,8 @@ import { AdminScreen } from './online/admin';
 import { OnlineScreens } from './online/screens';
 import { errorText, onlineUrl, Refusal } from './online/types';
 import { timeOf, timeText } from './mapreplay';
-import { Recorder } from './replay';
+import { pauseAllowanceMs, Recorder } from './replay';
+import { SEGMENT } from './world';
 import { STEP, type JumpInput } from './physics';
 import { Renderer } from './render';
 import { SaveFile } from './storage';
@@ -55,9 +56,12 @@ let returnTo: ScreenName = 'title';
 let heldAtPause = false;
 let assistHold = false;
 let lastCount = 0;
+let warnTick = -1;
 let leaving = false;
 /** The ranked run being played, when the server issued one. */
 let ranked: { runId: string; recorder: Recorder; map: boolean } | null = null;
+/** A ranked city's stretch seeds known so far, fetched as the run goes; and when the run began, for the pause allowance. */
+let city: { runId: string; seeds: number[]; asking: boolean; lastAsk: number; startedAt: number } | null = null;
 /** Why this run counts for no ranking, shown while it starts (and again on the result). */
 let unrankedNote = '';
 let starting = 0;
@@ -78,6 +82,7 @@ function syncEntry(): void {
       el.title = detail;
     }
   });
+  ui.versionNews(release ? '업데이트 적용 · 주간 기록 유지' : '');
   // The same two slots either way: sign up / log in, or my account / log out. The ranking has its own button.
   const signedIn = account?.status === 'in';
   const slot = (id: string, act: string, text: string) => { const b = document.getElementById(id)!; b.dataset.act = act; b.textContent = text; };
@@ -109,7 +114,7 @@ function startDemo(): void {
 
 function title(): void {
   starting++;
-  ranked = null;
+  ranked = null; city = null;
   setPhase('title');
   startDemo();
   audio.stop();
@@ -198,7 +203,7 @@ function startRun(): void {
 }
 
 /** What the server issued: a city's seed, or a published map as it is now. */
-interface Issued { runId: string; seed?: number; map?: GameMap }
+interface Issued { runId: string; seed?: number; seeds?: number[]; map?: GameMap }
 
 function begin(run: Issued | null, why: string): void {
   const away = phase === 'issuing' && awayAtStart;
@@ -208,7 +213,11 @@ function begin(run: Issued | null, why: string): void {
   if (mode.kind === 'map' && run?.map) mode = { ...mode, map: run.map };
   ui.onlineNote(why);
   unrankedNote = why;
-  game = mode.kind === 'map' ? new Game(buildCourse(mode.map)) : new Game(run?.seed !== undefined ? run.seed : testing ? TEST_SEED : Math.floor(Math.random() * 2 ** 31));
+  const c = run?.seeds ? { runId: run.runId, seeds: [...run.seeds], asking: false, lastAsk: 0, startedAt: performance.now() } : null;
+  city = c;
+  game = mode.kind === 'map' ? new Game(buildCourse(mode.map))
+    : c ? new Game((k) => c.seeds[k] ?? null)
+    : new Game(run?.seed !== undefined ? run.seed : testing ? TEST_SEED : Math.floor(Math.random() * 2 ** 31));
   ui.homeLabel(mode.kind === 'endless' ? '타이틀로' : mode.from === 'editor' ? '편집기로' : '맵 목록으로');
   view.reset();
   acc = 0;
@@ -221,6 +230,30 @@ function begin(run: Issued | null, why: string): void {
   setPhase('playing');
   audio.start();
   if (away) pause();
+}
+
+/** Asks for the next stretch seeds well before the city needs them. */
+function feedSeeds(): void {
+  const c = city, online = onlineUi.online;
+  if (!c || !ranked || !online || c.asking || c.seeds.length * SEGMENT > game.player.x + 14000) return;
+  const now = performance.now();
+  if (now - c.lastAsk < 1500) return;
+  c.asking = true; c.lastAsk = now;
+  online.seeds(c.runId).then((s) => { if (s.length > c.seeds.length) c.seeds = s; }, () => {}).finally(() => { c.asking = false; });
+}
+
+/** Seconds of pausing left before the run can't be ranked any more; null when it isn't ranked. */
+function pauseLeft(): number | null {
+  if (!city || !ranked) return null;
+  const used = (performance.now() - city.startedAt) / 1000 - game.time;
+  return pauseAllowanceMs(game.time * 1000) / 1000 - used;
+}
+
+/** Ends ranking for this run, saying why, while it goes on. */
+function unrank(why: string): void {
+  ranked = null; city = null;
+  unrankedNote = why;
+  ui.onlineNote(why);
 }
 
 function pause(): void {
@@ -278,7 +311,7 @@ function act(a: Act): void {
       setPhase('editor');
       openMaps();
       break;
-    case 'settings': case 'credits': case 'items': returnTo = ui.screen ?? 'title'; ui.show(a); break;
+    case 'settings': case 'credits': case 'items': case 'notes': returnTo = ui.screen ?? 'title'; ui.show(a); break;
     case 'back': ui.show(returnTo); break;
     case 'mute': s.muted = !s.muted; break;
     case 'music': s.music = (s.music + 1) % 4; break;
@@ -375,7 +408,7 @@ input.onEscape = () => {
 input.onPause = () => {
   if (updating) return;
   if (phase === 'playing' || phase === 'countdown') pause();
-  else if (ui.screen === 'settings' || ui.screen === 'credits' || ui.screen === 'items') act('back');
+  else if (ui.screen === 'settings' || ui.screen === 'credits' || ui.screen === 'items' || ui.screen === 'notes') act('back');
   else if (phase === 'paused') act('resume');
   else if (phase === 'title' && ui.screen === 'title') act('start');
   else if (phase === 'result') act('restart');
@@ -417,6 +450,15 @@ function onEvent(e: GameEvent): void {
     case 'mission': audio.play('mission'); break;
     case 'speedup': audio.play('up'); break;
     case 'roadExit': audio.play('risk'); break;
+    case 'fever': audio.play('fever'); input.rumble(80, 0.4); break;
+    case 'comboSaved': audio.play('save'); input.rumble(90, 0.5); break;
+    case 'saveGained': audio.play('save'); break;
+    case 'comboCash': audio.play('mission'); break;
+    case 'lap': audio.play('lap'); break;
+    case 'splash': audio.play('splash'); break;
+    case 'crumble': audio.play('crumble'); input.rumble(140, 0.6); break;
+    case 'rush': audio.play('rush'); break;
+    case 'hooked': audio.play('hook'); input.rumble(100, 0.5); break;
     case 'goal':
       audio.stop();
       audio.play('goal');
@@ -470,9 +512,19 @@ function frame(now: number): void {
       break;
     case 'playing':
       simulate(dt, runInput);
+      feedSeeds();
+      // A tick each half second while a combo's clock is about to run out.
+      if (ui.danger(game) && Math.floor(game.time * 2) !== warnTick) { warnTick = Math.floor(game.time * 2); audio.play('warn'); }
+      if (city && 'fallback' in game.world && game.world.fallback) unrank('연결이 늦어 이번 판은 순위에 오르지 않습니다.');
       if (game.distance > (unrankedNote ? 150 : 30)) ui.hint(false);
       ui.update(game, input.held || assistHold);
       break;
+    case 'paused': {
+      const left = pauseLeft();
+      if (left !== null && left <= 0) unrank('일시정지가 길어 이번 판은 순위에 오르지 않습니다.');
+      ui.pauseNote(left === null ? (unrankedNote && mode.kind === 'endless' ? unrankedNote : '') : `순위 기록 중 · 일시정지 여유 ${Math.ceil(left)}초`);
+      break;
+    }
     case 'countdown': {
       const left = 3 - inPhase / 600;
       const n = Math.ceil(left);

@@ -15,6 +15,8 @@ export default defineSchema({
   // One issued run. It can be handed in once, by the player it was issued to.
   runs: defineTable({
     userId: v.id('users'), seed: v.number(), version: v.number(), release: v.optional(v.string()), startedAt: v.number(),
+    // The city's stretch seeds, handed out as the run goes (seed is the first). Absent on runs from before them.
+    seeds: v.optional(v.array(v.number())),
     status: v.union(v.literal('open'), v.literal('claimed'), v.literal('done'), v.literal('rejected')),
   }).index('by_user_started', ['userId', 'startedAt']),
 

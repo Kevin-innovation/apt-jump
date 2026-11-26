@@ -125,7 +125,7 @@ nav.row { flex-flow: row wrap; justify-content: center; width: auto; }
   .tie-board .tie-head::before, .tie-board .tie-head::after { animation: tie-blink 1.2s steps(2, jump-none) infinite; }
 }
 @keyframes tie-blink { 50% { opacity: .2; } }
-#rank-msg:empty, #rank-mine:empty, #r-online:empty, #rank-reset:empty { display: none; }
+#rank-msg:empty, #rank-mine:empty, #r-online:empty, #rank-reset:empty, #pause-note:empty { display: none; }
 .card.card button.publish { background: #1f7f86; border-color: #7dfff0; }
 .cards { display: grid; gap: 8px; width: min(760px, 100%); }
 .card { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; padding: 8px 10px; background: #2c2052; border: 2px solid #5a4a90; text-align: left; }
@@ -298,3 +298,72 @@ body:has(.screen:not([hidden])) #district { display: none; }
 }
 /* A long result keeps its buttons on the first screen. */
 #result > nav { position: sticky; bottom: 0; z-index: 4; padding-block: 6px; background: #140c2ef2; }
+
+/* The version on the title: a plaque that opens the patch notes. */
+.version-chip {
+  display: inline-flex; flex-wrap: wrap; justify-content: center; align-items: baseline; gap: .25em .7em; max-width: min(92vw, 640px);
+  padding: .4em 1em; font-size: .85em; color: #ffd85a; background: #2c2052e6; border: 2px solid #ffd85a;
+  box-shadow: 0 0 0 2px #140c2e;
+}
+.version-chip b { color: #7dfff0; }
+.version-chip em { font-style: normal; color: #ff9be6; }
+.version-chip span:empty { display: none; }
+.version-chip:hover, .version-chip:focus-visible { outline: 3px solid #7dfff0; outline-offset: 2px; }
+#notes { justify-content: flex-start; background: #140c2ef2; }
+#notes-list { display: grid; gap: 10px; width: min(760px, 100%); text-align: left; }
+.note { padding: 10px 14px; background: #2c2052; border: 2px solid #5a4a90; }
+.note.latest { border-color: #ffd85a; box-shadow: 0 0 0 2px #140c2e, 0 0 12px #ffd85a44; }
+.note h3 { display: inline; margin-right: .6em; }
+.note small { color: #b9afcf; white-space: nowrap; }
+.note ul { margin: .35em 0 0; padding-left: 1.1em; font-size: .85em; line-height: 1.5; }
+.note li { margin: .15em 0; }
+.note li::marker { color: #ff7d63; }
+
+/* The combo card: count and multiplier, its clock, the saves that keep it, and the fever gauge under them. */
+#combo { display: grid; justify-items: center; gap: 4px; width: max-content; margin: 0 auto; padding: 4px 12px 6px; background: #140c2ea6; border: 2px solid #ffd85a44; }
+#combo .combo-line { display: flex; align-items: baseline; gap: .35em; }
+#combo .bar { margin: 0; }
+#combo.fever-on { border-color: #ff7a3d; box-shadow: 0 0 0 2px #140c2e, 0 0 14px #ff7a3d88; }
+#saves { display: inline-flex; gap: 3px; margin-left: .3em; align-self: center; }
+/* A pixel heart for each save held. */
+#saves i { width: 10px; height: 9px; background: #3a2c4a; clip-path: polygon(0 22%, 20% 0, 40% 0, 50% 22%, 60% 0, 80% 0, 100% 22%, 100% 55%, 50% 100%, 0 55%); }
+#saves i.on { background: #ff6b81; }
+#combo-timer.danger { box-shadow: 0 0 0 2px #ff5566; }
+#combo-timer.danger i { background: #ff5566; }
+#fever { display: flex; align-items: center; gap: .45em; font-size: .72em; color: #ffb38a; }
+#fever .bar { width: 6.5em; height: 5px; }
+#fever .bar i { background: linear-gradient(90deg, #ff7a3d, #ffd85a); }
+#fever.on { color: #ffd85a; }
+#fever.on .bar i { background: repeating-linear-gradient(90deg, #ff7a3d 0 4px, #ffd85a 4px 8px, #7dfff0 8px 12px, #ff9be6 12px 16px); }
+#district-event { color: #7dfff0; }
+#district-event[data-event='wind'] { color: #bff6ff; }
+#district-event[data-event='night'] { color: #c9b8ff; }
+#district-event[data-event='rain'] { color: #8fd8ff; }
+#district-event[data-event='crumble'] { color: #ff9a7a; }
+@media (prefers-reduced-motion: no-preference) {
+  #combo-timer.danger { animation: combo-danger .3s steps(2, jump-none) infinite; }
+  #combo.fever-on #combo-x { animation: combo-danger .4s steps(2, jump-none) infinite; }
+}
+@keyframes combo-danger { 50% { opacity: .35; } }
+#rule-list { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; width: min(760px, 100%); }
+#rule-list p { padding: 12px 14px; background: #2c2052; border: 2px solid #5a4a90; text-align: left; font-size: clamp(13px, 2.7vw, 17px); line-height: 1.6; }
+#rule-list b { display: block; margin-bottom: 2px; }
+@media (max-width: 560px) { #rule-list { grid-template-columns: 1fr; } }
+
+/*
+ * The HUD is sized in game pixels (--gp, set by the renderer), never in plain CSS pixels: browser zoom changes how many
+ * CSS pixels the screen has, so fixed sizes shrank on zooming out and showed more of the city under them. 14px stays
+ * the floor, so zooming in still makes it bigger to read.
+ */
+#hud, #hint { --u: max(14px, calc(var(--gp, 4px) * 5.5)); }
+#jump-meter { width: min(calc(var(--u) * 11), 54vw); font-size: calc(var(--u) * .64); }
+#jump-meter small { font-size: .8em; }
+#jump-pressure { height: 1.15em; }
+#district { font-size: calc(var(--u) * .62); }
+@media (min-width: 560px) { #district { font-size: calc(var(--u) * .64); } }
+#route-note { font-size: calc(var(--u) * .6); }
+.icons button { width: calc(var(--u) * 2); height: calc(var(--u) * 2); padding: calc(var(--u) * .5); }
+#effects canvas.pic { width: calc(var(--u) * 1.3); height: calc(var(--u) * 1.3); }
+#btn-slide { --u: max(14px, calc(var(--gp, 4px) * 5.5)); width: calc(var(--u) * 2.9); height: calc(var(--u) * 2.9); }
+#hint { bottom: calc(var(--u) * 5); }
+#jump-meter { bottom: max(calc(var(--u) * 1), env(safe-area-inset-bottom)); }
