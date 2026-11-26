@@ -261,9 +261,11 @@ body:has(.screen:not([hidden])) #district { display: none; }
 #btn-slide b { font-size: 24px; color: #7dfff0; }
 #btn-slide small { font-size: 10px; white-space: nowrap; }
 #btn-slide:active { background: #1f5f66; }
-#achievements { justify-content: flex-start; gap: 8px; background: #140c2ee6; overflow-x: hidden; }
+#achievements { justify-content: flex-start; gap: 8px; background: #140c2ee6; overflow: hidden; }
 #achievements > * { flex-shrink: 0; }
-#achievement-view { width: min(960px, 100%); }
+/* The view fills what the header leaves; it lays its own cards out in that space. */
+#achievements > #achievement-view { width: min(960px, 100%); flex: 1 1 0; min-height: 0; }
+#achievements .screen-top { width: min(960px, 100%); }
 #route-note { width: max-content; max-width: 44vw; margin: 0 auto 4px; padding: 3px 8px; background: #140c2ed9; border: 1px solid #7dfff0; color: #7dfff0; font: 13px/1.4 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; text-shadow: none; text-align: center; word-break: keep-all; text-wrap: balance; }
 /* Narrow screens: score and gauges share the top row; notes, mission and combo get the whole width under it. */
 #hud .score { white-space: nowrap; }

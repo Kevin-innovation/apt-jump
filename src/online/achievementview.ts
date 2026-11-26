@@ -1,5 +1,5 @@
 import './achievementview.css';
-import { ACHIEVEMENTS, TITLES } from '../achievements';
+import { ACHIEVEMENTS, TITLES, type AchievementStat } from '../achievements';
 import { RARITY, titleClasses, titleLook } from '../title-style';
 
 export interface AchievementCatalog {
@@ -28,6 +28,11 @@ type CatalogAchievement = AchievementCatalog['achievements'][number];
 type CatalogTitle = AchievementCatalog['titles'][number];
 type AchievementFilter = 'all' | 'locked' | 'unlocked';
 type AchievementTab = 'achievements' | 'titles';
+/** The category row has this many slots on either tab, so its buttons never change size or place. */
+const CATEGORY_SLOTS = 8;
+const STAT_NAMES: Record<AchievementStat, string> = {
+  runs: '달리기', score: '점수', distance: '거리', slides: '슬라이드', stomps: '밟기', maxCombo: '콤보', perfects: '퍼펙트',
+};
 
 const el = (tag: string, cls = '', text = ''): HTMLElement => {
   const node = document.createElement(tag);
@@ -77,7 +82,9 @@ export class AchievementView {
   private pending = false;
   private filter: AchievementFilter = 'all';
   private titleFilter: AchievementFilter = 'all';
-  /** 0 is every rarity, 1 to 6 one of them. */
+  /** The achievements' category: every stat, or one. */
+  private stat: AchievementStat | 'all' = 'all';
+  /** The titles' category: 0 is every rarity, 1 to 6 one of them. */
   private rarity = 0;
   private tab: AchievementTab = 'achievements';
   private page = 0;
@@ -124,6 +131,7 @@ export class AchievementView {
     this.pending = false;
     this.filter = 'all';
     this.titleFilter = 'all';
+    this.stat = 'all';
     this.rarity = 0;
     this.tab = 'achievements';
     this.page = 0;
@@ -163,13 +171,11 @@ export class AchievementView {
     }
   }
 
-  /** How many cards a page holds: what fits the first screen at this size. */
-  private layout(cardHeight: number): { cols: number; rows: number } {
-    const w = window.innerWidth, h = window.innerHeight;
-    const cols = w >= 960 ? 3 : w >= 620 ? 2 : 1;
-    // Everything on the screen that isn't a card; on a phone the titles' rarity picker takes a line of its own.
-    const around = w >= 620 ? 200 : this.tab === 'titles' ? 306 : 262;
-    const rows = Math.max(1, Math.min(3, Math.floor((h - around + 8) / (cardHeight + 8))));
+  /** How many cards a page holds: as many rows as fit the space the list is given, measured. */
+  private layout(list: HTMLElement, cardHeight: number): { cols: number; rows: number } {
+    const w = this.root.clientWidth || window.innerWidth;
+    const cols = w >= 900 ? 3 : w >= 560 ? 2 : 1;
+    const rows = Math.max(1, Math.floor((list.clientHeight + 8) / (cardHeight + 8)));
     return { cols, rows };
   }
 
@@ -185,7 +191,7 @@ export class AchievementView {
       return;
     }
     const open = this.detail === null ? undefined : data.titles.find((t) => t.id === this.detail);
-    if (open) { this.root.append(...this.requirementPages(open, data)); return; }
+    if (open) { this.requirementPages(open, data); return; }
 
     const summary = el('div', 'achievement-summary');
     summary.append(
@@ -198,38 +204,41 @@ export class AchievementView {
       : !this.callbacks.signedIn() ? el('p', 'achievement-login', '로그인하면 진행 상황이 보여요.')
         : el('p', 'achievement-equipped', `장착 칭호: ${equippedName}`);
     status.setAttribute('role', 'status');
-    const bar = el('div', 'achievement-bar');
-    bar.append(this.tabBar(data));
-    bar.append(this.filterBar());
-    if (this.tab === 'titles') bar.append(this.rarityPicker(data));
-    this.root.append(summary, status, bar);
+    // Tabs, then the category, then all / in progress / earned: the same rows in the same places on either tab.
+    const info = el('div', 'achievement-info');
+    info.append(summary, status);
+    this.root.append(this.tabBar(data), this.categoryBar(data), this.filterBar(), info);
 
+    const done = (on: boolean) => (f: AchievementFilter) => f === 'all' || (f === 'unlocked' ? on : !on);
     if (this.tab === 'achievements') {
-      const shown = data.achievements.filter((a) =>
-        this.filter === 'all' || (this.filter === 'unlocked' ? a.unlocked : !a.unlocked));
-      this.root.append(...this.paged('achievement-cards', 118, shown, (a) => this.achievementCard(a, data.participants), '해당하는 도전과제가 없어요.'));
+      const shown = data.achievements.filter((a) => done(a.unlocked)(this.filter)
+        && (this.stat === 'all' || ACHIEVEMENT_BY_ID.get(a.id)?.stat === this.stat));
+      this.paged('achievement-cards', 118, shown, (a) => this.achievementCard(a, data.participants), '해당하는 도전과제가 없어요.');
     } else {
-      const shown = data.titles.filter((t) =>
-        (this.titleFilter === 'all' || (this.titleFilter === 'unlocked' ? t.unlocked : !t.unlocked))
+      const shown = data.titles.filter((t) => done(t.unlocked)(this.titleFilter)
         && (!this.rarity || titleLook(t.id)?.rank === this.rarity));
-      this.root.append(...this.paged('achievement-titles', 146, shown, (t) => this.titleCard(t, data), '해당하는 칭호가 없어요.'));
+      this.paged('achievement-titles', 130, shown, (t) => this.titleCard(t, data), '해당하는 칭호가 없어요.');
     }
   }
 
-  /** One page of cards and the way to the others. */
-  private paged<T>(cls: string, cardHeight: number, items: readonly T[], card: (item: T) => HTMLElement, none: string): HTMLElement[] {
-    const { cols, rows } = this.layout(cardHeight);
-    const per = cols * rows, pages = Math.max(1, Math.ceil(items.length / per));
-    this.page = Math.max(0, Math.min(pages - 1, this.page));
+  /**
+   * One page of cards and the way to the others. The list takes the space left between the rows above and the
+   * pager, which always sits at the bottom; how many cards fit is measured there.
+   */
+  private paged<T>(cls: string, cardHeight: number, items: readonly T[], card: (item: T) => HTMLElement, none: string): void {
     const list = el('div', `${cls} achievement-page${this.turn ? (this.turn > 0 ? ' from-right' : ' from-left') : ''}`);
     this.turn = 0;
+    // The real pager goes in first, so the space measured for cards is what it leaves.
+    const pager = this.pager(0, 1);
+    this.root.append(list, pager);
+    const { cols, rows } = this.layout(list, cardHeight);
+    const per = cols * rows, pages = Math.max(1, Math.ceil(items.length / per));
+    this.page = Math.max(0, Math.min(pages - 1, this.page));
     list.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
     list.style.gridAutoRows = `${cardHeight}px`;
-    // A short last page keeps the pager where it was.
-    list.style.minHeight = `${Math.min(rows, Math.ceil(items.length / cols) || 1) * (cardHeight + 8) - 8}px`;
     if (!items.length) list.append(el('p', 'achievement-empty', none));
     for (const item of items.slice(this.page * per, (this.page + 1) * per)) list.append(card(item));
-    return [list, this.pager(this.page, pages)];
+    pager.replaceWith(this.pager(this.page, pages));
   }
 
   private pager(page: number, pages: number): HTMLElement {
@@ -258,7 +267,7 @@ export class AchievementView {
     const bar = el('div', 'achievement-tabs');
     bar.setAttribute('role', 'tablist');
     const tabs: { key: AchievementTab; label: string }[] = [
-      { key: 'achievements', label: `도전과제 ${data.achievements.length}` },
+      { key: 'achievements', label: `도전과제 ${data.achievements.filter((a) => a.unlocked).length}/${data.achievements.length}` },
       { key: 'titles', label: `칭호 ${data.titles.filter((t) => t.unlocked).length}/${data.titles.length}` },
     ];
     for (const tab of tabs) {
@@ -280,8 +289,8 @@ export class AchievementView {
     const filters = el('div', 'achievement-filters');
     const choices: { key: AchievementFilter; label: string }[] = [
       { key: 'all', label: '전체' },
-      { key: 'locked', label: titles ? '미해금' : '진행 중' },
-      { key: 'unlocked', label: titles ? '획득' : '획득 완료' },
+      { key: 'locked', label: '진행 중' },
+      { key: 'unlocked', label: '획득 완료' },
     ];
     for (const choice of choices) {
       const control = button('achievement-filter', choice.label);
@@ -297,26 +306,39 @@ export class AchievementView {
     return filters;
   }
 
-  /** One rarity at a time, each with how many of it are earned. */
-  private rarityPicker(data: AchievementCatalog): HTMLElement {
-    const label = el('label', 'achievement-rarity-pick');
-    const select = document.createElement('select');
-    select.setAttribute('aria-label', '칭호 등급');
-    select.disabled = this.pending;
-    const count = (rank: number) => {
-      const of = data.titles.filter((t) => titleLook(t.id)?.rank === rank);
-      return `${of.filter((t) => t.unlocked).length}/${of.length}`;
-    };
-    select.append(new Option('모든 등급', '0'), ...RARITY.map((name, i) => new Option(`${name} ${count(i + 1)}`, String(i + 1))));
-    select.value = String(this.rarity);
-    select.addEventListener('change', () => {
-      this.rarity = Number(select.value);
-      this.page = 0;
-      this.render();
-      this.root.querySelector<HTMLSelectElement>('.achievement-rarity-pick select')?.focus({ preventScroll: true });
-    });
-    label.append(select);
-    return label;
+  /**
+   * The category: a stat for achievements, a rarity for titles. Always CATEGORY_SLOTS equal slots, empty ones at
+   * the end, so switching tabs moves nothing. Each shows how many of it are earned.
+   */
+  private categoryBar(data: AchievementCatalog): HTMLElement {
+    const bar = el('div', 'achievement-categories');
+    bar.setAttribute('role', 'group');
+    bar.setAttribute('aria-label', this.tab === 'titles' ? '칭호 등급' : '도전과제 분류');
+    const choices: { label: string; count: string; on: boolean; pick: () => void }[] = [];
+    const tally = <T extends { unlocked: boolean }>(of: T[]) => `${of.filter((x) => x.unlocked).length}/${of.length}`;
+    if (this.tab === 'titles') {
+      choices.push({ label: '전체', count: tally(data.titles), on: this.rarity === 0, pick: () => { this.rarity = 0; } });
+      RARITY.forEach((name, i) => choices.push({
+        label: name, count: tally(data.titles.filter((t) => titleLook(t.id)?.rank === i + 1)),
+        on: this.rarity === i + 1, pick: () => { this.rarity = i + 1; },
+      }));
+    } else {
+      choices.push({ label: '전체', count: tally(data.achievements), on: this.stat === 'all', pick: () => { this.stat = 'all'; } });
+      for (const stat of Object.keys(STAT_NAMES) as AchievementStat[]) choices.push({
+        label: STAT_NAMES[stat], count: tally(data.achievements.filter((a) => ACHIEVEMENT_BY_ID.get(a.id)?.stat === stat)),
+        on: this.stat === stat, pick: () => { this.stat = stat; },
+      });
+    }
+    for (const c of choices) {
+      const control = button(`achievement-category${this.tab === 'titles' && c.label !== '전체' ? ` rarity-${RARITY.indexOf(c.label as (typeof RARITY)[number]) + 1}` : ''}`, '');
+      control.append(el('b', '', c.label), el('small', '', c.count));
+      control.setAttribute('aria-pressed', String(c.on));
+      control.disabled = this.pending;
+      control.addEventListener('click', () => { c.pick(); this.page = 0; this.render(); });
+      bar.append(control);
+    }
+    for (let i = choices.length; i < CATEGORY_SLOTS; i++) bar.append(el('span', 'achievement-slot'));
+    return bar;
   }
 
   private plaque(id: string, name: string): HTMLElement {
@@ -357,15 +379,13 @@ export class AchievementView {
   }
 
   /** What a title asks for, a page at a time. */
-  private requirementPages(title: CatalogTitle, data: AchievementCatalog): HTMLElement[] {
+  private requirementPages(title: CatalogTitle, data: AchievementCatalog): void {
     const close = button('achievement-close', '◀ 칭호 목록');
     close.addEventListener('click', () => { this.back(); });
     const byId = new Map(data.achievements.map((a) => [a.id, a]));
     const wanted = TITLE_BY_ID.get(title.id)?.requires ?? [];
-    return [
-      this.plaque(title.id, title.name),
-      close,
-      ...this.paged('achievement-requirements', 76, wanted, (id) => {
+    this.root.append(this.plaque(title.id, title.name), close);
+    this.paged('achievement-requirements', 76, wanted, (id) => {
         const source = ACHIEVEMENT_BY_ID.get(id), own = byId.get(id);
         const row = el('div', `achievement-requirement${own?.unlocked ? ' is-met' : ''}`);
         row.append(
@@ -374,8 +394,7 @@ export class AchievementView {
             ? [`목표 ${num(source.goal)} ·`, own?.unlocked ? '✔ 달성' : `현재 ${num(own?.progress ?? 0)}`] : []),
         );
         return row;
-      }, '조건이 없어요.'),
-    ];
+      }, '조건이 없어요.');
   }
 
   /** Leaves a title's conditions for the list. False when there was nothing to leave. */
