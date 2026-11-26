@@ -3,7 +3,7 @@ import { getAuthUserId } from '@convex-dev/auth/server';
 import { MINUTE, RateLimiter } from '@convex-dev/rate-limiter';
 import { ConvexError, v } from 'convex/values';
 import { cleanNickname, nicknameKey } from '../src/nickname';
-import { cleanUsername } from '../src/username';
+import { cleanUsername, SIGN_UP_ERRORS } from '../src/username';
 import { api, components } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
@@ -39,7 +39,8 @@ async function claimNickname(ctx: MutationCtx, raw: string, self: Id<'users'> | 
 
 /** Called by Convex Auth for every new account. */
 export const createUser = internalMutation({
-  args: { method: v.object({ name: v.literal('usernamePassword'), profile: v.object({}) }) },
+  // Accounts are made by the game's sign-up (see auth.ts); Convex Auth's own name is kept for older ones.
+  args: { method: v.object({ name: v.union(v.literal('usernamePasswordSignUp'), v.literal('usernamePassword')), profile: v.object({}) }) },
   returns: v.id('users'),
   handler: async (ctx) => {
     if (!(await limiter.limit(ctx, 'createAccount')).ok) throw new ConvexError('가입이 몰리고 있습니다. 잠시 뒤 다시 시도해 주세요.');
@@ -47,13 +48,6 @@ export const createUser = internalMutation({
   },
 });
 
-const PASSWORD_ERRORS: Record<string, string> = {
-  PASSWORD_TOO_SHORT: '비밀번호는 10자 이상이어야 합니다.',
-  PASSWORD_TOO_LONG: '비밀번호는 100자까지입니다.',
-  PASSWORD_HAS_SURROUNDING_WHITESPACE: '비밀번호 앞뒤에는 공백을 둘 수 없습니다.',
-  PASSWORD_TOO_COMMON: '너무 흔한 비밀번호입니다. 다른 것으로 정해 주세요.',
-  USERNAME_TAKEN: '이미 쓰는 아이디입니다.',
-};
 
 /**
  * Makes an account and its nickname together: everything here is one transaction, so a refusal leaves nothing behind.
@@ -65,8 +59,9 @@ export const signUp = mutation({
     const username = cleanUsername(args.username);
     if (username === null) throw new ConvexError('아이디는 영문으로 시작하는 4~20자의 영문·숫자·밑줄로 정해 주세요.');
     const name = await claimNickname(ctx, args.nickname, null, username);
-    const r: SignUpResult = await ctx.runMutation(api.auth.signUpWithUsernamePassword, { username, password: args.password });
-    if (r.status === 'error') throw new ConvexError(PASSWORD_ERRORS[r.userError.error] ?? '가입하지 못했습니다. 입력한 내용을 확인해 주세요.');
+    // Typed here: auth.ts and this file refer to each other through the generated api, a cycle TypeScript can't type.
+    const r = (await ctx.runMutation(api.auth.signUpWithUsernamePassword, { username, password: args.password })) as SignUpResult;
+    if (r.status === 'error') throw new ConvexError(SIGN_UP_ERRORS[r.userError.error] ?? '가입하지 못했습니다. 입력한 내용을 확인해 주세요.');
     await ctx.db.patch(r.tokens.userId as Id<'users'>, name);
     return r;
   },

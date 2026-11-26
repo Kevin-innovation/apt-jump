@@ -1,3 +1,56 @@
+# P11 — 순위 저장·계정 동선·크레딧·비밀번호 (Claude, 2026-11-26)
+
+브랜치 `apt-jump/fix-ranking-auth` (main `b1dc2b8`에서 분기, 커밋 없음). `feature/flight-combat`은 그대로 둠.
+
+## 사용자 승인 (t1n 전달)
+- 커밋·병합·Vercel 배포 승인. 브랜치 이름은 `apt-jump/*`로 정리. Vercel+Convex가 사용자가 명시한 배포처(Patch 기본 호스팅보다 우선).
+- 실행 담당: Claude는 구현·테스트·보고까지. 커밋·병합·푸시·Convex·Vercel 배포는 Codex가 검증한 뒤 수행.
+
+## 원인: 새 기록이 저장되지 않음
+- **직접 원인(production, Codex 확인)**: Vercel은 `b1dc2b8`으로 배포됐지만 Convex production은 이전 코드. 그래서 `ranking.syncRelease`가 서버에 없음. 새 페이지의 `online.start()`는 이 호출이 실패하면 거절했고, 거절된 판은 순위 없이 진행됨. 이유는 결과 화면에만 표시됨.
+- **코드상 기여 요인**:
+  1. 시작 대기 3초 안에 syncRelease(서버의 manifest 요청 최대 6초)와 start가 모두 끝나야 했음. 늦으면 조용히 순위 없는 판이 됨.
+  2. 계정 확인 중이거나 닉네임이 없으면 이유 없이 순위 없는 판이 됨.
+- `auth.test.ts` 실패: 테스트 데이터 `scores`에 `release`가 빠져 있었음.
+
+## 수정
+- `src/online/island.tsx`: 페이지는 연결할 때 release를 한 번 맞추고, `start`는 그 확인이 끝난 뒤(성공·실패 모두) 실행을 발급받음. 이 순서라서 페이지가 방금 연 판을 스스로 무효화하지 않음. 실패해도 거절하지 않고 현재 순위판에 등록함. 실패 뒤 재시도는 1분에 한 번.
+- `convex/ranking.ts`: manifest 요청 제한 6초 → 4초(`MANIFEST_WAIT`). `src/main.ts`: 시작 대기 3초 → 6초(`START_WAIT`).
+- 제출 성공 시 `onlineUi.refreshBoard()`를 한 번 호출: 제출이 끝나기 전에 주간 순위를 열었어도 새 기록으로 갱신됨(`src/main.ts` `submitRun`, Codex 리뷰 반영, build만 재확인).
+- 순위에 오르지 않는 판은 시작할 때 이유를 표시(약 150m 동안 안내 줄), 결과 화면에도 표시.
+- 배포마다 순위 초기화는 그대로 유지(사용자 요구).
+- 동선: 타이틀에서 로그인 상태의 `내 순위` 버튼을 제거(`주간 순위`와 중복). 로그아웃 상태는 `회원가입`·`로그인`, 로그인 상태는 `내 계정` 하나(닉네임·로그아웃 칸으로 이동). `주간 순위`는 순위 목록. 로그인 상태에서 버튼이 7개가 되므로 `달리기 시작`이 한 줄 전체를 차지하고 나머지는 2열을 유지. 닉네임은 첫 화면에 넣지 않음(320/375px 한 줄 유지).
+- 크레딧(`index.html`, `CREDITS.md`): `게임 제작·저작권 © 2026 Kevin`을 추가. 글꼴 Galmuri11 © Lee Minseo(OFL 1.1)와 라이브러리는 "각 원저작자 소유" 항목으로 분리. OFL 원문은 변경 없음.
+- 비밀번호: 최소 8자, 최대 100자(기존 유지), 앞뒤 공백만 불가, 그 밖의 조건 없음(흔한 비밀번호 목록 검사 제거).
+  - Convex Auth 2.1.0은 가입 최소 10자가 고정이고, password 컴포넌트의 `_internal_dangerous_setPassword`가 흔한 비밀번호를 항상 거부함(해시를 가져오는 API 없음).
+  - 그래서 `convex/components/authPassword`에 공식 컴포넌트를 복사함(Apache-2.0, 출처 헤더, `LICENSES/convex-dev_auth-Apache-2.0.txt`). 변경은 `validation.ts`의 목록 검사 제거 하나(`Changed:` 표시). 같은 마운트 이름·테이블·인덱스·함수·argon2id/scrypt·시도 제한을 유지하고, codegen한 component API는 공식과 동일.
+  - 가입 `auth.signUpWithUsernamePassword`는 Convex Auth의 `bindMethod`(타입상 internal)로 같은 단계를 최소 8자로 다시 씀. 로그인은 Convex Auth 그대로. `users.createUser`는 새 메서드 이름 `usernamePasswordSignUp`도 받음.
+  - 의존성은 `password-hash-wasm@0.0.0`을 명시. lockfile은 한 줄만 추가하고 optional `@emnapi` 항목은 보존(npm이 지우려던 것을 되돌림).
+- 문서: `DEVELOPMENT.md` 온라인 절(계정·8자·배포마다 초기화·화면 동선·**Convex 먼저 배포**), 새 `AGENTS.md`(이 저장소 전용 역할·브랜치·배포 규칙).
+
+## 검증 (실제 결과)
+- `npm test`: 14 files, **207/207 통과**. 추가한 테스트:
+  - syncRelease → start → finish → 다른 플레이어의 주간 순위에 즉시 표시, 더 좋은 기록으로 갱신.
+  - `12345678`/`abcdefgh`/`password`/`rooftopx`/100자/한글 비밀번호로 가입하고, 같은 비밀번호로 로그인되며, 틀린 비밀번호는 거부됨.
+  - 7자는 `8자 이상`으로 거부.
+  - 로컬 password 컴포넌트를 convex-test에서 실제로 실행(시도 제한 테스트 포함).
+- `npx tsc --noEmit -p convex` 통과. `npm run build`(앱 tsc + vite) 통과.
+- 이번 변경 뒤 전체 재실행은 하지 않음: 타입 캐스트 2곳을 고친 뒤에는 auth 테스트 30개만 다시 실행해 통과(사용자 지시로 테스트 최소화).
+- Codex 확인: 로컬에서 `abcdefgh` 가입 성공. production Convex dry-run 통과(인덱스 삭제 없음, 순위 인덱스 3개 추가).
+- 참고: `npx convex codegen`이 로컬 익명 배포(t59)로 분석용 업로드를 함. production은 건드리지 않음.
+
+## 남은 production 확인
+1. Convex production 배포 뒤 `function-spec`에 `ranking:syncRelease`/`activateRelease`와 `auth:signUpWithUsernamePassword`(새 구현)가 있는지. 그 뒤 Vercel 배포(같은 커밋).
+2. **기존 계정 로그인 호환**: 마운트를 공식 → 로컬 정의로 바꾼 뒤 기존 사용자 로그인이 되는지. 이 데이터 보존은 dry-run 결과(인덱스 삭제 없음)로만 추정하고 실제로는 확인하지 못함.
+3. 배포 뒤 첫 방문에서 `leaderboardState`가 생기고, 실제 가입(8자)→한 판→주간 순위 표시→더 좋은 기록 갱신.
+4. 320/375px 타이틀 버튼(로그아웃 8개, 로그인 7개) 한 줄 유지, 결과 화면 정렬 회귀 없음.
+5. 리뷰 메모(범위 밖, 미수정):
+   - settle에서 release가 바뀌면 run이 `claimed`로 남음(배포 시 거절은 요구사항).
+   - clock offset 요청 한 번 실패 시 주간 경계에서 조회 차이 가능성.
+   - `bindMethod`는 Convex Auth의 internal API라 업그레이드(`^2.1.0`) 때 확인 필요.
+
+---
+
 # P10 — Codex 직접 구현 (2026-11-25)
 
 사용자가 Claude 한도 소진 후 Codex 직접 코드 수정을 명시적으로 승인. 기존 보고는 아래에 보존.

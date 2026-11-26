@@ -85,6 +85,27 @@ describe('ranked runs', () => {
     vi.stubGlobal('fetch', vi.fn(async () => new Response('{"id":"bad"}')));
     await expect(t.action(api.ranking.syncRelease, {})).rejects.toThrow('버전 정보');
   });
+  it('saves a new record on the release the page synced first, and the weekly board shows it at once', async () => {
+    const { a, b } = await setup();
+    // The page's order: take up the production release, then ask for a run.
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify({ id: `b1dc2b850c8e-${NOW.toString(36)}` }))));
+    await a.as.action(api.ranking.syncRelease, {});
+    const first = await start(a);
+    const one = play(first.seed, 10);
+    vi.setSystemTime(NOW + one.ms + 1000);
+    expect(await a.as.action(api.ranking.finish, { runId: first.runId, replay: one.text })).toEqual({ score: one.score, best: true });
+    expect((await b.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', score: one.score, distance: expect.any(Number), mine: false }]);
+    // Syncing again changes nothing; a better run replaces the record on the same board.
+    await a.as.action(api.ranking.syncRelease, {});
+    const second = await start(a);
+    const two = play(second.seed, 40);
+    expect(two.score).toBeGreaterThan(one.score);
+    vi.setSystemTime(NOW + one.ms + two.ms + 2000);
+    expect(await a.as.action(api.ranking.finish, { runId: second.runId, replay: two.text })).toEqual({ score: two.score, best: true });
+    const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
+    expect(board.top).toEqual([{ rank: 1, nickname: '에이', score: two.score, distance: expect.any(Number), mine: true }]);
+    expect(board.mine).toMatchObject({ rank: 1, score: two.score });
+  });
   it('score what the replay really did', async () => {
     const { a } = await setup();
     const { runId, seed } = await start(a);

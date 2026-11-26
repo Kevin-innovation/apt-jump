@@ -1,4 +1,5 @@
-import authPassword from '@convex-dev/auth/components/password/convex.config.js';
+// The game's copy of Convex Auth's password component, mounted under the same name (convex/components/authPassword).
+import authPassword from './components/authPassword/convex.config.js';
 import authUsername from '@convex-dev/auth/components/username/convex.config.js';
 import auth from '@convex-dev/auth/convex.config.js';
 import rateLimiter from '@convex-dev/rate-limiter/convex.config.js';

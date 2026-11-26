@@ -54,6 +54,8 @@ let lastCount = 0;
 let leaving = false;
 /** The ranked run being played, when the server issued one. */
 let ranked: { runId: string; recorder: Recorder } | null = null;
+/** Why this run counts for no ranking, shown while it starts (and again on the result). */
+let unrankedNote = '';
 let starting = 0;
 /** The window lost focus while a run was being issued. */
 let awayAtStart = false;
@@ -72,11 +74,10 @@ function syncEntry(): void {
       el.title = detail;
     }
   });
-  const button = document.getElementById('title-account')!;
-  button.textContent = account?.status === 'in' ? '내 계정' : '회원가입';
-  const login = document.getElementById('title-login')!;
-  login.textContent = account?.status === 'in' ? '내 순위' : '로그인';
-  login.dataset.act = account?.status === 'in' ? 'ranking' : 'login';
+  // Signed out: sign up and log in. Signed in: one account button (nickname, log out); the ranking has its own button.
+  const signedIn = account?.status === 'in';
+  document.getElementById('title-account')!.textContent = signedIn ? '내 계정' : '회원가입';
+  document.getElementById('title-login')!.hidden = signedIn;
   if (booted && !testing && !updating && phase === 'title' && ui.screen === 'title' && account && firstVisit.shouldShow(account.status)) ui.show('welcome');
   if (account?.status === 'in' && ui.screen === 'welcome') title();
 }
@@ -142,11 +143,20 @@ function leave(): void {
   else openMaps();
 }
 
+/** How long a run waits to be issued: longer than the server's wait for the release manifest (ranking.ts). */
+const START_WAIT = 6000;
+
 /** Endless runs of a signed-in player are issued by the server; everything else starts at once. */
 function startRun(): void {
   const online = onlineUi.online;
   const ticket = ++starting;
-  if (testing || mode.kind !== 'endless' || !online || !onlineUi.signedIn) { begin(null, ''); return; }
+  if (testing || mode.kind !== 'endless' || !online) { begin(null, ''); return; }
+  const account = online.account();
+  if (!onlineUi.signedIn) {
+    begin(null, account.status === 'in' ? '닉네임을 정하면 순위에 오릅니다. 이번 판은 순위에 오르지 않습니다.'
+      : account.status === 'loading' ? '계정을 확인하는 중이라 이번 판은 순위에 오르지 않습니다.' : '');
+    return;
+  }
   ui.show(null);
   ui.hud(false); ui.hint(false);
   audio.stop();
@@ -160,7 +170,7 @@ function startRun(): void {
     begin(run, why);
   };
   online.start().then((r) => go(r, ''), (e) => go(null, errorText(e)));
-  setTimeout(() => go(null, '온라인 응답이 늦어 이번 판은 순위에 오르지 않습니다.'), 3000);
+  setTimeout(() => go(null, '온라인 응답이 늦어 이번 판은 순위에 오르지 않습니다.'), START_WAIT);
 }
 
 function begin(run: { runId: string; seed: number } | null, why: string): void {
@@ -168,6 +178,7 @@ function begin(run: { runId: string; seed: number } | null, why: string): void {
   ui.wait('');
   ranked = run && { runId: run.runId, recorder: new Recorder() };
   ui.onlineNote(why);
+  unrankedNote = why;
   game = mode.kind === 'map' ? new Game(buildCourse(mode.map)) : new Game(run ? run.seed : testing ? TEST_SEED : Math.floor(Math.random() * 2 ** 31));
   ui.homeLabel(mode.kind === 'endless' ? '타이틀로' : mode.from === 'editor' ? '편집기로' : '맵 목록으로');
   view.reset();
@@ -177,6 +188,7 @@ function begin(run: { runId: string; seed: number } | null, why: string): void {
   ui.show(null);
   ui.count(null);
   ui.hud(true); ui.hint(true);
+  if (unrankedNote) ui.wait(unrankedNote);
   setPhase('playing');
   audio.start();
   if (away) pause();
@@ -278,7 +290,11 @@ function submitRun(): void {
   const say = (t: string) => { if (at === starting) ui.onlineNote(t); };
   ui.onlineNote('순위에 등록하는 중…');
   online.finish(run.runId, run.recorder.text()).then(
-    (r) => say(r.best ? `이번 주 최고 기록 ${r.score.toLocaleString('ko-KR')}점을 등록했습니다!` : '이번 주 최고 기록에는 미치지 못했습니다.'),
+    (r) => {
+      say(r.best ? `이번 주 최고 기록 ${r.score.toLocaleString('ko-KR')}점을 등록했습니다!` : '이번 주 최고 기록에는 미치지 못했습니다.');
+      // The ranking may already be open from the result screen, showing the board from before this run.
+      void onlineUi.refreshBoard();
+    },
     (e) => say(errorText(e)),
   );
 }
@@ -378,7 +394,7 @@ function frame(now: number): void {
       break;
     case 'playing':
       simulate(dt, runInput);
-      if (game.distance > 30) ui.hint(false);
+      if (game.distance > (unrankedNote ? 150 : 30)) ui.hint(false);
       ui.update(game, input.held || assistHold);
       break;
     case 'countdown': {

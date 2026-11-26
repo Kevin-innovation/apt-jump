@@ -16,6 +16,8 @@ const START_WINDOW = 10 * 60_000;
 const STARTS_PER_WINDOW = 60;
 /** Clock and network slack when comparing a run's length with the time it took. */
 const SLACK = 4000;
+/** The page waits longer than this for a run (START_WAIT in main.ts). */
+const MANIFEST_WAIT = 4000;
 const RESET_MESSAGE = '새 난이도가 적용되어 리더보드가 초기화되었습니다. 새로 시작해 주세요.';
 
 async function activeRelease(ctx: QueryCtx | MutationCtx): Promise<string> {
@@ -27,7 +29,7 @@ export const syncRelease = action({
   args: {},
   returns: v.object({ id: v.string(), builtAt: v.number() }),
   handler: async (ctx): Promise<{ id: string; builtAt: number }> => {
-    const response = await fetch('https://apt-jump-wine.vercel.app/version.json', { cache: 'no-store', signal: AbortSignal.timeout(6000) });
+    const response = await fetch('https://apt-jump-wine.vercel.app/version.json', { cache: 'no-store', signal: AbortSignal.timeout(MANIFEST_WAIT) });
     if (!response.ok) throw new ConvexError('새 버전을 확인하지 못했습니다. 잠시 뒤 다시 시도해 주세요.');
     const data: unknown = await response.json();
     if (!data || typeof data !== 'object' || !('id' in data) || typeof data.id !== 'string' || !/^[a-f0-9]{12}-[a-z0-9]+$/.test(data.id)) throw new ConvexError('새 버전 정보를 확인하지 못했습니다.');

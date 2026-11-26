@@ -25,12 +25,19 @@ export function connect(url: string): Online {
   type ReleaseInfo = { id: string; builtAt: number };
   let release: ReleaseInfo | null = null;
   let syncing: Promise<ReleaseInfo | null> | null = null;
+  let failedAt = -Infinity;
+  /**
+   * Asks the server to take up the newest production release, at most once a minute after a failure. Never rejects:
+   * a server without it (or a slow manifest) only keeps its current board, and a run still starts on that board.
+   * A run is issued only after this has settled, so a release this page activates can't void the run it just began.
+   */
   const ensureRelease = (): Promise<ReleaseInfo | null> => {
     if (release) return Promise.resolve(release);
     if (syncing) return syncing;
+    if (Date.now() - failedAt < 60_000) return Promise.resolve(null);
     syncing = client.action(api.ranking.syncRelease, {}).then(info => {
       release = info; watchers.forEach(f => f()); return info;
-    }, () => null).finally(() => { syncing = null; });
+    }, () => { failedAt = Date.now(); return null; }).finally(() => { syncing = null; });
     return syncing;
   };
   const notYet = async () => { throw new Refusal('아직 준비 중입니다. 잠시 뒤 다시 시도해 주세요.'); };
@@ -95,7 +102,7 @@ export function connect(url: string): Online {
     setNickname: (nickname) => write(() => client.mutation(api.users.setNickname, { nickname })),
     now: () => Date.now() + offset,
     start: () => write(async () => {
-      if (!await ensureRelease()) throw new Refusal('새 난이도를 확인하는 중입니다. 잠시 뒤 다시 시작해 주세요.');
+      await ensureRelease();
       return await client.mutation(api.ranking.start, { version: SIM_VERSION });
     }),
     finish: (runId, replay) => write(() => client.action(api.ranking.finish, { runId: runId as Id<'runs'>, replay })),

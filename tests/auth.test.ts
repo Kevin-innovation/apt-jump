@@ -1,6 +1,7 @@
 // @vitest-environment edge-runtime
 // Real sign-up, sign-in and sessions: Convex Auth's own components run here, nothing is replaced.
-import { registerPassword } from '@convex-dev/auth/components/password/test';
+import type { SignUpResult } from '@convex-dev/auth/methods/username-password/server';
+import { registerPassword } from './password-component';
 import { registerUsername } from '@convex-dev/auth/components/username/test';
 import { registerCore, sessionIdentity } from '@convex-dev/auth/test';
 import { register as registerRateLimiter } from '@convex-dev/rate-limiter/test';
@@ -55,11 +56,20 @@ describe('sign-up', () => {
   it.each(['', 'abc', '1runner', 'has space', '한글아이디', 'a'.repeat(21), 'x@example.com', 'a-b-c-d'])('refuses the id "%s"', async (id) => {
     await expect(setup().join(id, '옥상왕')).rejects.toThrow('아이디는');
   });
-  it.each([['short77', '10자 이상'], ['p'.repeat(101), '100자까지'], [' spaced-out-77', '공백'], ['1234567890', '흔한']])('refuses the password "%s"', async (password, why) => {
+  it.each([['short77', '8자 이상'], ['p'.repeat(101), '100자까지'], [' spaced-out-77', '공백']])('refuses the password "%s"', async (password, why) => {
     const { t, join } = setup();
     await expect(join('runner_1', '옥상왕', password)).rejects.toThrow(why);
     expect(await t.run((ctx) => ctx.db.query('users').collect())).toEqual([]);
     await join('runner_1', '옥상왕'); // nothing was left behind
+  });
+  it.each(['12345678', 'abcdefgh', 'password', 'rooftopx', 'p'.repeat(100), '한글비밀번호입니다'])('takes any password of 8 to 100 characters, such as "%s", and signs in with it', async (password) => {
+    const { t, join, signIn } = setup();
+    const a = await join('runner_1', '옥상왕', password);
+    expect(await a.query(api.users.me)).toEqual({ nickname: '옥상왕' });
+    const r = await signIn('runner_1', password);
+    if (r.status !== 'complete') throw new Error('not signed in');
+    expect(await t.withIdentity(sessionIdentity(r.tokens)).query(api.users.me)).toEqual({ nickname: '옥상왕' });
+    expect(await signIn('runner_1', `${password.slice(0, -1)}!`)).toMatchObject({ status: 'error', userError: { error: 'INVALID_CREDENTIALS' } });
   });
   it('refuses a nickname that is taken, bad, or the secret id, and leaves no account', async () => {
     const { join, signIn } = setup();
@@ -124,7 +134,7 @@ it('the board shows nicknames, as they are now, and no ids', async () => {
   const { t, join } = setup();
   const a = await join('runner_a', '에이');
   const [user] = await t.run((ctx) => ctx.db.query('users').collect());
-  await t.run((ctx) => ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, userId: user!._id, score: 10, distance: 9, achievedAt: 1 }));
+  await t.run((ctx) => ctx.db.insert('scores', { week: '2026-11-23', release: 'initial', version: SIM_VERSION, userId: user!._id, score: 10, distance: 9, achievedAt: 1 }));
   expect((await t.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', score: 10, distance: 9, mine: false }]);
   await a.mutation(api.users.setNickname, { nickname: '새이름' });
   expect((await a.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '새이름', score: 10, distance: 9, mine: true }]);
@@ -133,7 +143,7 @@ it('the board shows nicknames, as they are now, and no ids', async () => {
 describe('an account made past the game’s own sign-up', () => {
   const bare = async (username: string) => {
     const s = setup();
-    const r = await s.t.mutation(api.auth.signUpWithUsernamePassword, { username, password: PASSWORD });
+    const r = (await s.t.mutation(api.auth.signUpWithUsernamePassword, { username, password: PASSWORD })) as SignUpResult;
     if (r.status !== 'complete') throw new Error('not made');
     return { ...s, a: s.t.withIdentity(sessionIdentity(r.tokens)) };
   };

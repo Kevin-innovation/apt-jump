@@ -187,3 +187,5 @@ dd { margin: 0; font-size: 1.3em; }
 #welcome p:not(.release-announcement) { font-size: clamp(11px, 3.2vw, 15px); }
 #title .release-announcement, #welcome .release-announcement { font-size: 12px; }
 #title .release-announcement, #welcome .release-announcement { white-space: nowrap; padding: 8px 6px; font-size: clamp(10px, 2.8vw, 13px); }
+/* Signed in, the title has seven buttons: the start button takes a full row, so the rest stay in pairs. */
+#title nav:has(#title-login[hidden]) .primary { grid-column: 1 / -1; }
