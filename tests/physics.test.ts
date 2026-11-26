@@ -75,6 +75,8 @@ describe('landing boost', () => {
     const roofs = [roof(-100, 50000, 0)];
     const p = grounded(roofs);
     stepPlayer(p, { pressed: true, held: false }, roofs, () => {});
+    // With no air jump ready, a press well before the roof is still kept for it.
+    p.airCooldown = 10;
     const jumps: boolean[] = [];
     let pressed = false;
     for (let i = 0; i < 120 && !jumps.length; i++) {

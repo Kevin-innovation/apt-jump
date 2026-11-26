@@ -146,7 +146,13 @@ export class UI {
     return true;
   }
 
-  setDevice(d: Device): void { this.device = d; this.refresh(); }
+  /** Runs inside the input's own event, so it writes only what depends on the device. */
+  setDevice(d: Device): void { this.device = d; this.deviceWords(); }
+
+  private deviceWords(): void {
+    document.querySelectorAll('[data-keys]').forEach((k) => { k.textContent = KEYS[this.device]; });
+    this.text('hint', HINTS[this.device]);
+  }
 
   refresh(): void {
     const s = this.save.data;
@@ -159,9 +165,8 @@ export class UI {
     const mute = $('btn-mute');
     mute.setAttribute('aria-label', s.muted ? '소리 켜기' : '음소거');
     mute.innerHTML = `<svg viewBox="0 0 8 8">${SPEAKER}${s.muted ? CROSS : WAVES}</svg>`;
-    document.querySelectorAll('[data-keys]').forEach((k) => { k.textContent = KEYS[this.device]; });
+    this.deviceWords();
     document.querySelectorAll<HTMLElement>('[data-nosave]').forEach((e) => { e.hidden = this.save.available; });
-    this.text('hint', HINTS[this.device]);
     this.text('best', num(s.best));
   }
 

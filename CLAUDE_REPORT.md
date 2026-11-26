@@ -1,3 +1,20 @@
+# P20 — 착지 직전 점프 지연 수정 (Claude, 2026-11-26, `apt-jump/jump-response`)
+
+- 재현: 공중점프가 가능해도 착지 약 100ms 안의 입력은 착지까지 대기(지연 = 남은 시간, 최대 100ms). root도 67ms 지연 재현.
+- 수정: `landsSoon` 예측 창 `BUFFER*0.9`(99ms) → `LAND_WAIT = STEP*2`(16.7ms). `BUFFER`·점프 높이·속도 무변경. tradeoff: 착지 17~100ms 전 입력은 공중점프를 씀.
+- `SIM_VERSION` 5: **Convex와 웹을 함께(Convex 먼저) 배포.** 구버전 탭은 새로고침 전까지 순위 실행 발급이 거부됨. 주간 순위 행·cutoff 무변경(`resetCurrentWeek` 다시 실행하지 않음).
+
+---
+
+# P19 — 점프 입력 지연 조사 (Claude, 2026-11-26, `apt-jump/jump-response`)
+
+- 입력→물리 경로(input/physics/audio, main의 simulate/runInput)에 회귀 없음. root 측정(1280x720, 첫 키 입력): 물리 2.9ms, 첫 draw 9.3ms. 사용자 체감 지연은 재현하지 못함.
+- 작은 개선: 입력 방식이 바뀔 때 입력 이벤트 안에서 `UI.refresh()` 전체(설정 버튼·음소거 SVG·저장 경고·최고점)를 다시 쓰던 것을 기기별 안내 문구만 쓰도록 변경. 체감 지연이 이것 때문이라는 근거는 없고, 같은 방식으로 계속 입력하면 실행되지 않는 경로.
+- `tests/input.test.ts`: 한 프레임 안의 짧은 tap도 pressed가 한 번 전달됨, 기기 전환 시 아이콘을 다시 만들지 않음.
+- 미확인: 마우스·터치·패드·저사양의 실측, 긴 프레임.
+
+---
+
 # P18 — 이번 주 순위 새 출발 (Claude, 2026-11-26, `apt-jump/weekly-fresh-start`)
 
 - 원인: P14가 모든 release의 주간 행을 합치면서, 이전의 배포별 초기화로 숨겨졌던 이번 주 옛 기록이 다시 보임.

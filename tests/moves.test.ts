@@ -117,13 +117,27 @@ describe('air jump', () => {
     expect(p.airCooldown).toBe(0);
     expect(tryAgain()).toBe(true);
   });
+  it('answers a press on the ground in its first step', () => {
+    const p = grounded(flat), ev: string[] = [];
+    stepPlayer(p, { pressed: true, held: true }, flat, (e) => ev.push(e.type));
+    expect(ev).toContain('jump');
+    expect(p.vy).toBeLessThan(0);
+  });
+  it('jumps in the air at once while still some way above a roof', () => {
+    // About 67 ms from touching down.
+    const p = grounded(flat), ev: string[] = [];
+    Object.assign(p, { y: -10, vy: 120, ground: null, coyote: 0, airUsed: false, airCooldown: 0, jumping: false });
+    stepPlayer(p, { pressed: true, held: true }, flat, (e) => ev.push(e.type));
+    expect(ev).toEqual(['airjump']);
+    expect(p.vy).toBeLessThan(0);
+  });
   it('is not wasted by a press just above a roof', () => {
     const p = grounded(flat);
     const ev: string[] = [];
     stepPlayer(p, { pressed: true, held: false }, flat, () => {});
     let pressed = false;
     for (let i = 0; i < 80; i++) {
-      const press: boolean = !pressed && p.vy > 0 && -p.y < p.vy * 0.05;
+      const press: boolean = !pressed && p.vy > 0 && -p.y < p.vy * STEP * 1.5;
       pressed ||= press;
       stepPlayer(p, { pressed: press, held: false }, flat, (e) => ev.push(e.type));
     }

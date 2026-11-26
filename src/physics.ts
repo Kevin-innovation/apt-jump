@@ -15,6 +15,8 @@ export const CUT_V = 170;
 export const MAX_FALL = 520;
 export const COYOTE = 0.08;
 export const BUFFER = 0.11;
+/** The longest a press waits for a landing while an air jump is ready: any longer is felt as lag. */
+export const LAND_WAIT = STEP * 2;
 /** A press this soon after touching down is a "perfect" jump. */
 export const PERFECT_WINDOW = 0.18;
 export const MAX_BOOST = 5;
@@ -193,9 +195,10 @@ function carry(p: Player, roofs: readonly Roof[], rampsOnly: boolean): Surface |
   return best;
 }
 
+/** Whether the runner is about to touch down: only then does a press wait for the roof instead of jumping in the air. */
 function landsSoon(p: Player, roofs: readonly Roof[]): boolean {
   if (p.vy <= 0) return false;
-  const t = BUFFER * 0.9;
+  const t = LAND_WAIT;
   const ahead: Player = { ...p, x: p.x + p.vx * t, y: p.y + p.vy * t + 0.5 * GRAVITY * t * t };
   return findLanding(ahead, p.y, p.x, roofs) !== null;
 }
