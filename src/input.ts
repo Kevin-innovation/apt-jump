@@ -19,6 +19,8 @@ export class Input {
   /** Returns true when a menu used the action. */
   onMenu: (a: MenuAction) => boolean = () => false;
   onPause: () => void = () => {};
+  /** Esc: back out of a menu, or pause and resume. True when it did something. */
+  onEscape: () => boolean = () => false;
   onMute: () => void = () => {};
   onGesture: () => void = () => {};
   onDevice: () => void = () => {};
@@ -37,6 +39,14 @@ export class Input {
 
   constructor(surface: HTMLElement) {
     addEventListener('keydown', (e) => {
+      // Also from a text box, but never while a word is still being composed there.
+      if (e.code === 'Escape' || e.key === 'Escape') {
+        if (this.locked || e.isComposing || e.keyCode === 229 || e.ctrlKey || e.metaKey || e.altKey) return;
+        this.onGesture();
+        this.setDevice('key');
+        if (e.repeat || this.onEscape()) e.preventDefault();
+        return;
+      }
       if (this.locked || e.ctrlKey || e.metaKey || e.altKey || e.isComposing || typing(e)) return;
       this.onGesture();
       this.setDevice('key');

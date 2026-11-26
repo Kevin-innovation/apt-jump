@@ -14,7 +14,7 @@ const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits'
 const GOAL_NAMES = { coins: '동전', perfects: '퍼펙트', stomps: '밟기', risks: '위험' } as const;
 const VOLUME = ['끔', '작게', '보통', '크게'];
 const KEYS: Record<Device, string> = {
-  key: '점프 Space · ↑ · 클릭　　슬라이드 ↓　　일시정지 P　　음소거 M',
+  key: '점프 Space · ↑ · 클릭　　슬라이드 ↓　　일시정지 P · Esc　　음소거 M',
   touch: '화면을 눌러 점프 · ↓ 버튼으로 슬라이드',
   pad: '점프 아래 버튼　　슬라이드 ↓ · 왼쪽 버튼　　일시정지 스타트',
 };
@@ -115,7 +115,13 @@ export class UI {
     this.screen = name;
     for (const s of SCREENS) $(s).hidden = s !== name;
     this.refresh();
-    if (name) this.buttons().find((b) => b.classList.contains('primary'))?.focus({ preventScroll: true });
+    if (name) {
+      // Every screen is opened from its top.
+      $(name).scrollTop = 0;
+      const primary = this.buttons().filter((b) => b.classList.contains('primary'));
+      // A screen's own main action comes before the way home at its top.
+      (primary.find((b) => !b.closest('.screen-top')) ?? primary[0])?.focus({ preventScroll: true });
+    }
     else (document.activeElement as HTMLElement | null)?.blur();
   }
   hud(on: boolean): void { $('hud').hidden = !on; }

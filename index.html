@@ -133,23 +133,21 @@
   </section>
 
   <section class="screen" id="ranking" hidden>
-    <h2>주간 순위</h2>
+    <header class="screen-top"><h2>주간 순위</h2><nav><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
     <p class="release-announcement" role="status" hidden></p>
     <p id="rank-reset" class="keys"></p>
     <p id="rank-mine" class="ye"></p>
     <div id="rank-list"></div>
     <p id="rank-off" class="warn"></p>
-    <nav><button type="button" data-act="home" class="primary">타이틀로</button></nav>
   </section>
 
   <section class="screen" id="achievements" hidden>
-    <h2>도전과제</h2>
+    <header class="screen-top"><h2>도전과제</h2><nav><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
     <div id="achievement-view"></div>
-    <nav><button type="button" data-act="home" class="primary">타이틀로</button></nav>
   </section>
 
   <section class="screen" id="account" hidden>
-    <h2 id="account-title">로그인</h2>
+    <header class="screen-top"><h2 id="account-title">로그인</h2><nav><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
     <p id="rank-wait" class="keys" hidden>계정을 확인하는 중입니다.</p>
     <p id="account-off" class="warn" hidden>온라인 연결을 준비하고 있어요.</p>
     <form id="auth-form" aria-labelledby="account-title" novalidate hidden>
@@ -180,11 +178,10 @@
       </nav>
     </div>
     <p id="rank-msg" class="warn" role="status"></p>
-    <nav><button type="button" data-act="home" class="primary">타이틀로</button></nav>
   </section>
 
   <section class="screen" id="admin" hidden>
-    <h2>관리자</h2>
+    <header class="screen-top"><h2>관리자</h2><nav><button type="button" data-act="account">내 계정</button><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
     <p id="admin-msg" class="warn" role="status"></p>
     <div id="admin-stats" class="admin-stats"></div>
     <p class="keys">활동·플레이 수는 관리자 기능 배포 뒤부터 세요.<br />회원 수는 전체예요.</p>
@@ -219,10 +216,6 @@
     </div>
     <h3>작업 기록</h3>
     <div id="admin-logs" class="admin-list"></div>
-    <nav class="pair">
-      <button type="button" data-act="account">내 계정</button>
-      <button type="button" data-act="home" class="primary">타이틀로</button>
-    </nav>
   </section>
 
   <section class="screen" id="editor" hidden>

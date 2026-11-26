@@ -173,16 +173,18 @@ export class OnlineScreens {
       list.replaceChildren(...b.top.map((r) => {
         const row = document.createElement('div');
         row.className = r.mine ? 'rank me' : 'rank';
-        for (const t of [String(r.rank), r.nickname, `${num(r.score)}점`, `${num(r.distance)}m`]) {
+        const cells: [string, string][] = [
+          ['rank-place', String(r.rank)], ['rank-nick', r.nickname], ['rank-title', r.title ?? ''],
+          ['rank-score', `${num(r.score)}점`], ['rank-distance', `${num(r.distance)}m`],
+        ];
+        for (const [cls, t] of cells) {
           const s = document.createElement('span');
+          s.className = cls;
           s.textContent = t;
+          // The whole text on hover, where a column cuts it short.
+          if (cls === 'rank-nick' || cls === 'rank-title') s.title = t;
+          if (cls === 'rank-title' && t) s.classList.add(...titleClasses(t));
           row.append(s);
-        }
-        if (r.title) {
-          const worn = document.createElement('small');
-          worn.textContent = worn.title = r.title;
-          worn.classList.add(...titleClasses(r.title));
-          row.children[1]!.prepend(worn);
         }
         return row;
       }));

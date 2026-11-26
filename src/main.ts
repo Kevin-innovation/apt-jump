@@ -365,6 +365,13 @@ input.locked = testing;
 input.onMenu = (a) => ui.menu(a);
 input.onGesture = () => audio.unlock();
 input.onMute = () => act('mute');
+input.onEscape = () => {
+  if (updating) return false;
+  if (phase === 'playing' || phase === 'countdown') { pause(); return true; }
+  if (ui.screen === 'achievements' && achievements.back()) return true;
+  // The title has nowhere further back to go.
+  return ui.screen !== null && ui.screen !== 'title' && ui.menu('back');
+};
 input.onPause = () => {
   if (updating) return;
   if (phase === 'playing' || phase === 'countdown') pause();

@@ -77,9 +77,17 @@ export class AchievementView {
   private pending = false;
   private filter: AchievementFilter = 'all';
   private tab: AchievementTab = 'achievements';
+  private page = 0;
+  /** Which way the last page turn went, for its short slide in. */
+  private turn = 0;
+  /** The title whose conditions are open, and the list page to return to. */
+  private detail: string | null = null;
+  private listPage = 0;
 
   constructor(private readonly root: HTMLElement, private readonly callbacks: AchievementViewCallbacks) {
     this.root.classList.add('achievement-view');
+    // Another size holds another number of cards.
+    window.addEventListener('resize', () => { if (this.catalog && this.root.checkVisibility?.()) this.render(); });
   }
 
   async open(): Promise<void> {
@@ -87,6 +95,8 @@ export class AchievementView {
     const signedIn = this.callbacks.signedIn();
     this.catalog = null;
     this.notice = '';
+    this.page = 0;
+    this.detail = null;
     this.pending = true;
     this.render();
     try {
@@ -111,12 +121,15 @@ export class AchievementView {
     this.pending = false;
     this.filter = 'all';
     this.tab = 'achievements';
+    this.page = 0;
+    this.detail = null;
     this.root.replaceChildren();
   }
 
   private setTab(tab: AchievementTab): void {
     if (this.tab === tab) return;
     this.tab = tab;
+    this.page = 0;
     this.render();
     // render() replaces children; refocus the new tab without scrolling the page.
     this.root.querySelector<HTMLButtonElement>(`.achievement-tab[data-achievement-tab="${tab}"]`)
@@ -145,31 +158,89 @@ export class AchievementView {
     }
   }
 
+  /** How many cards a page holds: what fits the first screen at this size. */
+  private layout(cardHeight: number): { cols: number; rows: number } {
+    const w = window.innerWidth, h = window.innerHeight;
+    const cols = w >= 960 ? 3 : w >= 620 ? 2 : 1;
+    // Everything on the screen that isn't a card.
+    const around = w >= 620 ? 200 : 262;
+    const rows = Math.max(1, Math.min(cols === 1 ? 2 : 3, Math.floor((h - around + 8) / (cardHeight + 8))));
+    return { cols, rows };
+  }
+
   private render(): void {
     this.root.replaceChildren();
     if (this.pending && !this.catalog) {
       this.root.append(el('p', 'achievement-loading', '도전과제를 불러오는 중이에요.'));
       return;
     }
-    if (this.notice) this.root.append(el('p', 'achievement-notice', this.notice));
     const data = this.catalog;
-    if (!data) return;
+    if (!data) {
+      if (this.notice) this.root.append(el('p', 'achievement-notice', this.notice));
+      return;
+    }
+    const open = this.detail === null ? undefined : data.titles.find((t) => t.id === this.detail);
+    if (open) { this.root.append(...this.requirementPages(open, data)); return; }
 
     const summary = el('div', 'achievement-summary');
     summary.append(
       el('span', 'achievement-summary-item', `기준 회원 ${num(data.participants)}명`),
-      units('achievement-summary-note', ['분모: 일반 모드 기록 제출 회원 ·', '업데이트 이후부터 집계']),
+      units('achievement-summary-note', ['일반 모드 기록 제출 회원 ·', '업데이트 이후 집계']),
     );
+    // One line, whatever it has to say, so the cards never move down.
     const equippedName = data.equipped === null ? '없음' : (TITLE_BY_ID.get(data.equipped)?.name ?? data.equipped);
-    this.root.append(
-      summary,
-      el('p', 'achievement-equipped', `현재 장착 칭호: ${equippedName}`),
-      this.tabBar(data),
-    );
-    if (!this.callbacks.signedIn()) {
-      this.root.append(el('p', 'achievement-login', '로그인하면 내 진행 상황과 칭호 장착을 볼 수 있어요.'));
-    }
-    this.root.append(this.tab === 'achievements' ? this.achievementSection(data) : this.titleSection(data));
+    const status = this.notice ? el('p', 'achievement-notice', this.notice)
+      : !this.callbacks.signedIn() ? el('p', 'achievement-login', '로그인하면 진행 상황이 보여요.')
+        : el('p', 'achievement-equipped', `장착 칭호: ${equippedName}`);
+    status.setAttribute('role', 'status');
+    const bar = el('div', 'achievement-bar');
+    bar.append(this.tabBar(data));
+    if (this.tab === 'achievements') bar.append(this.filterBar());
+    this.root.append(summary, status, bar);
+
+    if (this.tab === 'achievements') {
+      const shown = data.achievements.filter((a) =>
+        this.filter === 'all' || (this.filter === 'unlocked' ? a.unlocked : !a.unlocked));
+      this.root.append(...this.paged('achievement-cards', 118, shown, (a) => this.achievementCard(a, data.participants), '해당하는 도전과제가 없어요.'));
+    } else this.root.append(...this.paged('achievement-titles', 146, data.titles, (t) => this.titleCard(t, data), '칭호가 없어요.'));
+  }
+
+  /** One page of cards and the way to the others. */
+  private paged<T>(cls: string, cardHeight: number, items: readonly T[], card: (item: T) => HTMLElement, none: string): HTMLElement[] {
+    const { cols, rows } = this.layout(cardHeight);
+    const per = cols * rows, pages = Math.max(1, Math.ceil(items.length / per));
+    this.page = Math.max(0, Math.min(pages - 1, this.page));
+    const list = el('div', `${cls} achievement-page${this.turn ? (this.turn > 0 ? ' from-right' : ' from-left') : ''}`);
+    this.turn = 0;
+    list.style.gridTemplateColumns = `repeat(${cols}, minmax(0, 1fr))`;
+    list.style.gridAutoRows = `${cardHeight}px`;
+    // A short last page keeps the pager where it was.
+    list.style.minHeight = `${Math.min(rows, Math.ceil(items.length / cols) || 1) * (cardHeight + 8) - 8}px`;
+    if (!items.length) list.append(el('p', 'achievement-empty', none));
+    for (const item of items.slice(this.page * per, (this.page + 1) * per)) list.append(card(item));
+    return [list, this.pager(this.page, pages)];
+  }
+
+  private pager(page: number, pages: number): HTMLElement {
+    const nav = el('div', 'achievement-pager');
+    const step = (by: -1 | 1, text: string) => {
+      const control = button('achievement-step', text);
+      control.dataset.step = String(by);
+      control.disabled = by < 0 ? page <= 0 : page >= pages - 1;
+      control.addEventListener('click', () => {
+        this.page += by;
+        this.turn = by;
+        this.render();
+        const same = this.root.querySelector<HTMLButtonElement>(`[data-step="${by}"]:not(:disabled)`)
+          ?? this.root.querySelector<HTMLButtonElement>('.achievement-step:not(:disabled)');
+        same?.focus({ preventScroll: true });
+      });
+      return control;
+    };
+    const number = el('span', 'achievement-page-number', `${page + 1} / ${pages}`);
+    number.setAttribute('aria-live', 'polite');
+    nav.append(step(-1, '◀ 이전'), number, step(1, '다음 ▶'));
+    return nav;
   }
 
   private tabBar(data: AchievementCatalog): HTMLElement {
@@ -191,58 +262,7 @@ export class AchievementView {
     return bar;
   }
 
-  private titleSection(data: AchievementCatalog): HTMLElement {
-    const section = el('section', 'achievement-section');
-    section.append(el('h3', 'achievement-section-title', '칭호'));
-    const list = el('div', 'achievement-titles');
-    for (const title of data.titles) list.append(this.titleCard(title, data));
-    section.append(list);
-    return section;
-  }
-
-  private titleCard(title: CatalogTitle, data: AchievementCatalog): HTMLElement {
-    const equipped = data.equipped === title.id;
-    const card = el('article', `achievement-title-card${equipped ? ' is-equipped' : title.unlocked ? ' is-unlocked' : ''}`);
-    const look = titleLook(title.id);
-    const plaque = el('div', 'achievement-title-plaque');
-    const name = el('span', 'achievement-title-name', title.name);
-    plaque.classList.add(...titleClasses(title.id));
-    plaque.append(name);
-    const head = el('div', 'achievement-title-head');
-    head.append(
-      el('span', 'achievement-title-rarity', look ? `${'★'.repeat(look.rank)} ${RARITY[look.rank - 1]}` : ''),
-      el('span', 'achievement-title-state', equipped ? '장착됨' : title.unlocked ? '장착 가능' : '미해금'),
-    );
-    card.append(plaque, head);
-
-    const needs = el('div', 'achievement-requirements');
-    // Scrolls inside its fixed room when long, by keyboard too.
-    needs.tabIndex = 0;
-    needs.setAttribute('role', 'group');
-    needs.setAttribute('aria-label', `${title.name} 해금 조건`);
-    const pure = TITLE_BY_ID.get(title.id);
-    const unlocked = new Set(data.achievements.filter((a) => a.unlocked).map((a) => a.id));
-    for (const id of pure?.requires ?? []) {
-      const source = ACHIEVEMENT_BY_ID.get(id);
-      const met = unlocked.has(id);
-      const parts = source ? [`${source.name} ·`, `목표 ${num(source.goal)}`] : [id];
-      needs.append(units(`achievement-requirement${met ? ' is-met' : ''}`, parts));
-    }
-    const wanted = pure?.requires ?? [];
-    card.append(el('p', 'achievement-title-count', `조건 ${wanted.filter((id) => unlocked.has(id)).length}/${wanted.length} 달성`), needs);
-
-    const signedIn = this.callbacks.signedIn();
-    const control = button('achievement-equip', !signedIn ? '로그인 필요' : !title.unlocked ? '미해금' : equipped ? '장착 해제' : '장착');
-    control.disabled = !signedIn || !title.unlocked || this.pending;
-    control.addEventListener('click', () => { void this.equip(equipped ? null : title.id); });
-    card.append(control);
-    return card;
-  }
-
-  private achievementSection(data: AchievementCatalog): HTMLElement {
-    const section = el('section', 'achievement-section');
-    section.append(el('h3', 'achievement-section-title', '도전과제'));
-
+  private filterBar(): HTMLElement {
     const filters = el('div', 'achievement-filters');
     const choices: { key: AchievementFilter; label: string }[] = [
       { key: 'all', label: '전체' },
@@ -253,18 +273,82 @@ export class AchievementView {
       const control = button('achievement-filter', choice.label);
       control.setAttribute('aria-pressed', String(this.filter === choice.key));
       control.disabled = this.pending;
-      control.addEventListener('click', () => { this.filter = choice.key; this.render(); });
+      control.addEventListener('click', () => { this.filter = choice.key; this.page = 0; this.render(); });
       filters.append(control);
     }
-    section.append(filters);
+    return filters;
+  }
 
-    const list = el('div', 'achievement-cards');
-    const shown = data.achievements.filter((a) =>
-      this.filter === 'all' || (this.filter === 'unlocked' ? a.unlocked : !a.unlocked));
-    if (shown.length === 0) list.append(el('p', 'achievement-empty', '해당하는 도전과제가 없어요.'));
-    for (const a of shown) list.append(this.achievementCard(a, data.participants));
-    section.append(list);
-    return section;
+  private plaque(id: string, name: string): HTMLElement {
+    const plaque = el('div', 'achievement-title-plaque');
+    plaque.classList.add(...titleClasses(id));
+    plaque.title = name;
+    plaque.append(el('span', 'achievement-title-name', name));
+    return plaque;
+  }
+
+  private titleCard(title: CatalogTitle, data: AchievementCatalog): HTMLElement {
+    const equipped = data.equipped === title.id;
+    const card = el('article', `achievement-title-card${equipped ? ' is-equipped' : title.unlocked ? ' is-unlocked' : ''}`);
+    const look = titleLook(title.id);
+    const head = el('div', 'achievement-title-head');
+    head.append(
+      el('span', 'achievement-title-rarity', look ? `${'★'.repeat(look.rank)} ${RARITY[look.rank - 1]}` : ''),
+      el('span', 'achievement-title-state', equipped ? '장착됨' : title.unlocked ? '장착 가능' : '미해금'),
+    );
+    const wanted = TITLE_BY_ID.get(title.id)?.requires ?? [];
+    const met = new Set(data.achievements.filter((a) => a.unlocked).map((a) => a.id));
+    const needs = button('achievement-needs', `조건 ${wanted.filter((id) => met.has(id)).length}/${wanted.length} 보기`);
+    needs.addEventListener('click', () => {
+      this.detail = title.id;
+      this.listPage = this.page;
+      this.page = 0;
+      this.render();
+      this.root.querySelector<HTMLButtonElement>('.achievement-close')?.focus({ preventScroll: true });
+    });
+    const signedIn = this.callbacks.signedIn();
+    const control = button('achievement-equip', !signedIn ? '로그인 필요' : !title.unlocked ? '미해금' : equipped ? '장착 해제' : '장착');
+    control.disabled = !signedIn || !title.unlocked || this.pending;
+    control.addEventListener('click', () => { void this.equip(equipped ? null : title.id); });
+    const actions = el('div', 'achievement-actions');
+    actions.append(needs, control);
+    card.append(this.plaque(title.id, title.name), head, actions);
+    return card;
+  }
+
+  /** What a title asks for, a page at a time. */
+  private requirementPages(title: CatalogTitle, data: AchievementCatalog): HTMLElement[] {
+    const close = button('achievement-close', '◀ 칭호 목록');
+    close.addEventListener('click', () => { this.back(); });
+    const byId = new Map(data.achievements.map((a) => [a.id, a]));
+    const wanted = TITLE_BY_ID.get(title.id)?.requires ?? [];
+    return [
+      this.plaque(title.id, title.name),
+      close,
+      ...this.paged('achievement-requirements', 76, wanted, (id) => {
+        const source = ACHIEVEMENT_BY_ID.get(id), own = byId.get(id);
+        const row = el('div', `achievement-requirement${own?.unlocked ? ' is-met' : ''}`);
+        row.append(
+          el('span', 'achievement-requirement-name', source?.name ?? id),
+          units('achievement-requirement-goal', source
+            ? [`목표 ${num(source.goal)} ·`, own?.unlocked ? '✔ 달성' : `현재 ${num(own?.progress ?? 0)}`] : []),
+        );
+        return row;
+      }, '조건이 없어요.'),
+    ];
+  }
+
+  /** Leaves a title's conditions for the list. False when there was nothing to leave. */
+  back(): boolean {
+    if (this.detail === null) return false;
+    const id = this.detail;
+    this.detail = null;
+    this.page = this.listPage;
+    this.render();
+    const at = [...this.root.querySelectorAll<HTMLElement>('.achievement-title-plaque')]
+      .find((p) => p.title === TITLE_BY_ID.get(id)?.name);
+    at?.parentElement?.querySelector<HTMLButtonElement>('.achievement-needs')?.focus({ preventScroll: true });
+    return true;
   }
 
   private achievementCard(a: CatalogAchievement, participants: number): HTMLElement {
