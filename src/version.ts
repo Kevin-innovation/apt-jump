@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.7.1', date: '2026-11-27', title: '코스튬 가격 조정',
+    notes: ['코스튬 가격 상향: 야광 러너 2,000 · 소방관 4,000 · 닌자 7,000 · 산타 배달부 10,000 · 우주 비행사 15,000 · 고양이 후드 22,000 · 황금 러너 50,000'],
+  },
+  {
     version: '2.7.0', date: '2026-11-27', title: '결과 화면 순위 · 픽셀 배지 · 주간 자동 새로고침',
     notes: [
       '판이 끝나면 결과 화면에 이번 주 내 순위가 보이고, 「주간 순위」 버튼으로 바로 이동',

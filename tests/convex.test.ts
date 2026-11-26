@@ -8,6 +8,7 @@ import { Game } from '../src/game';
 import { PRACTICE, serializeMap } from '../src/maps';
 import { pauseAllowanceMs, Recorder, releasedSeeds, SIM_VERSION, verifyReplay } from '../src/replay';
 import { achievementReward, WELCOME_COINS } from '../src/achievements';
+import { costumeById } from '../src/shop';
 import { STEP } from '../src/physics';
 
 // Real sign-in is in auth.test.ts. Here the caller's identity names the user row directly, without password
@@ -362,11 +363,12 @@ describe('shop', () => {
     expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top[0]).toMatchObject({ badge: earned[0] });
     await expect(a.as.mutation(api.shop.buy, { id: 'gold' })).rejects.toThrow('코인이 모자라요');
     await expect(a.as.mutation(api.shop.wear, { id: 'neon' })).rejects.toThrow('가지고 있지 않은');
-    await t.run((ctx) => ctx.db.patch(a.id, { coins: 1000 }));
-    expect(await a.as.mutation(api.shop.buy, { id: 'neon' })).toEqual({ coins: 700, owned: ['courier', 'neon'], costume: 'neon' });
+    const neon = costumeById('neon').price;
+    await t.run((ctx) => ctx.db.patch(a.id, { coins: neon + 1000 }));
+    expect(await a.as.mutation(api.shop.buy, { id: 'neon' })).toEqual({ coins: 1000, owned: ['courier', 'neon'], costume: 'neon' });
     await expect(a.as.mutation(api.shop.buy, { id: 'neon' })).rejects.toThrow('이미');
     await expect(a.as.mutation(api.shop.buy, { id: 'nothing' })).rejects.toThrow('없는 상품');
-    expect(await a.as.mutation(api.shop.wear, { id: 'courier' })).toMatchObject({ costume: 'courier', coins: 700 });
+    expect(await a.as.mutation(api.shop.wear, { id: 'courier' })).toMatchObject({ costume: 'courier', coins: 1000 });
   });
   it('pays older accounts their welcome coins and the rewards of achievements already earned, once', async () => {
     const { t, a } = await setup();
