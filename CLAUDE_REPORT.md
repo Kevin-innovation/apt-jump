@@ -1,3 +1,32 @@
+# P12 — 관리자 페이지·계정/순위 화면 분리·줄바꿈 (Claude, 2026-11-26)
+
+브랜치 `apt-jump/admin-layout` (main `61aa935`에서 분기, 커밋 없음). gameplay 파일은 건드리지 않음(OpenCode의 별도 worktree 담당). Patch 검색에서 관리자 UI에 쓸 블록은 없었음.
+
+## 변경
+- 화면 분리: `#ranking`은 순위 목록·내 기록·초기화 시각, 새 `#account`는 가입·로그인·닉네임·로그아웃·관리자 버튼. welcome의 가입/로그인도 `#account`.
+- 타이틀: 로그인 전후 8칸 동일(`회원가입`→`내 계정`, `로그인`→`로그아웃`). 이전의 버튼 숨김·start 전체폭 규칙 제거.
+- 고아 줄: 가입 안내 긴 문장을 필드별 도움말로 분리, `text-wrap: balance`+`keep-all`.
+- 관리자(`convex/admin.ts`, `src/online/admin.ts`, `#admin`): 아이디 `kvkvkv` 소유 userId와 세션 비교를 모든 호출에서 수행. 통계, 회원 검색·페이지·상세, 비번 재설정(별도 확인 칸의 `실행`, 세션 회수; 회원 전환 시 확인·입력 초기화, 늦은 상세 응답 무시), 정지/해제(로그인·온라인 쓰기 차단), 전 기기 로그아웃, 작업 기록. 삭제 기능 없음.
+- 스키마 추가(기존 필드·인덱스 삭제 없음): `users.suspended/lastActiveAt/plays`, 인덱스 `by_lastActive`, 테이블 `dailyStats`, `adminLog`. `onSignIn` 콜백 추가(정지 계정 로그인 거부).
+- `AGENTS.md`(Claude 메인·OpenCode 서브, worktree별 단일 작성자, 테스트 최소화), `DEVELOPMENT.md` 갱신.
+
+## 리뷰 반영 (Codex)
+- 로그아웃·세션 회수·계정 변경·관리자 아님이 감지되면 관리자 화면 내용과 대기 응답을 버리고 계정 화면으로 이동(`guardAdmin`, `AdminScreen.clear`). 늦은 `amI` 응답은 ticket으로 무시. build와 online-ui·entry-updates 10개 통과, 전용 테스트는 없음.
+- Codex 레이아웃 점검(320/375/390/768/1280): 가로 넘침·pageerror 0, 고아 줄은 320px 크레딧 1건 → 짧은 줄로 분리(build 통과). 이 수정의 브라우저 확인은 Codex 담당.
+- 외부 탭 로그아웃, 관리자 클릭 흐름은 실브라우저 미확인.
+
+## 검증
+- `tsc`(app, convex), `npm run build` 통과.
+- 대상 테스트만 실행: admin·online-ui·entry-updates·auth 46개 통과, 이후 변경 뒤 online-ui 6개·admin 재실행 통과. 전체 suite는 실행하지 않음(지시).
+
+## 배포 전 확인
+- Convex 먼저, 그다음 Vercel.
+- 배포 뒤 `kvkvkv` 로그인 → 내 계정에 관리자 버튼, 일반 계정엔 없음.
+- 활동·플레이 통계는 배포 이후만 집계(화면에 표시). 통계 계수는 2,000에서 `+` 표시.
+- 정지 계정의 기존 맵·순위 기록은 계속 보임.
+
+---
+
 # P11 — 순위 저장·계정 동선·크레딧·비밀번호 (Claude, 2026-11-26)
 
 브랜치 `apt-jump/fix-ranking-auth` (main `b1dc2b8`에서 분기, 커밋 없음). `feature/flight-combat`은 그대로 둠.

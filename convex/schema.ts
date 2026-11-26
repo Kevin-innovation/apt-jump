@@ -4,7 +4,11 @@ import { v } from 'convex/values';
 export default defineSchema({
   // Only a public nickname. The id and password hash live in Convex Auth's own components.
   // A bare account, made without users.signUp, has no nickname and can't play online.
-  users: defineTable({ nickname: v.optional(v.string()), nickKey: v.optional(v.string()) }).index('by_nickKey', ['nickKey']),
+  // suspended: set by the admin; such an account can't sign in or do anything online. lastActiveAt, plays: for the admin page.
+  users: defineTable({
+    nickname: v.optional(v.string()), nickKey: v.optional(v.string()),
+    suspended: v.optional(v.boolean()), lastActiveAt: v.optional(v.number()), plays: v.optional(v.number()),
+  }).index('by_nickKey', ['nickKey']).index('by_lastActive', ['lastActiveAt']),
 
   // One issued run. It can be handed in once, by the player it was issued to.
   runs: defineTable({
@@ -25,4 +29,13 @@ export default defineSchema({
     ownerId: v.id('users'), title: v.string(), segments: v.number(), bodyId: v.id('mapBodies'), updatedAt: v.number(),
   }).index('by_owner', ['ownerId']).index('by_updated', ['updatedAt']),
   mapBodies: defineTable({ json: v.string() }),
+
+  // Runs started each day (KST date), for the admin page: runs themselves are cleared after a day.
+  dailyStats: defineTable({ day: v.string(), plays: v.number() }).index('by_day', ['day']),
+  // What the admin did. Never a password, hash, token or session id.
+  adminLog: defineTable({
+    adminId: v.id('users'), targetId: v.id('users'), targetName: v.string(),
+    action: v.union(v.literal('resetPassword'), v.literal('suspend'), v.literal('unsuspend'), v.literal('revokeSessions')),
+    sessions: v.number(),
+  }),
 });

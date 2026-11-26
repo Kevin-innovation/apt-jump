@@ -9,6 +9,7 @@ import { buildCourse, blankMap, PRACTICE, type GameMap } from './maps';
 import { downloadMap, MapScreen } from './mapscreen';
 import { MapStore, MAX_MAPS } from './mapstore';
 import { PatchTest } from './patchtest';
+import { AdminScreen } from './online/admin';
 import { OnlineScreens } from './online/screens';
 import { errorText, onlineUrl } from './online/types';
 import { Recorder } from './replay';
@@ -74,12 +75,24 @@ function syncEntry(): void {
       el.title = detail;
     }
   });
-  // Signed out: sign up and log in. Signed in: one account button (nickname, log out); the ranking has its own button.
+  // The same two slots either way: sign up / log in, or my account / log out. The ranking has its own button.
   const signedIn = account?.status === 'in';
-  document.getElementById('title-account')!.textContent = signedIn ? '내 계정' : '회원가입';
-  document.getElementById('title-login')!.hidden = signedIn;
+  const slot = (id: string, act: string, text: string) => { const b = document.getElementById(id)!; b.dataset.act = act; b.textContent = text; };
+  slot('title-account', signedIn ? 'account' : 'signup', signedIn ? '내 계정' : '회원가입');
+  slot('title-login', signedIn ? 'logout' : 'login', signedIn ? '로그아웃' : '로그인');
   if (booted && !testing && !updating && phase === 'title' && ui.screen === 'title' && account && firstVisit.shouldShow(account.status)) ui.show('welcome');
   if (account?.status === 'in' && ui.screen === 'welcome') title();
+  guardAdmin(account?.status === 'in');
+}
+
+/** Leaves nothing of the admin page once the account is logged out, revoked or changed. */
+function guardAdmin(signedIn: boolean): void {
+  const leave = () => {
+    adminUi.clear();
+    if (ui.screen === 'admin') { ui.show('account'); onlineUi.openAccount(null); }
+  };
+  if (!signedIn) leave();
+  else void onlineUi.online?.admin.amI().then((yes) => { if (!yes) leave(); }, () => {});
 }
 
 function setPhase(p: Phase): void { phase = p; phaseAt = performance.now(); }
@@ -218,14 +231,13 @@ function act(a: Act): void {
   const s = save.data;
   switch (a) {
     case 'guest': firstVisit.dismiss(); title(); break;
-    case 'signup': case 'login':
+    case 'signup': case 'login': case 'account':
       firstVisit.dismiss();
-      ui.show('ranking'); onlineUi.openRanking(); onlineUi.setJoining(a === 'signup');
-      requestAnimationFrame(() => {
-        const field = document.getElementById(onlineUi.signedIn ? 'nick' : 'auth-id')!;
-        field.scrollIntoView({ block: 'center' }); field.focus();
-      });
+      ui.show('account'); onlineUi.openAccount(a === 'account' ? null : a === 'signup');
+      requestAnimationFrame(() => document.getElementById(onlineUi.signedIn ? 'nick' : 'auth-id')?.focus({ preventScroll: true }));
       break;
+    case 'logout': firstVisit.dismiss(); onlineUi.signOut(); break;
+    case 'admin': ui.show('admin'); void adminUi.open(); break;
     case 'start': mode = { kind: 'endless' }; startRun(); break;
     case 'restart': startRun(); break;
     case 'resume': resume(); break;
@@ -280,6 +292,7 @@ addEventListener('beforeunload', (event) => {
   }
 });
 mapScreen.onRefresh = () => onlineUi.refreshMaps();
+const adminUi = new AdminScreen(() => onlineUi.online);
 
 /** Hands a finished ranked run in; the result screen says how it went. */
 function submitRun(): void {

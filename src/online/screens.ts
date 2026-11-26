@@ -18,13 +18,14 @@ export class OnlineScreens {
   private ticket = 0;
   private order: 'new' | 'old' = 'new';
   private mapTicket = 0;
+  private adminTicket = 0;
   private joining = false;
 
   constructor(private store: MapStore, private maps: MapActions) {
     ($('auth-form') as HTMLFormElement).addEventListener('submit', (e) => { e.preventDefault(); void this.enter(); });
     $('auth-switch').addEventListener('click', () => { this.setJoining(!this.joining); this.say(''); $('auth-id').focus(); });
     this.setJoining(false);
-    $('rank-logout').addEventListener('click', () => void this.online?.signOut().catch((e) => this.say(errorText(e))));
+    $('rank-logout').addEventListener('click', () => this.signOut());
     const form = $('nick-form') as HTMLFormElement;
     form.addEventListener('submit', (e) => { e.preventDefault(); void this.rename(); });
     $('shared-order').addEventListener('click', () => { this.order = this.order === 'new' ? 'old' : 'new'; void this.refreshMaps(); });
@@ -45,15 +46,31 @@ export class OnlineScreens {
 
   setJoining(on: boolean): void {
     this.joining = on;
-    $('auth-title').textContent = on ? '회원가입' : '로그인';
+    this.title();
     $('auth-go').textContent = on ? '가입하고 시작' : '로그인';
-    $('auth-switch').textContent = on ? '이미 계정이 있어요' : '처음이에요 (회원가입)';
+    $('auth-switch').textContent = on ? '이미 계정이 있어요' : '처음이에요 · 회원가입';
     $('auth-nick-row').hidden = !on;
-    $('auth-rules').hidden = !on;
+    document.querySelectorAll<HTMLElement>('#auth-form .join-only').forEach((e) => { e.hidden = !on; });
     ($('auth-nick') as HTMLInputElement).required = on;
     const pass = $('auth-pass') as HTMLInputElement;
     pass.setAttribute('autocomplete', on ? 'new-password' : 'current-password');
-    pass.setAttribute('aria-describedby', on ? 'auth-rules rank-msg' : 'rank-msg');
+    pass.setAttribute('aria-describedby', on ? 'auth-pass-help rank-msg' : 'rank-msg');
+  }
+
+  private title(): void {
+    const a = this.online?.account();
+    $('account-title').textContent = a?.status === 'in' ? '내 계정' : this.joining ? '회원가입' : '로그인';
+  }
+
+  /** The account screen: sign-up (true), log-in (false), or as it is (null). */
+  openAccount(joining: boolean | null): void {
+    this.say('');
+    if (joining !== null) this.setJoining(joining);
+    this.refresh();
+  }
+
+  signOut(): void {
+    void this.online?.signOut().catch((e) => this.say(errorText(e)));
   }
 
   /** Signs in, or makes an account: what the form shows. */
@@ -102,15 +119,23 @@ export class OnlineScreens {
   refresh(): void {
     const a = this.online?.account();
     $('rank-off').hidden = !!this.online;
-    $('rank-off').textContent = this.connecting ? '온라인에 연결하는 중입니다.' : '온라인 연결을 준비하고 있습니다. 혼자 달리기, 맵 만들기, 맵 파일 주고받기는 지금도 됩니다.';
+    $('rank-off').textContent = this.connecting ? '온라인에 연결하는 중이에요.' : '순위는 온라인 연결 뒤에 보여요.';
+    $('account-off').hidden = !!this.online;
+    $('account-off').textContent = this.connecting ? '온라인에 연결하는 중이에요.' : '온라인 연결을 준비하고 있어요.';
     $('auth-form').hidden = a?.status !== 'out';
     $('rank-account').hidden = a?.status !== 'in';
     $('rank-wait').hidden = a?.status !== 'loading';
+    this.title();
     if (a?.status === 'in') {
       const box = $('nick') as HTMLInputElement;
       if (document.activeElement !== box) box.value = a.nickname ?? '';
     }
     if (a?.status === 'in' && a.nickname === null) this.say('순위에 보일 닉네임을 정해 주세요.');
+    // Only decides whether the button shows: every admin call is checked by the server.
+    const admin = $('admin-open'), asked = ++this.adminTicket;
+    admin.hidden = true;
+    // A late answer, from before a log-out or another account, changes nothing.
+    if (a?.status === 'in') void this.online?.admin.amI().then((yes) => { if (asked === this.adminTicket) admin.hidden = !yes; }, () => {});
     if (!$('ranking').hidden) void this.refreshBoard();
     if (!$('maps').hidden) void this.refreshMaps();
   }

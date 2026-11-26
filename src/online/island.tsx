@@ -91,7 +91,18 @@ export function connect(url: string): Online {
   client.mutation(api.ranking.clock, {}).then((t) => { offset = t - Date.now(); }, () => {});
   void ensureRelease();
 
+  const uid = (id: string) => id as Id<'users'>;
   return {
+    admin: {
+      amI: () => client.query(api.admin.amI, {}),
+      stats: () => client.query(api.admin.stats, {}),
+      members: (search, cursor) => client.query(api.admin.members, { search, paginationOpts: { numItems: 20, cursor } }),
+      detail: (id) => client.query(api.admin.memberDetail, { id: uid(id) }),
+      resetPassword: (id, password) => write(() => client.mutation(api.admin.resetPassword, { id: uid(id), password })),
+      setSuspended: (id, suspended) => write(() => client.mutation(api.admin.setSuspended, { id: uid(id), suspended })),
+      revokeSessions: (id) => write(() => client.mutation(api.admin.revokeSessions, { id: uid(id) })),
+      logs: (cursor) => client.query(api.admin.logs, { paginationOpts: { numItems: 20, cursor } }),
+    },
     pending: () => pending > 0,
     account: () => account,
     release: () => release,

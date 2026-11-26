@@ -6,13 +6,14 @@ This file overrides the parent folder's SKYWARD/flight instructions for this rep
 
 | Who | Role |
 | --- | --- |
-| Codex | Orchestrates, reviews, and does the final verification (browser, build, deploy checks). |
-| Claude Code | The only code writer in this working tree: game, Convex functions, tests, docs. |
-| OpenCode | Read-only reviewer: independent review, search, and bounded checks. It makes no project edits. |
+| Codex | Orchestrates, reviews, integrates, and does the final verification (browser, build, deploy checks). |
+| Claude Code | Main developer. |
+| OpenCode | Sub-developer, working in parallel in its own git worktree and branch. |
 
+- One writer per working tree. Parallel writers use separate worktrees and branches, with file scopes agreed by Codex.
+- Keep testing small: run the tests the change needs, plus typecheck and build once. No repeated full-suite runs.
 - Find terminal addresses with `hc ls`. Never assume fixed IDs: the old `t4`/`t1` addresses in parent docs are obsolete.
 - Report to the supervisor address given in each task with `hc send`. Long reports go in `CLAUDE_REPORT.md`, and only the path is sent.
-- One writer per working tree. Parallel writers need separate git worktrees and branches.
 - No subagents unless the orchestrator assigns them. A review-only task authorizes no edits, commits, pushes or deploys.
 - Stop only processes/terminals you started, by exact id.
 

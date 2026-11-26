@@ -10,7 +10,23 @@ export interface Account {
   nickname: string | null;
 }
 
+export interface AdminStats { members: number; signups7d: number; active7d: number; plays7d: number; playsToday: number; weeklyRecords: number; maps: number; suspended: number; cap: number }
+export interface AdminMember { id: string; username: string | null; nickname: string | null; joinedAt: number; lastActiveAt: number | null; plays: number; suspended: boolean; admin: boolean }
+export interface AdminLogEntry { at: number; action: string; target: string; targetId: string; sessions: number }
+/** The admin page's calls. The server checks every one: these only carry them. */
+export interface AdminApi {
+  amI(): Promise<boolean>;
+  stats(): Promise<AdminStats>;
+  members(search: string, cursor: string | null): Promise<{ page: AdminMember[]; isDone: boolean; continueCursor: string }>;
+  detail(id: string): Promise<{ member: AdminMember; sessions: number }>;
+  resetPassword(id: string, password: string): Promise<{ sessions: number }>;
+  setSuspended(id: string, suspended: boolean): Promise<{ sessions: number }>;
+  revokeSessions(id: string): Promise<{ sessions: number }>;
+  logs(cursor: string | null): Promise<{ page: AdminLogEntry[]; isDone: boolean; continueCursor: string }>;
+}
+
 export interface Online {
+  admin: AdminApi;
   /** Whether a player-initiated write is still being sent. */
   pending(): boolean;
   account(): Account;

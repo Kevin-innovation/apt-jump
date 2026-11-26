@@ -13,14 +13,14 @@ export const { signOut, refreshSession, isAuthenticated } = auth;
 export const { signInWithUsernamePassword } = setupUsernamePassword(auth, {
   component: components.authPassword,
   usernameComponent: components.authUsername,
-}).attachUserCallbacks({ createUser: internal.users.createUser });
+}).attachUserCallbacks({ createUser: internal.users.createUser, onSignIn: internal.users.onSignIn });
 
 type Tokens = Extract<SignUpResult, { status: 'complete' }>['tokens'];
 type SignUpArgs = { username: string; password: string };
 type SignUpCtx = MutationCtx & { convexAuth: { completeSignUp(a: { profile: Record<string, never>; authenticatedBy: object }): Promise<Tokens> } };
 type SignUpMutation = RegisteredMutation<'public', SignUpArgs, Promise<SignUpResult>>;
 /** Convex Auth's builder for a sign-in method's own functions (in its types as internal, see DEVELOPMENT.md). */
-type BindMethod = (o: { name: string; createUser: FunctionReference<'mutation', 'internal'> }) => {
+type BindMethod = (o: { name: string; createUser: FunctionReference<'mutation', 'internal'>; onSignIn: FunctionReference<'mutation', 'internal'> }) => {
   authMutation(fn: { args: PropertyValidators; handler: (ctx: SignUpCtx, args: SignUpArgs) => Promise<SignUpResult> }): SignUpMutation;
 };
 const bindMethod = (auth as unknown as { bindMethod: BindMethod }).bindMethod;
@@ -33,7 +33,7 @@ const refuse = (code: string): never => { throw new ConvexError(SIGN_UP_ERRORS[c
  * the password hashed and stored by the game's copy of its password component (components/authPassword), which drops
  * only its list of common passwords: the game's one rule is the length.
  */
-export const signUpWithUsernamePassword: SignUpMutation = bindMethod({ name: 'usernamePasswordSignUp', createUser: internal.users.createUser }).authMutation({
+export const signUpWithUsernamePassword: SignUpMutation = bindMethod({ name: 'usernamePasswordSignUp', createUser: internal.users.createUser, onSignIn: internal.users.onSignIn }).authMutation({
   args: { username: v.string(), password: v.string() },
   handler: async (ctx, { username, password }): Promise<SignUpResult> => {
     // Refusals before the account exists are answered as Convex Auth's own sign-up answers them.

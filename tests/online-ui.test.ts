@@ -19,7 +19,7 @@ const screens = () => new OnlineScreens(new MapStore(() => { throw new Error('no
 function fakeOnline() {
   const weeks: string[] = [];
   const online = {
-    account: () => ({ status: 'in', nickname: '나' }), onAccount() {}, now: () => Date.now(),
+    account: () => ({ status: 'in', nickname: '나' }), onAccount() {}, now: () => Date.now(), admin: { amI: async () => false },
     board: async (week: string) => { weeks.push(week); return { top: [], mine: null }; },
   } as unknown as Online;
   return { weeks, online };
@@ -81,4 +81,13 @@ it('shows one weekly board without difficulty controls', async () => {
   s.attach(online); s.openRanking(); await vi.advanceTimersByTimeAsync(0);
   expect(document.querySelector('#rank-version')).toBeNull();
   expect(el('rank-list').textContent).toContain('기록');
+});
+
+it('keeps the ranking and the account on separate screens, each with only its own things', () => {
+  const inside = (screen: string, id: string) => el(screen).querySelector(`#${id}`) !== null;
+  for (const id of ['rank-list', 'rank-mine', 'rank-reset']) expect([inside('ranking', id), inside('account', id)]).toEqual([true, false]);
+  for (const id of ['auth-form', 'nick-form', 'rank-logout', 'admin-open']) expect([inside('account', id), inside('ranking', id)]).toEqual([true, false]);
+  expect(el('ranking').querySelectorAll('input, form')).toHaveLength(0);
+  // The title keeps the same eight buttons, signed in or out.
+  expect(el('title').querySelectorAll('nav button')).toHaveLength(8);
 });

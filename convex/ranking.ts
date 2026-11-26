@@ -6,7 +6,7 @@ import { isWeekKey, weekKey } from '../src/week';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { action, internalMutation, mutation, query, type QueryCtx, type MutationCtx } from './_generated/server';
-import { requirePlayer, requireUser } from './users';
+import { requirePlayer, requireUser, touch } from './users';
 
 export const TOP = 50;
 /** Ranks past this are shown as "this or lower". */
@@ -72,6 +72,11 @@ export const start = mutation({
     const seed = Math.floor(Math.random() * 2 ** 31);
     const release = await activeRelease(ctx);
     const runId = await ctx.db.insert('runs', { userId, seed, version, release, startedAt: now, status: 'open' });
+    await touch(ctx, userId, true);
+    const day = new Date(now + 9 * 3_600_000).toISOString().slice(0, 10);
+    const today = await ctx.db.query('dailyStats').withIndex('by_day', (q) => q.eq('day', day)).unique();
+    if (today) await ctx.db.patch(today._id, { plays: today.plays + 1 });
+    else await ctx.db.insert('dailyStats', { day, plays: 1 });
     return { runId, seed };
   },
 });

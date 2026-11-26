@@ -17,7 +17,16 @@ const limiter = new RateLimiter(components.rateLimiter, {
 export async function requireUser(ctx: QueryCtx | MutationCtx): Promise<Id<'users'>> {
   const id = await getAuthUserId(ctx);
   if (id === null) throw new ConvexError('로그인이 필요합니다.');
+  if ((await ctx.db.get(id))?.suspended) throw new ConvexError(SUSPENDED);
   return id;
+}
+export const SUSPENDED = '이용이 정지된 계정입니다. 운영자에게 문의해 주세요.';
+
+/** Notes that a player did something, for the admin page. */
+export async function touch(ctx: MutationCtx, id: Id<'users'>, played = false): Promise<void> {
+  const user = await ctx.db.get(id);
+  if (!user) return;
+  await ctx.db.patch(id, { lastActiveAt: Date.now(), ...(played ? { plays: (user.plays ?? 0) + 1 } : {}) });
 }
 /** The signed-in player, who must have a public name. */
 export async function requirePlayer(ctx: QueryCtx | MutationCtx): Promise<Id<'users'>> {
@@ -44,7 +53,18 @@ export const createUser = internalMutation({
   returns: v.id('users'),
   handler: async (ctx) => {
     if (!(await limiter.limit(ctx, 'createAccount')).ok) throw new ConvexError('가입이 몰리고 있습니다. 잠시 뒤 다시 시도해 주세요.');
-    return await ctx.db.insert('users', {});
+    return await ctx.db.insert('users', { lastActiveAt: Date.now() });
+  },
+});
+
+/** Called by Convex Auth for every sign-in: a suspended account gets no session. */
+export const onSignIn = internalMutation({
+  args: { method: v.object({ name: v.union(v.literal('usernamePasswordSignUp'), v.literal('usernamePassword')), profile: v.object({}) }), userId: v.id('users') },
+  returns: v.null(),
+  handler: async (ctx, { userId }) => {
+    if ((await ctx.db.get(userId))?.suspended) throw new ConvexError(SUSPENDED);
+    await touch(ctx, userId);
+    return null;
   },
 });
 
