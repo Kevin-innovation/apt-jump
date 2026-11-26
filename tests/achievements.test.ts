@@ -6,7 +6,7 @@ import type { Id } from '../convex/_generated/dataModel';
 import type { MutationCtx } from '../convex/_generated/server';
 import schema from '../convex/schema';
 import { awardVerified } from '../convex/achievements';
-import type { VerifiedRunStats } from '../src/achievements';
+import { ACHIEVEMENTS, TITLES, type VerifiedRunStats } from '../src/achievements';
 
 // Same identity shortcut as the other Convex tests; the real auth flows live in auth.test.ts.
 vi.mock('@convex-dev/auth/server', async (original) => ({
@@ -37,6 +37,14 @@ describe('achievements', () => {
   it('refuses forged claims and players who cannot play', async () => {
     const { t, player } = await setup();
     const guest = await t.query(ach.catalog, {});
+    expect(ACHIEVEMENTS).toHaveLength(80);
+    expect(TITLES).toHaveLength(30);
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(80);
+    expect(new Set(TITLES.map((x) => x.id)).size).toBe(30);
+    const ids = new Set(ACHIEVEMENTS.map((a) => a.id));
+    expect(TITLES.every((x) => x.requires.every((need) => ids.has(need)))).toBe(true);
+    expect(guest.achievements).toHaveLength(80);
+    expect(guest.titles).toHaveLength(30);
     expect(guest.participants).toBe(0);
     expect(guest.achievements.find((a: { id: string }) => a.id === 'first-run'))
       .toMatchObject({ unlocked: false, progress: 0, earned: 0, percent: 0 });
@@ -82,10 +90,16 @@ describe('achievements', () => {
   it('unlocks titles from earned achievements and equips only those', async () => {
     const { player, award } = await setup();
     const a = await player();
-    await award(a, { ...HIGH, slides: 12 }); // one verified run that clears every goal
+    await award(a, { ...HIGH, slides: 12 }); // one verified run that clears the original goals
     const before = await a.as.query(ach.catalog, {});
-    expect(before.titles.every((x: { unlocked: boolean }) => x.unlocked)).toBe(true);
-    expect(before.equipped).toBeNull();
+    for (const id of ['runner', 'slipper', 'legend', 'all-rounder-1']) {
+      expect(before.titles.find((x: { id: string }) => x.id === id)).toMatchObject({ unlocked: true });
+    }
+    expect(before.titles.find((x: { id: string }) => x.id === 'all-rounder-5')).toMatchObject({ unlocked: false });
+    for (let i = 0; i < 9; i++) await award(a, HIGH); // ten verified runs unlock the third runs tier
+    const after = await a.as.query(ach.catalog, {});
+    expect(after.titles.find((x: { id: string }) => x.id === 'runs-tier3')).toMatchObject({ unlocked: true });
+    expect(after.equipped).toBeNull();
     expect(await a.as.mutation(ach.equip, { titleId: 'legend' })).toBeNull();
     expect((await a.as.query(ach.catalog, {})).equipped).toBe('legend');
     expect(await a.as.mutation(ach.equip, { titleId: null })).toBeNull();
