@@ -7,6 +7,7 @@ import { weekKey } from '../src/week';
 import { components } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
+import { weekCutoff } from './ranking';
 
 /** The one admin: the account that owns this sign-in id in Convex Auth's username component. */
 export const ADMIN_USERNAME = 'kvkvkv';
@@ -65,7 +66,8 @@ export const stats = query({
     // Members with a record this week, however many rows each has.
     const recorded = new Set<Id<'users'>>();
     let rows = 0;
-    for await (const r of ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', weekKey(now)))) { recorded.add(r.userId); if (++rows >= COUNT_CAP) break; }
+    const cutoff = await weekCutoff(ctx, weekKey(now));
+    for await (const r of ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', weekKey(now)))) { if (r.achievedAt >= cutoff) recorded.add(r.userId); if (++rows >= COUNT_CAP) break; }
     let seen = 0;
     for await (const u of ctx.db.query('users')) { if (u.suspended) suspended++; if (++seen >= COUNT_CAP) break; }
     return {

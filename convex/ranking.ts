@@ -19,9 +19,41 @@ const SLACK = 4000;
 /** The page waits longer than this for a run (START_WAIT in main.ts). */
 const MANIFEST_WAIT = 4000;
 
+const RESTARTED = '이번 주 순위가 새로 시작됐어요. 다시 달려 주세요.';
+
+const state = (ctx: QueryCtx | MutationCtx) => ctx.db.query('leaderboardState').withIndex('by_key', q => q.eq('key', 'current')).unique();
 async function activeRelease(ctx: QueryCtx | MutationCtx): Promise<string> {
-  return (await ctx.db.query('leaderboardState').withIndex('by_key', q => q.eq('key', 'current')).unique())?.release ?? 'initial';
+  return (await state(ctx))?.release ?? 'initial';
 }
+/** Records of `week` achieved before this don't count: 0 unless an operator started that week afresh. */
+export async function weekCutoff(ctx: QueryCtx | MutationCtx, week: string): Promise<number> {
+  const s = await state(ctx);
+  return s?.resetWeek === week ? s.resetAt ?? 0 : 0;
+}
+/** Whether a run was issued before the latest fresh start, and so can't be handed in. */
+async function outdated(ctx: MutationCtx, startedAt: number): Promise<boolean> {
+  return startedAt < ((await state(ctx))?.resetAt ?? 0);
+}
+
+/**
+ * Starts the running week's board afresh, once. For the operator only, from the CLI: no page can call it, and no deploy
+ * or release does. Nothing is deleted. Runs issued earlier can no longer be handed in.
+ *   npx convex run ranking:resetCurrentWeek '{"week":"YYYY-MM-DD"}' --prod
+ * `week` must name the week now running (its Monday in Korea). Asking again changes nothing.
+ */
+export const resetCurrentWeek = internalMutation({
+  args: { week: v.string() },
+  returns: v.object({ week: v.string(), resetAt: v.number(), applied: v.boolean() }),
+  handler: async (ctx, { week }) => {
+    const now = Date.now();
+    if (week !== weekKey(now)) throw new ConvexError(`이번 주(${weekKey(now)})만 초기화할 수 있습니다.`);
+    const old = await state(ctx);
+    if (old?.resetWeek === week) return { week, resetAt: old.resetAt!, applied: false };
+    if (old) await ctx.db.patch(old._id, { resetWeek: week, resetAt: now });
+    else await ctx.db.insert('leaderboardState', { key: 'current', release: 'initial', builtAt: 0, resetWeek: week, resetAt: now });
+    return { week, resetAt: now, applied: true };
+  },
+});
 
 /**
  * Notes the newest production release, for the page's update notice; the ranking doesn't depend on it. Only this
@@ -54,9 +86,11 @@ export const activateRelease = internalMutation({
   },
 });
 
-/** A player's highest row of a week. */
-function bestOf(ctx: QueryCtx | MutationCtx, week: string, userId: Id<'users'>) {
-  return ctx.db.query('scores').withIndex('by_week_user_score', (q) => q.eq('week', week).eq('userId', userId)).order('desc').first();
+/** A player's highest row of a week among those that count. */
+async function bestOf(ctx: QueryCtx | MutationCtx, week: string, userId: Id<'users'>, cutoff: number) {
+  for await (const r of ctx.db.query('scores').withIndex('by_week_user_score', (q) => q.eq('week', week).eq('userId', userId)).order('desc'))
+    if (r.achievedAt >= cutoff) return r;
+  return null;
 }
 
 export const clock = mutation({ args: {}, returns: v.number(), handler: async () => Date.now() });
@@ -97,6 +131,7 @@ export const claim = internalMutation({
     const run = await ctx.db.get(runId);
     if (!run || run.userId !== userId) throw new ConvexError('기록을 찾을 수 없습니다.');
     if (run.status !== 'open') throw new ConvexError('이미 제출했거나 무효가 된 기록입니다.');
+    if (await outdated(ctx, run.startedAt)) throw new ConvexError(RESTARTED);
     const elapsed = Date.now() - run.startedAt;
     const late = elapsed > RUN_LIFE || run.version !== SIM_VERSION;
     await ctx.db.patch(runId, { status: 'claimed' });
@@ -110,11 +145,13 @@ export const settle = internalMutation({
   handler: async (ctx, { runId, result }) => {
     const run = await ctx.db.get(runId);
     if (!run || run.status !== 'claimed') return { best: false };
+    // A fresh start between the claim and now.
+    if (result && await outdated(ctx, run.startedAt)) throw new ConvexError(RESTARTED);
     await ctx.db.patch(runId, { status: result ? 'done' : 'rejected' });
     if (!result) return { best: false };
     const now = Date.now();
     const week = weekKey(now);
-    const old = await bestOf(ctx, week, run.userId);
+    const old = await bestOf(ctx, week, run.userId, await weekCutoff(ctx, week));
     if (old && old.score >= result.score) return { best: false };
     const row = { release: run.release, version: run.version, ...result, achievedAt: now };
     if (old) await ctx.db.patch(old._id, row);
@@ -154,8 +191,9 @@ export const board = query({
     const top: { rank: number; nickname: string; score: number; distance: number; mine: boolean }[] = [];
     // Best first, so a player's first row is their highest and the rest are passed over.
     const seen = new Set<Id<'users'>>();
+    const cutoff = await weekCutoff(ctx, week);
     for await (const r of ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', week)).order('desc')) {
-      if (seen.has(r.userId)) continue;
+      if (r.achievedAt < cutoff || seen.has(r.userId)) continue;
       seen.add(r.userId);
       const user = await ctx.db.get(r.userId);
       // Equal scores share a rank.
@@ -163,13 +201,13 @@ export const board = query({
       top.push({ rank: prev && prev.score === r.score ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', score: r.score, distance: r.distance, mine: r.userId === me });
       if (top.length >= TOP) break;
     }
-    const own = me && (await bestOf(ctx, week, me));
+    const own = me && (await bestOf(ctx, week, me, cutoff));
     let mine = null;
     if (own) {
       const above = new Set<Id<'users'>>();
       let read = 0;
       for await (const r of ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', week).gt('score', own.score))) {
-        above.add(r.userId);
+        if (r.achievedAt >= cutoff) above.add(r.userId);
         if (++read >= RANK_CAP) break;
       }
       mine = { rank: read < RANK_CAP ? above.size + 1 : null, score: own.score, distance: own.distance };

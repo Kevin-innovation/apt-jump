@@ -27,7 +27,7 @@ This file overrides the parent folder's SKYWARD/flight instructions for this rep
 
 - The user chose Vercel (frontend, <https://apt-jump-wine.vercel.app>) plus Convex production (`honorable-guanaco-452`). That choice takes precedence over Patch as the default host for this game.
 - Deploy both together: Convex functions first (or at the same time), then Vercel. A web-only deploy calls functions the server doesn't have, and runs stop being saved.
-- Patches, deploys and difficulty changes keep the weekly leaderboard. It starts afresh only on Monday 00:00 KST (user requirement, replacing the earlier reset-on-deploy rule). Never delete score rows. See `DEVELOPMENT.md`.
+- Patches, deploys and difficulty changes keep the weekly leaderboard. It starts afresh only on Monday 00:00 KST (user requirement, replacing the earlier reset-on-deploy rule). Never delete score rows. A fresh start of the running week happens only when the user asks, through the operator's one-time `ranking:resetCurrentWeek`; no deploy does it. See `DEVELOPMENT.md`.
 
 ## Patch
 

@@ -68,6 +68,26 @@ describe('ranked runs', () => {
     // An older deployment answering late doesn't replace the newer one.
     expect(await t.mutation(internal.ranking.activateRelease, { id: 'stale-release', builtAt: NOW - 1000 })).toEqual({ id: 'new-release', builtAt: NOW });
   });
+  it('starts one week afresh when the operator asks, keeping the rows and later records', async () => {
+    const { t, a } = await setup();
+    await t.run((ctx) => ctx.db.insert('scores', { week: '2026-11-23', userId: a.id, score: 100000, distance: 1000, achievedAt: NOW }));
+    const before = await start(a);
+    vi.setSystemTime(NOW + 1000);
+    await expect(t.mutation(internal.ranking.resetCurrentWeek, { week: '2026-11-16' })).rejects.toThrow('이번 주');
+    expect(await t.mutation(internal.ranking.resetCurrentWeek, { week: '2026-11-23' })).toEqual({ week: '2026-11-23', resetAt: NOW + 1000, applied: true });
+    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null });
+    await expect(a.as.action(api.ranking.finish, { runId: before.runId, replay: play(before.seed, 3).text })).rejects.toThrow('새로 시작');
+    const { runId, seed } = await start(a), run = play(seed, 5);
+    vi.setSystemTime(NOW + run.ms + 3000);
+    expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toEqual({ score: run.score, best: true });
+    // A later release, and asking again, change nothing.
+    await t.mutation(internal.ranking.activateRelease, { id: 'new-release', builtAt: NOW + 2000 });
+    expect(await t.mutation(internal.ranking.resetCurrentWeek, { week: '2026-11-23' })).toEqual({ week: '2026-11-23', resetAt: NOW + 1000, applied: false });
+    const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
+    expect(board.top.map((r) => r.score)).toEqual([run.score]);
+    expect(board.mine).toMatchObject({ rank: 1, score: run.score });
+    expect(await t.run((ctx) => ctx.db.query('scores').collect())).toHaveLength(2);
+  });
   it('takes its release only from the canonical production manifest, never from player arguments', async () => {
     const { t } = await setup();
     const id = `abcdef123456-${NOW.toString(36)}`;

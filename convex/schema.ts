@@ -23,7 +23,9 @@ export default defineSchema({
   }).index('by_board_score', ['week', 'version', 'score']).index('by_board_user', ['week', 'version', 'userId'])
     .index('by_release_score', ['week', 'release', 'version', 'score']).index('by_release_user', ['week', 'release', 'version', 'userId'])
     .index('by_week_score', ['week', 'score']).index('by_week_user_score', ['week', 'userId', 'score']),
-  leaderboardState: defineTable({ key: v.string(), release: v.string(), builtAt: v.number() }).index('by_key', ['key']),
+  // release/builtAt: the newest production build, for the update notice. resetWeek/resetAt: an operator's fresh start of
+  // one week, whose records achieved before resetAt stay stored but are on no board (ranking.resetCurrentWeek).
+  leaderboardState: defineTable({ key: v.string(), release: v.string(), builtAt: v.number(), resetWeek: v.optional(v.string()), resetAt: v.optional(v.number()) }).index('by_key', ['key']),
 
   // What a list needs; the map itself is read one at a time.
   maps: defineTable({

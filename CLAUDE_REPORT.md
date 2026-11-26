@@ -1,3 +1,11 @@
+# P18 — 이번 주 순위 새 출발 (Claude, 2026-11-26, `apt-jump/weekly-fresh-start`)
+
+- 원인: P14가 모든 release의 주간 행을 합치면서, 이전의 배포별 초기화로 숨겨졌던 이번 주 옛 기록이 다시 보임.
+- `ranking.resetCurrentWeek`(internal, `{week}`, 주당 1회), `leaderboardState.resetWeek/resetAt`(optional). board·내 최고·순위·settle·관리자 주간 기록에서 이전 기록 제외(행 보존), 이전에 시작한 실행 제출 거부. `activateRelease`는 필드를 보존.
+- production 실행은 Codex 담당(Convex 배포 뒤 1회).
+
+---
+
 # P17 — 읽기 쉬운 구역 안내 (Claude, 2026-11-26, `apt-jump/readable-district-hud`)
 
 - 캔버스 `drawDistrict` 제거. `#hud .left`의 점수 아래 `#district`(system sans-serif 13px, 560px 이상 14px, 줄바꿈 없는 세 줄)로 이동. 갱신은 `UI.update`.
