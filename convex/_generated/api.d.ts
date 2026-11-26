@@ -14,6 +14,7 @@ import type * as auth from "../auth.js";
 import type * as maps from "../maps.js";
 import type * as maptimes from "../maptimes.js";
 import type * as ranking from "../ranking.js";
+import type * as shop from "../shop.js";
 import type * as users from "../users.js";
 
 import type {
@@ -29,6 +30,7 @@ declare const fullApi: ApiFromModules<{
   maps: typeof maps;
   maptimes: typeof maptimes;
   ranking: typeof ranking;
+  shop: typeof shop;
   users: typeof users;
 }>;
 

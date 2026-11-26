@@ -10,6 +10,9 @@ export default defineSchema({
     suspended: v.optional(v.boolean()), lastActiveAt: v.optional(v.number()), plays: v.optional(v.number()),
     // Id of an earned title, chosen by the player; read by the leaderboard through a pure lookup.
     equippedTitle: v.optional(v.string()),
+    // The shop: coins from verified weekly runs (balance and all ever earned), costumes bought and the one worn.
+    coins: v.optional(v.number()), coinsEarned: v.optional(v.number()),
+    owned: v.optional(v.array(v.string())), costume: v.optional(v.string()),
   }).index('by_nickKey', ['nickKey']).index('by_lastActive', ['lastActiveAt']),
 
   // One issued run. It can be handed in once, by the player it was issued to.

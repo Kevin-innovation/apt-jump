@@ -36,7 +36,7 @@ function play(seed: number | readonly number[], seconds: number) {
     g.step(j);
     g.drain();
   }
-  return { text: rec.text(), score: g.score, ms: rec.steps * STEP * 1000 };
+  return { text: rec.text(), score: g.score, coins: g.coins, ms: rec.steps * STEP * 1000 };
 }
 
 beforeEach(() => { vi.useFakeTimers({ toFake: ['Date'] }); vi.setSystemTime(NOW); });
@@ -70,7 +70,7 @@ describe('ranked runs', () => {
     await t.mutation(internal.ranking.activateRelease, { id: 'new-release', builtAt: NOW });
     expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual(before);
     vi.setSystemTime(NOW + run.ms + 1000);
-    expect(await a.as.action(api.ranking.finish, { runId: old.runId, replay: run.text })).toEqual({ score: run.score, best: false });
+    expect(await a.as.action(api.ranking.finish, { runId: old.runId, replay: run.text })).toMatchObject({ score: run.score, best: false });
     // An older deployment answering late doesn't replace the newer one.
     expect(await t.mutation(internal.ranking.activateRelease, { id: 'stale-release', builtAt: NOW - 1000 })).toEqual({ id: 'new-release', builtAt: NOW });
   });
@@ -85,7 +85,7 @@ describe('ranked runs', () => {
     await expect(a.as.action(api.ranking.finish, { runId: before.runId, replay: play(before.seed, 3).text })).rejects.toThrow('새로 시작');
     const { runId, seed } = await start(a), run = play(seed, 5);
     vi.setSystemTime(NOW + run.ms + 3000);
-    expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toEqual({ score: run.score, best: true });
+    expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toMatchObject({ score: run.score, best: true });
     // A later release, and asking again, change nothing.
     await t.mutation(internal.ranking.activateRelease, { id: 'new-release', builtAt: NOW + 2000 });
     expect(await t.mutation(internal.ranking.resetCurrentWeek, { week: '2026-11-23' })).toEqual({ week: '2026-11-23', resetAt: NOW + 1000, applied: false });
@@ -123,7 +123,7 @@ describe('ranked runs', () => {
     const first = await start(a);
     const one = play(first.seed, 10);
     vi.setSystemTime(NOW + one.ms + 1000);
-    expect(await a.as.action(api.ranking.finish, { runId: first.runId, replay: one.text })).toEqual({ score: one.score, best: true });
+    expect(await a.as.action(api.ranking.finish, { runId: first.runId, replay: one.text })).toMatchObject({ score: one.score, best: true });
     expect((await b.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', title: null, score: one.score, distance: expect.any(Number), mine: false }]);
     // Syncing again changes nothing; a better run replaces the record on the same board.
     await a.as.action(api.ranking.syncRelease, {});
@@ -131,7 +131,7 @@ describe('ranked runs', () => {
     const two = play(second.seed, 40);
     expect(two.score).toBeGreaterThan(one.score);
     vi.setSystemTime(NOW + one.ms + two.ms + 2000);
-    expect(await a.as.action(api.ranking.finish, { runId: second.runId, replay: two.text })).toEqual({ score: two.score, best: true });
+    expect(await a.as.action(api.ranking.finish, { runId: second.runId, replay: two.text })).toMatchObject({ score: two.score, best: true });
     const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
     expect(board.top).toEqual([{ rank: 1, nickname: '에이', title: null, score: two.score, distance: expect.any(Number), mine: true }]);
     expect(board.mine).toMatchObject({ rank: 1, score: two.score });
@@ -141,7 +141,7 @@ describe('ranked runs', () => {
     const { runId, seed } = await start(a);
     const run = play(seed, 20);
     vi.setSystemTime(NOW + run.ms + 1000);
-    expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toEqual({ score: run.score, best: true });
+    expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toMatchObject({ score: run.score, best: true });
     const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
     expect(board.top).toEqual([{ rank: 1, nickname: '에이', title: null, score: run.score, distance: expect.any(Number), mine: true }]);
     expect(board.mine).toMatchObject({ rank: 1, score: run.score });
@@ -255,7 +255,7 @@ describe('ranked runs', () => {
     const run = play(seed, 20);
     expect(run.score).toBeGreaterThan(3);
     vi.setSystemTime(NOW + run.ms + 1000);
-    expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toEqual({ score: run.score, best: true });
+    expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toMatchObject({ score: run.score, best: true });
     const after = await a.as.query(api.ranking.board, { week: '2026-11-23' });
     expect(after.top.map((r) => [r.rank, r.score, r.mine])).toEqual([[1, run.score, true], [2, 3, false], [3, 1, false]]);
     const rows = await t.run((ctx) => ctx.db.query('scores').collect());
@@ -340,5 +340,24 @@ describe('shared maps', () => {
     const second = await t.query(api.maps.list, { paginationOpts: { numItems: 5, cursor: first.continueCursor }, order: 'new' });
     expect(second.page[0]!.title).toBe('맵 14');
     expect((await t.query(api.maps.list, { paginationOpts: page, order: 'old' })).page[0]!.title).toBe('맵 0');
+  });
+});
+
+describe('shop', () => {
+  it('pays a verified run its coins, sells only what is affordable and not owned, and wears only what is owned', async () => {
+    const { t, a } = await setup();
+    expect(await a.as.query(api.shop.mine, {})).toEqual({ coins: 0, owned: ['courier'], costume: 'courier' });
+    const r = await start(a), run = play(r.seed, 20);
+    vi.setSystemTime(NOW + run.ms + 1000);
+    expect(run.coins).toBeGreaterThan(0);
+    expect(await a.as.action(api.ranking.finish, { runId: r.runId, replay: run.text })).toMatchObject({ coins: run.coins });
+    expect((await a.as.query(api.shop.mine, {}))!.coins).toBe(run.coins);
+    await expect(a.as.mutation(api.shop.buy, { id: 'gold' })).rejects.toThrow('코인이 모자라요');
+    await expect(a.as.mutation(api.shop.wear, { id: 'neon' })).rejects.toThrow('가지고 있지 않은');
+    await t.run((ctx) => ctx.db.patch(a.id, { coins: 1000 }));
+    expect(await a.as.mutation(api.shop.buy, { id: 'neon' })).toEqual({ coins: 700, owned: ['courier', 'neon'], costume: 'neon' });
+    await expect(a.as.mutation(api.shop.buy, { id: 'neon' })).rejects.toThrow('이미');
+    await expect(a.as.mutation(api.shop.buy, { id: 'nothing' })).rejects.toThrow('없는 상품');
+    expect(await a.as.mutation(api.shop.wear, { id: 'courier' })).toMatchObject({ costume: 'courier', coins: 700 });
   });
 });

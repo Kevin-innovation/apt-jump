@@ -163,7 +163,7 @@ it('replays a run with slides exactly, with the numbers achievements use', () =>
     while (!g.dead) { const j = g.time < 45 ? bot.next(g) : idle; rec.add(j); g.step(j); g.drain(); }
     slid += g.slides;
     const stats = { score: g.score, distance: Math.floor(g.distance), slides: g.slides, stomps: g.stomps, maxCombo: g.maxCombo, perfects: g.perfects };
-    expect(verifyReplay(seed, rec.text())).toEqual({ ok: true, score: g.score, distance: stats.distance, steps: Math.round(g.time * 120), stats });
+    expect(verifyReplay(seed, rec.text())).toEqual({ ok: true, score: g.score, distance: stats.distance, steps: Math.round(g.time * 120), stats, coins: g.coins });
   }
   expect(slid).toBeGreaterThan(0);
 });

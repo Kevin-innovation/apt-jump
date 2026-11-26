@@ -12,6 +12,7 @@ import { MapStore, MAX_MAPS } from './mapstore';
 import { PatchTest } from './patchtest';
 import { AdminScreen } from './online/admin';
 import { OnlineScreens } from './online/screens';
+import { ShopView } from './online/shopview';
 import { errorText, onlineUrl, Refusal } from './online/types';
 import { timeOf, timeText } from './mapreplay';
 import { pauseAllowanceMs, Recorder } from './replay';
@@ -94,8 +95,8 @@ function syncEntry(): void {
   // The same two slots either way: sign up / log in, or my account / log out. The ranking has its own button.
   const signedIn = account?.status === 'in';
   const slot = (id: string, act: string, text: string) => { const b = document.getElementById(id)!; b.dataset.act = act; b.textContent = text; };
-  slot('title-account', signedIn ? 'account' : 'signup', signedIn ? '내 계정' : '회원가입');
-  slot('title-login', signedIn ? 'logout' : 'login', signedIn ? '로그아웃' : '로그인');
+  // One slot for the account (log in, or my account where logging out is); the shop always beside it.
+  slot('title-account', signedIn ? 'account' : 'login', signedIn ? '내 계정' : '로그인');
   if (booted && !testing && !updating && phase === 'title' && ui.screen === 'title' && account && firstVisit.shouldShow(account.status)) ui.show('welcome');
   if (account?.status === 'in' && ui.screen === 'welcome') title();
   guardAdmin(account?.status === 'in');
@@ -297,6 +298,7 @@ function act(a: Act): void {
     case 'logout': firstVisit.dismiss(); onlineUi.signOut(); break;
     case 'admin': ui.show('admin'); void adminUi.open(); break;
     case 'achievements': ui.show('achievements'); void achievements.open(); break;
+    case 'shop': ui.show('shop'); void shop.open(); break;
     case 'start': mode = { kind: 'endless' }; startRun(); break;
     case 'restart': startRun(); break;
     case 'resume': resume(); break;
@@ -356,6 +358,7 @@ mapScreen.onRefresh = () => onlineUi.refreshMaps();
 onlineUi.myCards = () => mapScreen.cards;
 const adminUi = new AdminScreen(() => onlineUi.online);
 const connected = () => onlineUi.online ?? (() => { throw new Refusal('온라인 연결 뒤에 보여요.'); })();
+const shop = new ShopView(() => onlineUi.online, () => onlineUi.signedIn, (id) => view.setCostume(id));
 const achievements = new AchievementView(document.getElementById('achievement-view')!, {
   catalog: async () => connected().catalog(),
   equip: async (id) => connected().equip(id),
@@ -370,6 +373,10 @@ function syncAchievements(): void {
   if (who === achiever) return;
   achiever = who;
   achievements.clear();
+  // The runner wears what this account wears, or the courier's own.
+  shop.clear();
+  view.setCostume(null);
+  if (a?.status === 'in') void onlineUi.online?.shop().then((s) => { if (s && achiever === who) view.setCostume(s.costume); }, () => {});
   if (ui.screen === 'achievements') void achievements.open();
 }
 
@@ -395,7 +402,8 @@ function submitRun(): void {
   ui.onlineNote('순위에 등록하는 중…');
   online.finish(run.runId, run.recorder.text()).then(
     (r) => {
-      say(r.best ? `이번 주 최고 기록 ${r.score.toLocaleString('ko-KR')}점을 등록했습니다!` : '이번 주 최고 기록에는 미치지 못했습니다.');
+      const paid = r.coins ? ` 코인 +${r.coins.toLocaleString('ko-KR')}` : '';
+      say((r.best ? `이번 주 최고 기록 ${r.score.toLocaleString('ko-KR')}점을 등록했습니다!` : '이번 주 최고 기록에는 미치지 못했습니다.') + paid);
       // The ranking may already be open from the result screen, showing the board from before this run.
       void onlineUi.refreshBoard();
     },

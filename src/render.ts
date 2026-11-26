@@ -6,6 +6,7 @@ import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, PX_PER_M, roofE
 import { districtAt, LAP_EVENT_NAMES, LAP_LENGTH, type District, type DistrictKind, type LapEvent } from './progression';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
+import { costumeById } from './shop';
 import { ROAD_DEPTH, type Roof } from './world';
 import { roadCars } from './traffic';
 
@@ -95,6 +96,8 @@ export class Renderer {
   private seen: Roof[] = [];
   /** Passages whose glass has been gone through. */
   private broken = new Set<number>();
+  /** Sparkles that follow a costume that has them. */
+  private sparkle: string | undefined;
   /** Wires of a hook that pulled the runner up, shown for a moment. */
   private wires: { x: number; y: number; tx: number; ty: number; life: number }[] = [];
   /** The dark of a blackout, with holes for the runner's light and the coins. */
@@ -104,6 +107,13 @@ export class Renderer {
     this.g = el.getContext('2d', { alpha: false })!;
     this.sprites = makeSprites();
     this.resize();
+  }
+
+  /** Dresses the runner; an unknown id is the courier's own. */
+  setCostume(id: string | null): void {
+    const c = costumeById(id);
+    this.sprites = makeSprites(c.pal);
+    this.sparkle = c.sparkle;
   }
 
   /** Whole-number pixel scale, so every art pixel is the same size on screen. */
@@ -908,6 +918,8 @@ export class Renderer {
     const px = Math.round(p.x - cx) - (low ? 5 : 2 + Math.round((w - 14) / 2)), py = Math.round(p.y - cy - h + 1);
     if (p.ground) { g.fillStyle = 'rgba(10,6,30,.35)'; g.fillRect(px + 1, Math.round(p.y - cy), low ? w - 2 : 12, 1); }
     g.drawImage(s, px, py, w, h);
+    if (this.sparkle && moving && this.quality !== 'low' && Math.random() < 0.35)
+      this.particles.push({ x: p.x + Math.random() * 10, y: p.y - Math.random() * 16, vx: -40 - Math.random() * 40, vy: -10 + Math.random() * 20, life: 0, max: 0.5, color: this.sparkle, size: Math.random() < 0.5 ? 2 : 1, g: 0 });
     // A glider canopy over the head while drifting down on it.
     if (p.glideTime > 0 && !p.ground && Math.abs(p.vy - GLIDE_FALL) < 0.5) {
       g.fillStyle = '#1a1230'; g.fillRect(px - 5, py - 10, 24, 4); g.fillRect(px - 1, py - 12, 16, 2);

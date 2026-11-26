@@ -57,8 +57,8 @@
       <button type="button" data-act="start" class="primary">달리기 시작</button>
       <button type="button" data-act="ranking">주간 순위</button>
       <button type="button" data-act="achievements">도전과제</button>
-      <button type="button" data-act="signup" id="title-account">회원가입</button>
-      <button type="button" data-act="login" id="title-login">로그인</button>
+      <button type="button" data-act="login" id="title-account">로그인</button>
+      <button type="button" data-act="shop" id="title-shop">상점</button>
       <button type="button" data-act="maps">유저 맵</button>
       <button type="button" data-act="items">아이템 도감</button>
       <button type="button" data-act="settings">설정</button>
@@ -267,6 +267,18 @@
       <button type="button" data-act="shake"></button>
       <button type="button" data-act="back" class="primary">돌아가기</button>
     </nav>
+  </section>
+
+  <section class="screen paged" id="shop" hidden>
+    <header class="screen-top"><h2>상점</h2><nav><span id="shop-wallet" class="wallet"><i class="coin"></i><b id="shop-coins">-</b></span><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
+    <div class="shop-tabs" role="tablist" aria-label="상점 종류">
+      <button type="button" role="tab" aria-selected="true">코스튬</button>
+      <button type="button" role="tab" aria-selected="false" disabled>아이템 · 곧 공개</button>
+      <button type="button" role="tab" aria-selected="false" disabled>업그레이드 · 곧 공개</button>
+    </div>
+    <p id="shop-msg" class="keys" role="status"></p>
+    <div id="shop-list" class="page-list"></div>
+    <nav id="shop-pager"></nav>
   </section>
 
   <section class="screen paged" id="notes" hidden>

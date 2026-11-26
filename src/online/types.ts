@@ -1,6 +1,7 @@
 import type { AchievementCatalog } from './achievementview';
 
 /** What the game uses of the online side. The vanilla game never imports Convex or React itself. */
+export interface ShopState { coins: number; owned: string[]; costume: string }
 export interface BoardEntry { rank: number; nickname: string; title?: string | null; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
 /** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
@@ -47,7 +48,12 @@ export interface Online {
   start(): Promise<{ runId: string; seed: number; seeds: number[] }>;
   /** The run's stretch seeds released so far. */
   seeds(runId: string): Promise<number[]>;
-  finish(runId: string, replay: string): Promise<{ score: number; best: boolean }>;
+  /** `coins` is what the run paid into the player's wallet. */
+  finish(runId: string, replay: string): Promise<{ score: number; best: boolean; coins: number }>;
+  /** The player's coins and costumes; null for a guest. */
+  shop(): Promise<ShopState | null>;
+  buy(id: string): Promise<ShopState>;
+  wear(id: string): Promise<ShopState>;
   board(week: string): Promise<Board>;
   /** Anyone may look; only a signed-in player has progress and can wear a title. */
   catalog(): Promise<AchievementCatalog>;

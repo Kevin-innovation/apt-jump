@@ -52,7 +52,7 @@ export class Recorder {
 }
 
 export type Verdict =
-  | { ok: true; score: number; distance: number; steps: number; stats: VerifiedRunStats }
+  | { ok: true; score: number; distance: number; steps: number; stats: VerifiedRunStats; coins: number }
   | { ok: false; reason: 'format' | 'too-long' | 'unfinished' | 'input' };
 
 type Runs = [code: number, count: number][];
@@ -96,5 +96,5 @@ export function verifyReplay(seed: number | readonly number[], text: string): Ve
   if (g.world instanceof World && g.world.fallback) return { ok: false, reason: 'format' };
   const score = g.score, distance = Math.floor(g.distance);
   const stats: VerifiedRunStats = { score, distance, slides: g.slides, stomps: g.stomps, maxCombo: g.maxCombo, perfects: g.perfects };
-  return { ok: true, score, distance, steps, stats };
+  return { ok: true, score, distance, steps, stats, coins: g.coins };
 }

@@ -29,7 +29,6 @@ const BODY = [
   'kOOOkbbbbkk...',
   '.kkkkBBBBk....',
 ];
-const legs = (...rows: string[]) => sprite([...BODY, ...rows]);
 
 export interface Sprites {
   run: HTMLCanvasElement[]; jump: HTMLCanvasElement; fall: HTMLCanvasElement;
@@ -38,7 +37,10 @@ export interface Sprites {
   coin: HTMLCanvasElement[]; gold: HTMLCanvasElement[];
 }
 
-export function makeSprites(): Sprites {
+/** The runner's pictures in a costume's colours (the courier's own when none); coins never change. */
+export function makeSprites(costume: Partial<Record<string, string>> = {}): Sprites {
+  const pal = { ...PAL, ...costume } as Record<string, string>;
+  const legs = (...rows: string[]) => sprite([...BODY, ...rows], pal);
   const coin = [
     ['.kkkkk.', 'kyyyyYk', 'kywwyYk', 'kywyyYk', 'kywyyYk', 'kyyyYYk', '.kkkkk.'],
     ['..kkk..', '.kyyYk.', '.kwyYk.', '.kwyYk.', '.kwyYk.', '.kyYYk.', '..kkk..'],
@@ -67,7 +69,7 @@ export function makeSprites(): Sprites {
         '.kowokbbbbbsskkkk...',
         '.kOOOkBBbddddddwwk..',
         '..kkkkkkkkkkkkkkkk..',
-      ]),
+      ], pal),
       sprite([
         '....................',
         '.....kkkkk..........',
@@ -79,7 +81,7 @@ export function makeSprites(): Sprites {
         'kowokrrrrbbkkkddk...',
         'kOOOkBBbbssddkddwwwk',
         '.kkkkkkkkkkkkkkkkkk.',
-      ]),
+      ], pal),
       sprite([
         '......kkkkk.........',
         '.....kyyyyyk........',
@@ -91,7 +93,7 @@ export function makeSprites(): Sprites {
         'kowokbbbbsskkdddk...',
         'kOOOkBBBddddkkdwwk..',
         '.kkkkkkkkkkk..kkkk..',
-      ]),
+      ], pal),
     ],
     coin: coin.map((r) => sprite(r)),
     gold: coin.map((r) => sprite(r, { ...PAL, y: '#ff7ad9', Y: '#c23fb0' })),

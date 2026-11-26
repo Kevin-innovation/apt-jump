@@ -5,6 +5,7 @@ import { STEP } from '../src/physics';
 import { MAX_REPLAY, pauseAllowanceMs, releasedSeeds, SEGMENT_SEEDS, SIM_VERSION, verifyReplay } from '../src/replay';
 import { isWeekKey, weekKey } from '../src/week';
 import { awardVerified } from './achievements';
+import { credit } from './shop';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { action, internalMutation, mutation, query, type QueryCtx, type MutationCtx } from './_generated/server';
@@ -157,7 +158,7 @@ export const claim = internalMutation({
 const runStats = v.object({ score: v.number(), distance: v.number(), slides: v.number(), stomps: v.number(), maxCombo: v.number(), perfects: v.number() });
 
 export const settle = internalMutation({
-  args: { runId: v.id('runs'), result: v.union(v.null(), v.object({ score: v.number(), distance: v.number(), stats: v.optional(runStats) })) },
+  args: { runId: v.id('runs'), result: v.union(v.null(), v.object({ score: v.number(), distance: v.number(), stats: v.optional(runStats), coins: v.optional(v.number()) })) },
   returns: v.object({ best: v.boolean() }),
   handler: async (ctx, { runId, result }) => {
     const run = await ctx.db.get(runId);
@@ -166,9 +167,10 @@ export const settle = internalMutation({
     if (result && await outdated(ctx, run.startedAt)) throw new ConvexError(RESTARTED);
     await ctx.db.patch(runId, { status: result ? 'done' : 'rejected' });
     if (!result) return { best: false };
-    const { stats, ...scored } = result;
-    // Every verified run counts toward achievements, a best or not; the status above lets each run in once.
+    const { stats, coins, ...scored } = result;
+    // Every verified run counts toward achievements and pays its coins, a best or not; the status above lets each run in once.
     if (stats) await awardVerified(ctx, run.userId, stats);
+    if (coins) await credit(ctx, run.userId, coins);
     const now = Date.now();
     const week = weekKey(now);
     const old = await bestOf(ctx, week, run.userId, await weekCutoff(ctx, week));
@@ -183,8 +185,8 @@ export const settle = internalMutation({
 /** Hands in a run. The score comes from replaying it here, never from the page. */
 export const finish = action({
   args: { runId: v.id('runs'), replay: v.string() },
-  returns: v.object({ score: v.number(), best: v.boolean() }),
-  handler: async (ctx, { runId, replay }): Promise<{ score: number; best: boolean }> => {
+  returns: v.object({ score: v.number(), best: v.boolean(), coins: v.number() }),
+  handler: async (ctx, { runId, replay }): Promise<{ score: number; best: boolean; coins: number }> => {
     if (replay.length > MAX_REPLAY) throw new ConvexError('기록이 너무 깁니다.');
     const run: { seed: number; seeds: number[] | null; elapsed: number } = await ctx.runMutation(internal.ranking.claim, { runId });
     const verdict = run.elapsed < 0 ? null : verifyReplay(run.seeds ?? run.seed, replay);
@@ -196,8 +198,8 @@ export const finish = action({
       await ctx.runMutation(internal.ranking.settle, { runId, result: null });
       throw new ConvexError(run.elapsed < 0 ? '너무 오래된 기록입니다.' : verdict?.ok && real ? '일시정지가 너무 길어 순위에 등록하지 않았습니다.' : '확인되지 않는 기록이라 등록하지 않았습니다.');
     }
-    const saved: { best: boolean } = await ctx.runMutation(internal.ranking.settle, { runId, result: { score: verdict.score, distance: verdict.distance, stats: verdict.stats } });
-    return { score: verdict.score, best: saved.best };
+    const saved: { best: boolean } = await ctx.runMutation(internal.ranking.settle, { runId, result: { score: verdict.score, distance: verdict.distance, stats: verdict.stats, coins: verdict.coins } });
+    return { score: verdict.score, best: saved.best, coins: verdict.coins };
   },
 });
 

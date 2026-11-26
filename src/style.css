@@ -467,3 +467,34 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
   .boot-spin i:nth-child(2) { animation-delay: .2s; } .boot-spin i:nth-child(3) { animation-delay: .4s; } .boot-spin i:nth-child(4) { animation-delay: .6s; }
 }
 @keyframes boot-step { 0%, 25% { background: #ffd85a; } 26%, 100% { background: #3a2c6a; } }
+
+/* The shop: the wallet by the title, three tabs (two still to open), then cards of the same size with the runner in each costume. */
+#shop .screen-top { width: min(960px, 100%); }
+.wallet { display: inline-flex; align-items: center; gap: .4em; min-height: 40px; padding: 0 .8em; color: #ffd85a; background: #140c2ecc; border: 2px solid #ffd85a88; font-size: .95em; font-variant-numeric: tabular-nums; }
+.wallet .coin { width: .8em; height: .8em; }
+.shop-tabs { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(960px, 100%); }
+.shop-tabs button { min-height: 42px; background: #1f1840; border: 2px solid #5a4a90; color: #cfc4ee; font: inherit; font-size: .85em; }
+.shop-tabs button + button { border-left: 0; }
+.shop-tabs button[aria-selected='true'] { background: #3a2c6a; border-color: #7dfff0; color: #7dfff0; box-shadow: inset 0 -3px #7dfff0; }
+.shop-tabs button:disabled { opacity: .55; cursor: default; }
+#shop-msg { min-height: 1.4em; font-size: .8em; }
+#shop-list { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); grid-auto-rows: auto; gap: 8px; width: min(960px, 100%); }
+.shop-card { display: grid; justify-items: center; align-content: start; gap: 4px; padding: 10px 8px; background: linear-gradient(180deg, #2c2052, #1f1840); border: 2px solid #5a4a90; text-align: center; }
+.shop-card .shop-pic { position: static; inset: auto; width: 80px; height: 80px; image-rendering: pixelated; background: radial-gradient(circle at 50% 70%, #3a2c6a, #140c2e 70%); border: 2px solid #140c2e; }
+.shop-card b { color: #fff6e0; font-weight: normal; font-size: .95em; }
+.shop-card p { margin: 0; min-height: 2.6em; color: #cfc4ee; font-size: .68em; line-height: 1.35; }
+.shop-card .shop-price { display: inline-flex; align-items: center; gap: .35em; color: #ffd85a; font-size: .85em; font-variant-numeric: tabular-nums; }
+.shop-card .shop-price .coin { width: .75em; height: .75em; }
+.shop-card button { width: 100%; min-height: 38px; background: #3a2c6a; border: 2px solid #7a68b8; color: inherit; font: inherit; font-size: .8em; }
+.shop-card button.buy { background: #8a6418; border-color: #ffd85a; color: #fff6c8; }
+.shop-card button.buy.sure { background: #b8325c; border-color: #ffb3a0; }
+.shop-card button:disabled { opacity: .55; cursor: default; }
+.shop-card.is-owned { border-color: #7dfff0; }
+.shop-card.is-worn { border-color: #ffd85a; box-shadow: 0 0 0 2px #140c2e, 0 0 12px #ffd85a55; background: linear-gradient(180deg, #4a3a1c, #2c2052); }
+.shop-card.is-worn button { color: #ffd85a; }
+@media (max-width: 720px) { #shop-list { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+@media (max-height: 480px) { .shop-card .shop-pic { width: 56px; height: 56px; } .shop-card p { display: none; } }
+/* Two rows of costumes on a 720px screen. */
+.shop-card { padding: 8px; gap: 3px; }
+.shop-card .shop-pic { width: 64px; height: 64px; }
+.shop-card p { min-height: 2.4em; }
