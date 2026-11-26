@@ -230,3 +230,5 @@
 .achievement-view .achievement-badge-pick { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 6px; font-size: 12px; background: #140c2ecc; border-color: var(--rc, #7a68b8); }
 .achievement-view .achievement-badge-pick .ach-badge { width: 18px; height: 18px; font-size: 10px; }
 .achievement-view .achievement-badge-pick.is-worn { color: #1a1230; background: var(--rc, #7dfff0); }
+.achievement-view .achievement-category b { display: inline-flex; align-items: center; gap: 4px; }
+.achievement-view .achievement-category b svg { width: 11px; height: 11px; flex: none; }

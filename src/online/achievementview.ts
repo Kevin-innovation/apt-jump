@@ -1,5 +1,6 @@
 import './achievementview.css';
-import { ACHIEVEMENTS, achievementReward, STAT_BADGE, TITLES, type AchievementStat } from '../achievements';
+import { ACHIEVEMENTS, achievementReward, TITLES, type AchievementStat } from '../achievements';
+import { statIcon } from '../badges';
 import { achievementRank, RARITY, titleClasses, titleLook } from '../title-style';
 
 export interface AchievementCatalog {
@@ -337,7 +338,7 @@ export class AchievementView {
     const bar = el('div', 'achievement-categories');
     bar.setAttribute('role', 'group');
     bar.setAttribute('aria-label', this.tab === 'titles' ? '칭호 등급' : '도전과제 분류');
-    const choices: { label: string; count: string; on: boolean; pick: () => void }[] = [];
+    const choices: { label: string; count: string; on: boolean; pick: () => void; stat?: AchievementStat }[] = [];
     const tally = <T extends { unlocked: boolean }>(of: T[]) => `${of.filter((x) => x.unlocked).length}/${of.length}`;
     if (this.tab === 'titles') {
       choices.push({ label: '전체', count: tally(data.titles), on: this.rarity === 0, pick: () => { this.rarity = 0; } });
@@ -349,12 +350,14 @@ export class AchievementView {
       choices.push({ label: '전체', count: tally(data.achievements), on: this.stat === 'all', pick: () => { this.stat = 'all'; } });
       for (const stat of Object.keys(STAT_NAMES) as AchievementStat[]) choices.push({
         label: STAT_NAMES[stat], count: tally(data.achievements.filter((a) => ACHIEVEMENT_BY_ID.get(a.id)?.stat === stat)),
-        on: this.stat === stat, pick: () => { this.stat = stat; },
+        on: this.stat === stat, pick: () => { this.stat = stat; }, stat,
       });
     }
     for (const c of choices) {
       const control = button(`achievement-category${this.tab === 'titles' && c.label !== '전체' ? ` rarity-${RARITY.indexOf(c.label as (typeof RARITY)[number]) + 1}` : ''}`, '');
-      control.append(el('b', '', c.label), el('small', '', c.count));
+      const label = el('b', '', c.label);
+      if (c.stat) label.prepend(statIcon(c.stat));
+      control.append(label, el('small', '', c.count));
       control.setAttribute('aria-pressed', String(c.on));
       control.disabled = this.pending;
       control.addEventListener('click', () => { c.pick(); this.page = 0; this.render(); });
@@ -459,7 +462,8 @@ export class AchievementView {
     if (a.unlocked && this.callbacks.signedIn() && this.catalog) {
       const worn = this.catalog.badge === a.id;
       const b = button(`achievement-badge-pick${worn ? ' is-worn' : ''}`, worn ? '배지 해제' : '배지 달기');
-      const mark = el('span', `ach-badge r${achievementRank(a.id)}`, STAT_BADGE[ACHIEVEMENT_BY_ID.get(a.id)?.stat ?? 'runs']);
+      const mark = el('span', `ach-badge r${achievementRank(a.id)}`);
+      mark.append(statIcon(ACHIEVEMENT_BY_ID.get(a.id)?.stat ?? 'runs'));
       b.prepend(mark);
       b.disabled = this.pending;
       b.addEventListener('click', () => { void this.equipBadge(worn ? null : a.id); });

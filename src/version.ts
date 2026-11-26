@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.7.0', date: '2026-11-27', title: '결과 화면 순위 · 픽셀 배지 · 주간 자동 새로고침',
+    notes: [
+      '판이 끝나면 결과 화면에 이번 주 내 순위가 보이고, 「주간 순위」 버튼으로 바로 이동',
+      '도전과제 배지와 분류 버튼에 픽셀 아이콘 (달리기 · 별 · 깃발 · 슬라이드 · 부츠 · 번개 · 과녁)',
+      '월요일 00:00(KST) 새 주간 순위가 시작되면 접속 중인 모두에게 안내 후 자동 새로고침 (달리던 판은 끝나고 제출된 뒤)',
+    ],
+  },
+  {
     version: '2.6.0', date: '2026-11-27', title: '환영 코인 · 도전과제 보상 · 대표 배지',
     notes: [
       '모든 계정에 환영 코인 300 (기존 회원도 한 번 지급, 새 회원은 300코인으로 시작)',

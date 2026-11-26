@@ -507,3 +507,4 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .ach-badge.r2 { --rc: #8fe07a; } .ach-badge.r3 { --rc: #7fb8ff; } .ach-badge.r4 { --rc: #d39bff; }
 .ach-badge.r5 { --rc: #ffb347; } .ach-badge.r6 { --rc: linear-gradient(135deg, #fff6c8, #ffcf4a 45%, #ff9be6); }
 .ach-badge.r6 { background: linear-gradient(135deg, #fff6c8, #ffcf4a 45%, #ff9be6); }
+.ach-badge svg { width: 64%; height: 64%; display: block; }

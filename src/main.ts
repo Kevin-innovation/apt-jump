@@ -16,6 +16,7 @@ import { ShopView } from './online/shopview';
 import { errorText, onlineUrl, Refusal } from './online/types';
 import { timeOf, timeText } from './mapreplay';
 import { pauseAllowanceMs, Recorder } from './replay';
+import { weekEnd, weekKey } from './week';
 import { SEGMENT } from './world';
 import { STEP, type JumpInput } from './physics';
 import { Renderer } from './render';
@@ -403,8 +404,14 @@ function submitRun(): void {
   ui.onlineNote('순위에 등록하는 중…');
   online.finish(run.runId, run.recorder.text()).then(
     (r) => {
-      const paid = r.coins ? ` 코인 +${r.coins.toLocaleString('ko-KR')}` : '';
-      say((r.best ? `이번 주 최고 기록 ${r.score.toLocaleString('ko-KR')}점을 등록했습니다!` : '이번 주 최고 기록에는 미치지 못했습니다.') + paid);
+      const paid = r.coins ? ` · 코인 +${r.coins.toLocaleString('ko-KR')}` : '';
+      const line = (r.best ? `이번 주 최고 기록 ${r.score.toLocaleString('ko-KR')}점 등록!` : '이번 주 최고 기록에는 못 미쳤어요') + paid;
+      say(line);
+      // Where that leaves the player this week, right on the result.
+      online.board(weekKey(online.now())).then((b) => {
+        if (b.mine?.rank) say(`${line} · 이번 주 ${b.mine.rank}위`);
+        else if (b.mine) say(`${line} · 이번 주 1000위 밖`);
+      }, () => {});
       // The ranking may already be open from the result screen, showing the board from before this run.
       void onlineUi.refreshBoard();
     },
@@ -606,7 +613,14 @@ if (url) {
 }
 
 function offerUpdate(version: string): void {
+  reloadSoon('updated', version, '새 버전이 도착했어요', '지금 업데이트', (seconds, wasRunning) => `${seconds}초 뒤 새 버전으로 자동 새로고침합니다. 주간 기록은 유지됩니다.${wasRunning ? ' 진행 중인 판은 종료되며 순위에 등록되지 않습니다.' : ''} 저장된 맵과 로그인은 유지됩니다.`);
+}
+
+/** Tells the player why the page is about to reload, then does: saving an editor draft first, as an update does. */
+function reloadSoon(param: string, value: string, heading: string, action: string, say: (seconds: number, wasRunning: boolean) => string): void {
   if (updating) return;
+  document.getElementById('update-title')!.textContent = heading;
+  document.getElementById('update-now')!.textContent = action;
   updating = true;
   const wasRunning = phase === 'playing' || phase === 'countdown' || phase === 'issuing' || phase === 'paused';
   starting++; ranked = null;
@@ -625,7 +639,7 @@ function offerUpdate(version: string): void {
   }
   notice.hidden = false;
   const reload = () => {
-    const next = new URL(location.href); next.searchParams.set('updated', version);
+    const next = new URL(location.href); next.searchParams.set(param, value);
     location.replace(next.href);
   };
   now.onclick = reload;
@@ -635,11 +649,27 @@ function offerUpdate(version: string): void {
     now.hidden = true; exportMap.focus(); return;
   }
   let seconds = 5;
-  const text = () => { message.textContent = `${seconds}초 뒤 새 버전으로 자동 새로고침합니다. 주간 기록은 유지됩니다.${wasRunning ? ' 진행 중인 판은 종료되며 순위에 등록되지 않습니다.' : ''} 저장된 맵과 로그인은 유지됩니다.`; };
+  const text = () => { message.textContent = say(seconds, wasRunning); };
   text(); now.focus();
   const timer = setInterval(() => { seconds--; text(); if (seconds <= 0) { clearInterval(timer); reload(); } }, 1000);
 }
 if (!testing && import.meta.env.PROD) watchReleases(__RELEASE_ID__, offerUpdate);
+
+/**
+ * Monday 00:00 in Korea starts a new weekly board: everyone online is told and their page starts afresh, so no
+ * one keeps last week's board. A run under way is finished and handed in first; the server's clock decides.
+ */
+let weekEnds = 0;
+if (!testing) setInterval(() => {
+  const online = onlineUi.online;
+  if (!online || updating) return;
+  const now = online.now();
+  if (!weekEnds) { weekEnds = weekEnd(now); return; }
+  if (now < weekEnds) return;
+  const busy = phase === 'playing' || phase === 'countdown' || phase === 'paused' || phase === 'issuing' || phase === 'dying' || online.pending();
+  if (busy) return;
+  reloadSoon('week', weekKey(now), '새 주간 순위 시작!', '지금 새로고침', (seconds) => `새 주간 순위가 시작됐어요! ${seconds}초 뒤 새로고침합니다. 지난주 기록은 지난주 순위에 그대로 남아요.`);
+}, 1000);
 // Building numbers are painted once, so wait briefly for the font.
 Promise.race([document.fonts.load('11px Galmuri11', '동점'), new Promise((r) => setTimeout(r, 1500))])
   .catch(() => {})

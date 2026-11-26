@@ -142,8 +142,6 @@ export const ACHIEVEMENT_REWARD = [0, 50, 100, 200, 400, 800, 1500] as const;
 export const achievementReward = (id: string): number => ACHIEVEMENT_REWARD[achievementRank(id)];
 /** Coins every account starts with. */
 export const WELCOME_COINS = 300;
-/** The letter on an achievement's badge: its stat. */
-export const STAT_BADGE: Record<AchievementStat, string> = { runs: '달', score: '점', distance: '거', slides: '슬', stomps: '밟', maxCombo: '콤', perfects: '퍼' };
 export const achievementById = (id: string | null | undefined): Achievement | null => ACHIEVEMENTS.find((a) => a.id === id) ?? null;
 
 /** Pure lookup for the leaderboard: it only reads an id stored on the user. */

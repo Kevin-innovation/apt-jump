@@ -1,7 +1,8 @@
 import { cleanUsername, PASSWORD_MAX, PASSWORD_MIN } from '../username';
 import { cleanNickname } from '../nickname';
 import { titleClasses } from '../title-style';
-import { achievementById, achievementRank, STAT_BADGE } from '../achievements';
+import { achievementById, achievementRank } from '../achievements';
+import { statIcon } from '../badges';
 import { parseMap, serializeMap, type GameMap } from '../maps';
 import { downloadMap, mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
@@ -217,7 +218,7 @@ export class OnlineScreens {
           const badge = cls === 'rank-badge' ? achievementById(r.badge) : null;
           if (badge) {
             s.classList.add('ach-badge', `r${achievementRank(badge.id)}`);
-            s.textContent = STAT_BADGE[badge.stat];
+            s.replaceChildren(statIcon(badge.stat));
             s.title = `대표 도전과제: ${badge.name}`;
           }
           row.append(s);
