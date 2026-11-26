@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.0.1', date: '2026-11-27', title: '한 화면에 보는 목록 · 새 타이틀 안내',
+    notes: [
+      '패치노트 · 아이템 도감 · 주간 순위 · 맵 기록을 스크롤 없이 한 화면에, 이전/다음 버튼(← → 키)으로 넘겨 보기',
+      '아이템 도감에 게임 규칙(피버 · 콤보 세이브 · 랩 이벤트)을 함께 정리',
+      '타이틀의 조작 안내를 키 캡이 있는 카드로 새로 꾸미고, 우측 하단에 dev by Kevin 표시',
+    ],
+  },
+  {
     version: '2.0.0', date: '2026-11-27', title: '랩 이벤트 · 피버 · 새 아이템 대규모 업데이트',
     notes: [
       '2랩부터 랩마다 도시가 바뀌어요: 강풍(상승 기류 하늘길) → 정전(동전 점수 2배) → 폭우(물웅덩이 슬라이드 가속) → 균열(오래 서 있으면 무너지는 옥상)',

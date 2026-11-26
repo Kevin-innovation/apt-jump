@@ -7,6 +7,7 @@ import type { MapStore } from '../mapstore';
 import { timeText } from '../mapreplay';
 import { weekEnd, weekKey } from '../week';
 import { errorText, type Online, type SharedMapInfo } from './types';
+import { Pager } from '../pager';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const num = (n: number) => n.toLocaleString('ko-KR');
@@ -40,6 +41,9 @@ export class OnlineScreens {
   /** The map whose ranking is open. */
   private timesOf = '';
   private joining = false;
+  /** The weekly board and a map's times, a page at a time. */
+  private rankPages = new Pager($('rank-list'), $('rank-pager'));
+  private timePages = new Pager($('mt-list'), $('mt-pager'));
 
   constructor(private store: MapStore, private maps: MapActions) {
     ($('auth-form') as HTMLFormElement).addEventListener('submit', (e) => { e.preventDefault(); void this.enter(); });
@@ -178,15 +182,15 @@ export class OnlineScreens {
   }
 
   async refreshBoard(): Promise<void> {
-    const list = $('rank-list'), mine = $('rank-mine');
+    const mine = $('rank-mine');
     this.countdown();
-    if (!this.online) { list.replaceChildren(); mine.textContent = ''; return; }
+    if (!this.online) { this.rankPages.set([]); mine.textContent = ''; return; }
     const ticket = ++this.ticket;
     try {
       const b = await this.online.board(weekKey(this.online.now()));
       if (ticket !== this.ticket) return;
       const tied = tieBoard(b.top, `${num(b.top[0]?.score ?? 0)}점`);
-      list.replaceChildren(...(tied ? [tied] : []), ...b.top.map((r) => {
+      const rows = b.top.map((r) => {
         const row = document.createElement('div');
         row.className = r.mine ? 'rank me' : 'rank';
         if (tied && r.rank === 1) row.classList.add('tied');
@@ -204,13 +208,13 @@ export class OnlineScreens {
           row.append(s);
         }
         return row;
-      }));
-      if (!b.top.length) list.append(note('이번 주 기록이 아직 없습니다. 첫 주자가 되어 보세요!'));
+      });
+      this.rankPages.set(b.top.length ? [...(tied ? [tied] : []), ...rows] : [note('이번 주 기록이 아직 없습니다. 첫 주자가 되어 보세요!')], true);
       mine.textContent = b.mine ? `내 순위 ${b.mine.rank === null ? '1000위 밖' : `${b.mine.rank}위`} · ${num(b.mine.score)}점`
         : this.signedIn ? '이번 주 내 기록이 없습니다.' : '로그인하고 달리면 순위에 오릅니다.';
     } catch (e) {
       if (ticket !== this.ticket) return;
-      list.replaceChildren(note(errorText(e)));
+      this.rankPages.set([note(errorText(e))]);
       mine.textContent = '';
     }
   }
@@ -220,21 +224,21 @@ export class OnlineScreens {
   openTimes(id: string): void {
     this.timesOf = id;
     $('mt-title').textContent = '';
-    $('mt-list').replaceChildren(note('불러오는 중입니다.'));
+    this.timePages.set([note('불러오는 중입니다.')]);
     $('mt-mine').textContent = '';
     void this.refreshTimes();
   }
 
   async refreshTimes(): Promise<void> {
-    const list = $('mt-list'), mine = $('mt-mine'), ticket = ++this.timesTicket;
-    if (!this.online || !this.timesOf) { list.replaceChildren(note('기록은 온라인 연결 뒤에 보여요.')); return; }
+    const mine = $('mt-mine'), ticket = ++this.timesTicket;
+    if (!this.online || !this.timesOf) { this.timePages.set([note('기록은 온라인 연결 뒤에 보여요.')]); return; }
     try {
       const b = await this.online.mapBoard(this.timesOf);
       if (ticket !== this.timesTicket) return;
-      if (!b) { list.replaceChildren(note('내려간 맵입니다.')); mine.textContent = ''; return; }
+      if (!b) { this.timePages.set([note('내려간 맵입니다.')]); mine.textContent = ''; return; }
       $('mt-title').textContent = b.title;
       const tied = tieBoard(b.top, b.top[0] ? timeText(b.top[0].timeMs) : '');
-      list.replaceChildren(...(tied ? [tied] : []), ...b.top.map((r) => {
+      const rows = b.top.map((r) => {
         const row = document.createElement('div');
         row.className = r.mine ? 'rank time me' : 'rank time';
         if (tied && r.rank === 1) row.classList.add('tied');
@@ -244,13 +248,13 @@ export class OnlineScreens {
           row.append(s);
         }
         return row;
-      }));
-      if (!b.top.length) list.append(note('아직 완주 기록이 없어요.'));
+      });
+      this.timePages.set(b.top.length ? [...(tied ? [tied] : []), ...rows] : [note('아직 완주 기록이 없어요.')], true);
       mine.textContent = b.mine ? `내 기록 ${b.mine.rank === null ? '1000위 밖' : `${b.mine.rank}위`} · ${timeText(b.mine.timeMs)}`
         : this.signedIn ? '내 완주 기록이 없어요.' : '로그인하면 기록이 등록돼요.';
     } catch (e) {
       if (ticket !== this.timesTicket) return;
-      list.replaceChildren(note(errorText(e)));
+      this.timePages.set([note(errorText(e))]);
       mine.textContent = '';
     }
   }

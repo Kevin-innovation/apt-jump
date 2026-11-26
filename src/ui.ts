@@ -4,6 +4,7 @@ import { LAP_EVENT_NAMES, LAP_EVENT_TEXT } from './progression';
 import { POWER_KINDS, POWER_NAMES, POWER_TEXT, POWER_TIME, type PowerKind } from './items';
 import { medalFor, missionText, nextMedal } from './missions';
 import { PATCH_NOTES, VERSION } from './version';
+import { Pager } from './pager';
 import { AIR_COOLDOWN, canAirJump, HOLD_MAX } from './physics';
 import type { Device, MenuAction } from './input';
 import type { SaveFile } from './storage';
@@ -19,6 +20,12 @@ const KEYS: Record<Device, string> = {
   key: '점프 Space · ↑ · 클릭　　슬라이드 ↓　　일시정지 P · Esc　　음소거 M',
   touch: '화면을 눌러 점프 · ↓ 버튼으로 슬라이드',
   pad: '점프 아래 버튼　　슬라이드 ↓ · 왼쪽 버튼　　일시정지 스타트',
+};
+/** The key on each card of the title's guide, for the device in hand. */
+const GUIDE_KEYS: Record<Device, Record<'jump' | 'air' | 'slide', string>> = {
+  key: { jump: 'Space', air: '공중 Space', slide: '↓' },
+  touch: { jump: '탭', air: '공중 탭', slide: '↓ 버튼' },
+  pad: { jump: 'Ⓐ', air: '공중 Ⓐ', slide: '↓' },
 };
 const HINTS: Record<Device, string> = {
   key: 'Space를 짧게 / 길게 눌러 점프 높이를 조절하세요',
@@ -41,6 +48,8 @@ export class UI {
   private styles = new Map<string, string>();
   private attrs = new Map<string, string>();
   private chips = new Map<PowerKind, { el: HTMLElement; bar: HTMLElement; n: HTMLElement; on: boolean }>();
+  /** Screens shown a page at a time. */
+  private pagers = new Map<ScreenName, Pager>();
 
   constructor(private save: SaveFile) {
     for (const b of document.querySelectorAll<HTMLButtonElement>('[data-act]'))
@@ -54,7 +63,7 @@ export class UI {
   /** The version on the title, and every release's notes on their own screen. */
   private buildNotes(): void {
     $('version-label').textContent = `v${VERSION}`;
-    $('notes-list').replaceChildren(...PATCH_NOTES.map((n, i) => {
+    this.paged('notes', 'notes-list', 'notes-pager').set(PATCH_NOTES.map((n, i) => {
       const card = document.createElement('article');
       card.className = i === 0 ? 'note latest' : 'note';
       const head = document.createElement('h3'), when = document.createElement('small'), list = document.createElement('ul');
@@ -79,6 +88,7 @@ export class UI {
   }
 
   private buildPowers(): void {
+    const cards: HTMLElement[] = [];
     for (const kind of POWER_KINDS) {
       const el = document.createElement('div');
       el.hidden = true;
@@ -94,8 +104,18 @@ export class UI {
       name.style.color = powerColor(kind);
       words.append(name, document.createElement('br'), POWER_TEXT[kind]);
       row.append(this.picture(kind), words);
-      $('item-list').append(row);
+      cards.push(row);
     }
+    // The rules come after the items, on the same pages.
+    for (const rule of $('rule-list').querySelectorAll('p')) { rule.classList.add('rule'); cards.push(rule); }
+    this.paged('items', 'item-list', 'items-pager').set(cards);
+  }
+
+  /** A screen's list shown a page at a time. */
+  paged(screen: ScreenName, list: string, nav: string): Pager {
+    const pager = new Pager($(list), $(nav));
+    this.pagers.set(screen, pager);
+    return pager;
   }
 
   private el(id: string): HTMLElement {
@@ -134,6 +154,7 @@ export class UI {
   show(name: ScreenName | null): void {
     this.screen = name;
     for (const s of SCREENS) $(s).hidden = s !== name;
+    if (name) this.pagers.get(name)?.fit();
     this.refresh();
     if (name) {
       // Every screen is opened from its top.
@@ -177,6 +198,10 @@ export class UI {
 
   private deviceWords(): void {
     document.querySelectorAll('[data-keys]').forEach((k) => { k.textContent = KEYS[this.device]; });
+    document.querySelectorAll<HTMLElement>('.guide kbd[data-key]').forEach((k) => {
+      const key = k.dataset.key as keyof (typeof GUIDE_KEYS)['key'];
+      if (key in GUIDE_KEYS[this.device]) k.textContent = GUIDE_KEYS[this.device][key];
+    });
     this.text('hint', HINTS[this.device]);
     this.hidden('btn-slide', this.device !== 'touch');
   }

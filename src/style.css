@@ -315,7 +315,7 @@ body:has(.screen:not([hidden])) #district { display: none; }
 .note.latest { border-color: #ffd85a; box-shadow: 0 0 0 2px #140c2e, 0 0 12px #ffd85a44; }
 .note h3 { display: inline; margin-right: .6em; }
 .note small { color: #b9afcf; white-space: nowrap; }
-.note ul { margin: .35em 0 0; padding-left: 1.1em; font-size: .85em; line-height: 1.5; }
+.note ul { margin: .3em 0 0; padding-left: 1.1em; font-size: .78em; line-height: 1.45; }
 .note li { margin: .15em 0; }
 .note li::marker { color: #ff7d63; }
 
@@ -367,3 +367,34 @@ body:has(.screen:not([hidden])) #district { display: none; }
 #btn-slide { --u: max(14px, calc(var(--gp, 4px) * 5.5)); width: calc(var(--u) * 2.9); height: calc(var(--u) * 2.9); }
 #hint { bottom: calc(var(--u) * 5); }
 #jump-meter { bottom: max(calc(var(--u) * 1), env(safe-area-inset-bottom)); }
+
+/* Screens shown a page at a time: a header, the list in the space left, and the page buttons always in view. */
+.screen.paged { justify-content: flex-start; overflow: hidden; }
+.screen.paged > * { flex: none; }
+.screen.paged > .page-list { flex: 1 1 0; min-height: 0; overflow: hidden; align-content: start; }
+nav.pager { flex-direction: row; justify-content: center; align-items: center; gap: 10px; width: auto; min-height: 44px; }
+nav.pager button { min-height: 40px; padding: 0 .9em; }
+nav.pager button:disabled { opacity: .35; cursor: default; }
+.pager-label { min-width: 4.5em; color: #cfc4ee; font-variant-numeric: tabular-nums; }
+#notes .screen-top, #items .screen-top, #maptimes .screen-top { width: min(760px, 100%); }
+#notes-list { display: grid; gap: 8px; width: min(760px, 100%); text-align: left; }
+#item-list { grid-auto-rows: auto; }
+#item-list > div { flex-direction: row; justify-content: flex-start; align-items: center; text-align: left; min-height: auto; padding: 10px 12px; gap: 12px; }
+#item-list > div p { font-size: clamp(12px, 2.2vw, 15px); line-height: 1.5; }
+#item-list canvas.pic { width: 34px; height: 34px; flex: 0 0 34px; }
+#item-list > p.rule { padding: 10px 14px; background: #221a48; border: 2px solid #7a68b8; text-align: left; font-size: clamp(12px, 2.2vw, 15px); line-height: 1.5; }
+#item-list > p.rule b { display: block; }
+@media (max-width: 420px) { #item-list > div { min-height: auto; } }
+
+/* The title's guide: one card per move, its key on a key cap. */
+.guide { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; width: min(720px, 100%); }
+.guide li { --c: #7dfff0; display: grid; justify-items: center; align-content: start; gap: 3px; padding: 8px 6px 9px; background: #140c2ecc; border: 2px solid color-mix(in srgb, var(--c) 55%, #140c2e); box-shadow: 0 3px #0a0618; }
+.guide .g-air { --c: #8ff4ff; } .guide .g-perfect { --c: #ffd85a; } .guide .g-slide { --c: #ff9be6; }
+.guide kbd { font: inherit; font-size: .72em; padding: 1px 7px 2px; color: #1a1230; background: var(--c); box-shadow: inset 0 -2px #0005, 0 2px #0a0618; white-space: nowrap; }
+.guide b { color: var(--c); font-size: .95em; white-space: nowrap; }
+.guide span { font-size: .7em; color: #e6ddf5; white-space: nowrap; }
+@media (max-width: 640px) { .guide { grid-template-columns: repeat(2, minmax(0, 1fr)); } }
+.made-by { position: absolute; right: max(12px, env(safe-area-inset-right)); bottom: max(8px, env(safe-area-inset-bottom)); margin: 0; font-size: 12px; color: #cfc4eecc; text-shadow: 1px 1px #140c2e; pointer-events: none; }
+.made-by b { color: #7dfff0; }
+/* A short landscape screen keeps the title to its guide and buttons. */
+@media (max-height: 480px) { #title > .keys { display: none; } }

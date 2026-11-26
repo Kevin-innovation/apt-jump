@@ -46,12 +46,11 @@
   <section class="screen" id="title" hidden>
     <h1><span>아파트</span><span>점프</span></h1>
     <button type="button" class="version-chip" data-act="notes" aria-label="패치노트 보기"><b id="version-label"></b><span id="version-news"></span><em>패치노트 ▸</em></button>
-    <p class="lead">노을 진 옥상, 한 번의 점프!</p>
-    <ul class="tips">
-      <li>짧게 누르면 낮게 · 길게 누르면 높게</li>
-      <li>공중에서 한 번 더 · 2단 점프</li>
-      <li>착지 직후 점프 · 퍼펙트 가속</li>
-      <li>↓ 슬라이드 · 실내 보너스</li>
+    <ul class="guide" aria-label="조작 안내">
+      <li class="g-jump"><kbd data-key="jump">Space</kbd><b>점프</b><span>짧게 낮게 · 길게 높게</span></li>
+      <li class="g-air"><kbd data-key="air">공중에서</kbd><b>2단 점프</b><span>한 번 더 뛰어올라요</span></li>
+      <li class="g-perfect"><kbd data-key="perfect">착지 직후</kbd><b>퍼펙트</b><span>바로 뛰면 가속 · 콤보</span></li>
+      <li class="g-slide"><kbd data-key="slide">↓</kbd><b>슬라이드</b><span>장애물 밑 · 실내 보너스</span></li>
     </ul>
     <nav>
       <button type="button" data-act="start" class="primary">달리기 시작</button>
@@ -66,6 +65,7 @@
     </nav>
     <p class="keys" data-keys></p>
     <p class="warn" data-nosave hidden>이 브라우저에서는 저장할 수 없어 기록이 이번 실행 동안만 유지됩니다.</p>
+    <p class="made-by">아파트 점프 · dev by <b>Kevin</b></p>
   </section>
 
   <section class="screen" id="pause" hidden>
@@ -125,21 +125,21 @@
     <div id="shared-list" class="cards"></div>
   </section>
 
-  <section class="screen" id="maptimes" hidden>
-    <h2>맵 기록</h2>
+  <section class="screen paged" id="maptimes" hidden>
+    <header class="screen-top"><h2>맵 기록</h2><nav><button type="button" data-act="maps" class="primary">맵 목록으로</button></nav></header>
     <p id="mt-title" class="cy"></p>
-    <p class="keys">가장 빠른 완주 시간</p>
     <p id="mt-mine" class="ye"></p>
-    <div id="mt-list"></div>
-    <nav><button type="button" data-act="maps" class="primary">맵 목록으로</button></nav>
+    <div id="mt-list" class="page-list"></div>
+    <nav id="mt-pager"></nav>
   </section>
 
-  <section class="screen" id="ranking" hidden>
+  <section class="screen paged" id="ranking" hidden>
     <header class="screen-top"><h2>주간 순위</h2><nav><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
     <p class="release-announcement" role="status" hidden></p>
     <p id="rank-reset" class="keys"></p>
     <p id="rank-mine" class="ye"></p>
-    <div id="rank-list"></div>
+    <div id="rank-list" class="page-list"></div>
+    <nav id="rank-pager"></nav>
     <p id="rank-off" class="warn"></p>
   </section>
 
@@ -265,23 +265,22 @@
     </nav>
   </section>
 
-  <section class="screen" id="notes" hidden>
-    <h2>패치노트</h2>
-    <div id="notes-list"></div>
-    <nav><button type="button" data-act="back" class="primary">돌아가기</button></nav>
+  <section class="screen paged" id="notes" hidden>
+    <header class="screen-top"><h2>패치노트</h2><nav><button type="button" data-act="back" class="primary">타이틀로</button></nav></header>
+    <div id="notes-list" class="page-list"></div>
+    <nav id="notes-pager"></nav>
   </section>
 
-  <section class="screen" id="items" hidden>
-    <h2>아이템 도감</h2>
-    <div id="item-list"></div>
-    <h3>게임 규칙</h3>
-    <div id="rule-list">
+  <section class="screen paged" id="items" hidden>
+    <header class="screen-top"><h2>아이템 · 규칙</h2><nav><button type="button" data-act="back" class="primary">타이틀로</button></nav></header>
+    <div id="item-list" class="page-list"></div>
+    <nav id="items-pager"></nav>
+    <div id="rule-list" hidden>
       <p><b class="pk">피버 타임</b>콤보 20부터는 얻는 점수가 피버 게이지를 채워요. 가득 차면 8초 동안 모든 점수 2배! 새 랩에 들어서도 바로 피버.</p>
       <p><b style="color:#ff8fa3">콤보 세이브 ♥</b>콤보 5 이상이 끊길 때 한 칸을 써서 지켜 줘요. 다이아 3개마다, 또는 콤보 부적으로 1칸 (최대 3칸).</p>
       <p><b class="ye">콤보 정산 · 퍼펙트</b>구역 경계를 콤보 10 이상으로 넘으면 정산 보너스. 퍼펙트 착지는 콤보 시간을 5초로 채워요. 시간이 1초 남으면 빨갛게 깜빡여요.</p>
       <p><b class="cy">랩 이벤트</b>2km마다 랩이 바뀌어요. 강풍(상승 기류 하늘길) → 정전(동전 점수 2배) → 폭우(물웅덩이에서 ↓ 가속) → 균열(1초 넘게 서 있으면 무너짐) 순서로 돌아요.</p>
     </div>
-    <nav><button type="button" data-act="back" class="primary">돌아가기</button></nav>
   </section>
 
   <section class="screen" id="credits" hidden>
