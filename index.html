@@ -109,20 +109,25 @@
     <p class="warn" data-nosave hidden>저장할 수 없는 브라우저라 이 기록은 창을 닫으면 사라집니다.</p>
   </section>
 
-  <section class="screen" id="maps" hidden>
-    <h2>유저 맵</h2>
-    <nav class="row">
-      <button type="button" data-act="newmap" class="primary">새 맵 만들기</button>
-      <button type="button" data-act="import">파일 불러오기</button>
-      <button type="button" data-act="home">타이틀로</button>
-    </nav>
+  <section class="screen paged" id="maps" hidden>
+    <header class="screen-top"><h2>유저 맵</h2><nav><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
+    <div class="map-bar">
+      <div class="tabs" role="tablist" aria-label="맵 목록">
+        <button type="button" role="tab" id="tab-shared" aria-selected="true">공유 맵</button>
+        <button type="button" role="tab" id="tab-mine" aria-selected="false">내 맵</button>
+      </div>
+      <div class="map-acts">
+        <button type="button" id="shared-order" hidden></button>
+        <button type="button" data-act="newmap" data-tab="mine">새 맵 만들기</button>
+        <button type="button" data-act="import" data-tab="mine">파일 불러오기</button>
+      </div>
+    </div>
     <input type="file" id="map-file" accept=".json,application/json" hidden />
     <p id="maps-msg" class="warn" role="status"></p>
-    <h3>내 맵</h3>
-    <div id="map-list" class="cards"></div>
-    <h3>공유 맵</h3>
-    <button type="button" id="shared-order" class="small" hidden></button>
-    <div id="shared-list" class="cards"></div>
+    <div id="shared-list" class="cards page-list" style="--slots: 4"></div>
+    <nav id="shared-pager"></nav>
+    <div id="map-list" class="cards page-list" style="--slots: 5" hidden></div>
+    <nav id="maps-pager" hidden></nav>
   </section>
 
   <section class="screen paged" id="maptimes" hidden>
@@ -135,7 +140,6 @@
 
   <section class="screen paged" id="ranking" hidden>
     <header class="screen-top"><h2>주간 순위</h2><nav><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
-    <p class="release-announcement" role="status" hidden></p>
     <p id="rank-reset" class="keys"></p>
     <p id="rank-mine" class="ye"></p>
     <div id="rank-list" class="page-list"></div>
@@ -222,13 +226,12 @@
 
   <section class="screen" id="editor" hidden>
     <div class="ed-top">
-      <button type="button" data-act="ed-back">목록</button>
+      <button type="button" data-act="ed-back">◀ 내 맵</button>
       <input id="ed-title" type="text" aria-label="맵 이름" autocomplete="off" />
       <button type="button" data-ed="undo">되돌리기</button>
       <button type="button" data-ed="redo">다시</button>
-      <button type="button" data-act="ed-save">저장</button>
-      <button type="button" data-act="ed-export">파일로</button>
-      <button type="button" data-act="ed-test" class="primary">테스트</button>
+      <button type="button" data-act="ed-test">테스트</button>
+      <button type="button" data-act="ed-save" class="primary">내 맵에 저장</button>
     </div>
     <canvas id="ed-canvas" aria-label="맵 미리보기"></canvas>
     <input id="ed-scroll" type="range" min="-40" max="0" value="0" aria-label="맵 위치" />

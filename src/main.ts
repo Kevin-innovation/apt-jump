@@ -148,7 +148,7 @@ function saveMap(): boolean {
   if (!s) { editor.message(`맵은 ${MAX_MAPS}개까지 보관할 수 있습니다. 파일로 내려받거나 다른 맵을 지우세요.`); return false; }
   editor.id = s.id;
   editor.dirty = false;
-  editor.message(maps.available ? '저장했습니다.' : '이 브라우저에는 저장할 수 없습니다. 파일로 내려받아 두세요.');
+  editor.message(maps.available ? '내 맵에 저장했어요. 다른 사람과 나누려면 유저 맵 › 내 맵에서 「공유」를 누르세요.' : '이 브라우저에는 저장할 수 없습니다. 내 맵 목록에서 내보내기로 파일을 받아 두세요.');
   return true;
 }
 
@@ -297,7 +297,6 @@ function act(a: Act): void {
     case 'newmap': openEditor(blankMap(), null); break;
     case 'import': mapScreen.pickFile(); break;
     case 'ed-save': saveMap(); break;
-    case 'ed-export': editor.flush(); downloadMap(editor.map); break;
     case 'ed-test':
       editor.flush();
       if (editor.valid) playMap(editor.map, null, 'editor');
@@ -310,6 +309,7 @@ function act(a: Act): void {
       leaving = false;
       setPhase('editor');
       openMaps();
+      mapScreen.tab('mine');
       break;
     case 'settings': case 'credits': case 'items': case 'notes': returnTo = ui.screen ?? 'title'; ui.show(a); break;
     case 'back': ui.show(returnTo); break;
@@ -344,6 +344,7 @@ addEventListener('beforeunload', (event) => {
   }
 });
 mapScreen.onRefresh = () => onlineUi.refreshMaps();
+onlineUi.myCards = () => mapScreen.cards;
 const adminUi = new AdminScreen(() => onlineUi.online);
 const connected = () => onlineUi.online ?? (() => { throw new Refusal('온라인 연결 뒤에 보여요.'); })();
 const achievements = new AchievementView(document.getElementById('achievement-view')!, {

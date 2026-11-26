@@ -19,6 +19,7 @@ function tieBoard(top: readonly { rank: number; nickname: string }[], record: st
   if (firsts.length < 2) return null;
   const board = document.createElement('div');
   board.className = 'tie-board';
+  board.dataset.extra = '1';
   for (const [cls, text] of [['tie-head', `공동 1위 · ${firsts.length}명`], ['tie-names', firsts.map((r) => r.nickname).join(' · ')], ['tie-record', record]]) {
     const s = document.createElement('span');
     s.className = cls!;
@@ -42,8 +43,12 @@ export class OnlineScreens {
   private timesOf = '';
   private joining = false;
   /** The weekly board and a map's times, a page at a time. */
-  private rankPages = new Pager($('rank-list'), $('rank-pager'));
-  private timePages = new Pager($('mt-list'), $('mt-pager'));
+  private rankPages = new Pager($('rank-list'), $('rank-pager'), 10);
+  private timePages = new Pager($('mt-list'), $('mt-pager'), 10);
+  private sharedPages = new Pager($('shared-list'), $('shared-pager'));
+  private sharedItems: HTMLElement[] = [];
+  /** The player's own map cards, from the shelf: each has a share button to bring to life. */
+  myCards: () => HTMLElement[] = () => [];
 
   constructor(private store: MapStore, private maps: MapActions) {
     ($('auth-form') as HTMLFormElement).addEventListener('submit', (e) => { e.preventDefault(); void this.enter(); });
@@ -194,6 +199,8 @@ export class OnlineScreens {
         const row = document.createElement('div');
         row.className = r.mine ? 'rank me' : 'rank';
         if (tied && r.rank === 1) row.classList.add('tied');
+        // Gold, silver and bronze for the first three places.
+        if (r.rank <= 3) row.dataset.top = String(r.rank);
         const cells: [string, string][] = [
           ['rank-place', String(r.rank)], ['rank-nick', r.nickname], ['rank-title', r.title ?? ''],
           ['rank-score', `${num(r.score)}점`], ['rank-distance', `${num(r.distance)}m`],
@@ -242,6 +249,8 @@ export class OnlineScreens {
         const row = document.createElement('div');
         row.className = r.mine ? 'rank time me' : 'rank time';
         if (tied && r.rank === 1) row.classList.add('tied');
+        // Gold, silver and bronze for the first three places.
+        if (r.rank <= 3) row.dataset.top = String(r.rank);
         for (const t of [String(r.rank), r.nickname, timeText(r.timeMs)]) {
           const s = document.createElement('span');
           s.textContent = t;
@@ -262,36 +271,37 @@ export class OnlineScreens {
   // ---- Shared maps -------------------------------------------------------
 
   async refreshMaps(): Promise<void> {
-    const box = $('shared-list');
     $('shared-order').hidden = !this.online;
     $('shared-order').textContent = this.order === 'new' ? '최신순' : '오래된순';
     this.shelf();
     if (!this.online) {
-      box.replaceChildren(note(this.connecting ? '온라인에 연결하는 중입니다.' : '온라인 공유는 준비하고 있습니다. 맵 파일을 내려받아 주고받을 수 있어요.'));
+      this.sharedPages.set([note(this.connecting ? '온라인에 연결하는 중입니다.' : '온라인 공유는 준비하고 있습니다. 맵 파일을 내려받아 주고받을 수 있어요.')]);
       return;
     }
     const ticket = ++this.mapTicket;
-    box.replaceChildren(note('불러오는 중입니다.'));
+    this.sharedPages.set([note('불러오는 중입니다.')]);
     await this.page(null, ticket);
   }
 
   private async page(cursor: string | null, ticket: number): Promise<void> {
-    const box = $('shared-list');
     try {
       const r = await this.online!.listMaps(this.order, cursor);
       if (ticket !== this.mapTicket) return;
-      if (cursor === null) box.replaceChildren();
-      else box.lastElementChild?.remove();
-      box.append(...r.page.map((m) => this.card(m)));
+      // More maps replace the button that fetched them, at the end of the last page.
+      const items = cursor === null ? [] : this.sharedItems.slice(0, -1);
+      items.push(...r.page.map((m) => this.card(m)));
       if (!r.isDone) {
         const more = document.createElement('button');
         more.type = 'button';
-        more.textContent = '더 보기';
+        more.className = 'more';
+        more.textContent = '공유 맵 더 불러오기';
         more.addEventListener('click', () => { more.disabled = true; void this.page(r.continueCursor, ticket); });
-        box.append(more);
-      } else if (!box.childElementCount) box.append(note('아직 공유된 맵이 없습니다.'));
+        items.push(more);
+      }
+      this.sharedItems = items;
+      this.sharedPages.set(items.length ? items : [note('아직 공유된 맵이 없습니다.')], cursor !== null);
     } catch (e) {
-      if (ticket === this.mapTicket) box.replaceChildren(note(errorText(e)));
+      if (ticket === this.mapTicket) this.sharedPages.set([note(errorText(e))]);
     }
   }
 
@@ -308,22 +318,24 @@ export class OnlineScreens {
   }
 
   private card(m: SharedMapInfo): HTMLElement {
+    // Same four slots on every card: play, records, export, and taking down one's own.
     const buttons: Parameters<typeof mapCard>[2] = [
       ['플레이', () => void this.open(m.id, (map) => this.maps.playShared ? this.maps.playShared(map, m.id) : this.maps.play(map, null)), true],
       ['기록', () => this.maps.times?.(m.id)],
-      ['파일로', () => void this.open(m.id, downloadMap)],
+      ['내보내기', () => void this.open(m.id, downloadMap)],
     ];
-    if (m.mine) {
-      buttons.push(['게시 취소', (b) => {
+    if (!m.mine) buttons.push(null);
+    else {
+      buttons.push(['공유 취소', (b) => {
         if (!b.dataset.sure) {
           b.dataset.sure = '1';
           b.textContent = '정말 취소';
-          setTimeout(() => { delete b.dataset.sure; b.textContent = '게시 취소'; }, 3000);
+          setTimeout(() => { delete b.dataset.sure; b.textContent = '공유 취소'; }, 3000);
           return;
         }
         this.online!.removeMap(m.id).then(() => {
           this.store.unlink(m.id);
-          this.tell('게시를 취소했습니다.');
+          this.tell('공유를 취소했습니다.');
           return this.refreshMaps();
         }, (e) => this.tell(errorText(e)));
       }]);
@@ -333,25 +345,27 @@ export class OnlineScreens {
     return mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}${m.best === null ? '' : ` · 최단 ${timeText(m.best)}${holder}`}`, buttons);
   }
 
-  /** Adds publish buttons to the player's own maps when signed in. */
+  /** Brings the share button of each of the player's own maps to life when signed in. */
   private shelf(): void {
-    document.querySelectorAll<HTMLElement>('#map-list .card[data-id]').forEach((card) => {
-      card.querySelector('.publish')?.remove();
-      const saved = this.store.get(card.dataset.id!);
-      if (!this.signedIn || !saved || card.dataset.ok !== '1') return;
-      const b = document.createElement('button');
-      b.type = 'button';
+    for (const card of this.myCards()) {
+      const old = card.querySelector<HTMLButtonElement>('[data-role=share]');
+      const saved = card.dataset.id ? this.store.get(card.dataset.id) : undefined;
+      if (!old || !saved || !this.signedIn || card.dataset.ok !== '1') continue;
+      // A fresh button, so no handler from an earlier pass is left on it.
+      const b = old.cloneNode() as HTMLButtonElement;
       b.className = 'publish';
-      b.textContent = saved.sharedId ? '게시본 갱신' : '온라인 게시';
+      b.disabled = false;
+      b.textContent = saved.sharedId ? '공유 갱신' : '공유';
+      old.replaceWith(b);
       b.addEventListener('click', () => {
         b.disabled = true;
+        const updating = !!saved.sharedId;
         const json = serializeMap(saved.map);
         const done = saved.sharedId
           ? this.online!.updateMap(saved.sharedId, json)
           : this.online!.publishMap(json).then((id) => this.store.link(saved.id, id));
-        done.then(() => { this.tell('온라인에 게시했습니다.'); return this.refreshMaps(); }, (e) => { this.tell(errorText(e)); b.disabled = false; });
+        done.then(() => { this.tell(updating ? '공유한 맵을 지금 내용으로 바꿨어요.' : '공유 맵에 올렸어요.'); return this.refreshMaps(); }, (e) => { this.tell(errorText(e)); b.disabled = false; });
       });
-      card.append(b);
-    });
+    }
   }
 }

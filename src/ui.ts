@@ -12,7 +12,7 @@ import type { SaveFile } from './storage';
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'maptimes' | 'items' | 'welcome' | 'achievements' | 'notes';
 export type Act = 'start' | 'resume' | 'restart' | 'home' | 'settings' | 'credits' | 'back' | 'mute' | 'music' | 'sfx' | 'shake'
-  | 'maps' | 'ranking' | 'achievements' | 'account' | 'admin' | 'logout' | 'items' | 'notes' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
+  | 'maps' | 'ranking' | 'achievements' | 'account' | 'admin' | 'logout' | 'items' | 'notes' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-test';
 const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome', 'achievements', 'notes'];
 const GOAL_NAMES = { coins: '동전', perfects: '퍼펙트', stomps: '밟기', risks: '위험' } as const;
 const VOLUME = ['끔', '작게', '보통', '크게'];

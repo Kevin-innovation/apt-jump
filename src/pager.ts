@@ -11,7 +11,8 @@ export class Pager {
   private next: HTMLButtonElement;
   private label: HTMLElement;
 
-  constructor(private list: HTMLElement, nav: HTMLElement) {
+  /** `max` caps a page however much room there is: a ranking reads 1 to 10, then 11 on. */
+  constructor(private list: HTMLElement, nav: HTMLElement, private max = Infinity) {
     const button = (text: string, step: number) => {
       const b = document.createElement('button');
       b.type = 'button';
@@ -51,7 +52,9 @@ export class Pager {
     list.replaceChildren();
     this.items.forEach((item, i) => {
       list.append(item);
-      if (list.children.length > 1 && list.scrollHeight > list.clientHeight + 1) { starts.push(i); list.replaceChildren(item); }
+      // Headings (data-extra) don't count toward the cap.
+      const counted = [...list.children].filter((c) => !(c as HTMLElement).dataset.extra).length;
+      if (counted > this.max || (list.children.length > 1 && list.scrollHeight > list.clientHeight + 1)) { starts.push(i); list.replaceChildren(item); }
     });
     this.starts = starts;
     let page = 0;

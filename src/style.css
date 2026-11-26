@@ -398,3 +398,57 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .made-by b { color: #7dfff0; }
 /* A short landscape screen keeps the title to its guide and buttons. */
 @media (max-height: 480px) { #title > .keys { display: none; } }
+
+/* The podium: the first three places in gold, silver and bronze, a medal on the place and a sheen down the row. */
+.rank[data-top] { --medal: #ffd85a; --deep: #a8741c; border-left: 4px solid var(--medal); background: linear-gradient(90deg, color-mix(in srgb, var(--medal) 30%, #2c2052), #2c2052 55%); }
+.rank[data-top='2'] { --medal: #d8dbe5; --deep: #7f86a6; }
+.rank[data-top='3'] { --medal: #e8955a; --deep: #8a4a2a; }
+.rank[data-top] > span:first-child {
+  display: grid; place-items: center; width: 1.7em; height: 1.7em; justify-self: start; color: #1a1230; font-size: .9em;
+  background: var(--medal); box-shadow: inset -2px -2px var(--deep), inset 2px 2px #fff8, 0 0 0 2px #140c2e;
+  clip-path: polygon(25% 0, 75% 0, 100% 25%, 100% 75%, 75% 100%, 25% 100%, 0 75%, 0 25%);
+}
+.rank[data-top] .rank-nick, .rank.time[data-top] > span:nth-child(2) { color: var(--medal); }
+.rank[data-top='1'] { box-shadow: 0 0 12px #ffd85a33; }
+.rank.me[data-top] { outline: 2px solid #7dfff0; }
+
+/* User maps: two tabs and their actions on one bar, then a list with the same button slots on every card. */
+.map-bar { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: center; gap: 8px; width: min(960px, 100%); }
+.tabs { display: flex; gap: 0; }
+.tabs button { min-width: 7.5em; min-height: 42px; padding: 0 1em; background: #1f1840; border: 2px solid #5a4a90; color: #cfc4ee; }
+.tabs button + button { border-left: 0; }
+.tabs button[aria-selected='true'] { background: #3a2c6a; border-color: #7dfff0; color: #7dfff0; box-shadow: inset 0 -3px #7dfff0; }
+.map-acts { display: flex; gap: 8px; }
+.map-acts button { min-width: 9em; min-height: 42px; padding: 0 1em; background: #3a2c6a; border: 2px solid #7a68b8; }
+.map-acts button[data-act='newmap'] { background: #b8325c; border-color: #ffb3a0; }
+#maps[data-tab='shared'] .map-acts [data-tab='mine'], #maps[data-tab='mine'] #shared-order { display: none; }
+.tabs button:focus-visible, .map-acts button:focus-visible { outline: 3px solid #7dfff0; outline-offset: 2px; }
+#maps .cards { width: min(960px, 100%); }
+#maps .card { display: grid; grid-template-columns: minmax(0, 1fr) repeat(var(--slots, 4), 6.4em); align-items: center; gap: 8px; }
+#maps .card > div { min-width: 0; }
+#maps .card > div span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#maps .card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#maps .card > button { width: 100%; padding: 0 .3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#maps .card > .slot { min-height: 42px; }
+#maps button.more { min-height: 44px; background: #2c2052; border: 2px dashed #7a68b8; }
+@media (max-width: 640px) {
+  #maps .card { grid-template-columns: repeat(var(--slots, 4), minmax(0, 1fr)); }
+  #maps .card > div { grid-column: 1 / -1; }
+  .map-acts button { min-width: 0; }
+}
+
+/* The editor: one even bar on top, the tools as a grid of same-size tiles with the thing itself, an even form. */
+.ed-top button { min-width: 6.5em; }
+.ed-top button[data-act='ed-save'] { min-width: 8.5em; }
+#ed-tools { display: grid; grid-template-columns: repeat(auto-fill, minmax(5.4em, 1fr)); gap: 5px; overflow: visible; padding: 2px; }
+#ed-tools button { display: grid; justify-items: center; align-content: center; gap: 2px; min-height: 52px; padding: 4px 2px; min-width: 0; }
+#ed-tools button span { max-width: 100%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; line-height: 1.2; }
+#ed-tools .tool-pic { position: static; inset: auto; height: 22px; width: auto; max-width: 40px; image-rendering: pixelated; }
+.ed-form { display: grid; grid-template-columns: repeat(auto-fill, minmax(13.5em, 1fr)); gap: 6px; }
+.ed-form > button { width: 100%; }
+/* Every stepper alike: its name, minus, the value, plus. */
+.ed-form .step { display: grid; grid-template-columns: minmax(4.6em, 1fr) 36px 2.8em 36px; align-items: center; gap: 4px; min-height: 42px; padding: 0 0 0 8px; }
+.ed-form .step span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.ed-form .step b { min-width: 0; }
+.ed-form .step:first-child { grid-template-columns: 42px minmax(0, 1fr) 42px; padding: 0; }
+#ranking .rank { padding-block: .2em; }

@@ -1,5 +1,5 @@
 import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawScaffold, drawTank } from './art';
-import { POWER_TEXT } from './items';
+import { POWER_KINDS, POWER_TEXT, type PowerKind } from './items';
 import {
   buildCourse, checkMap, cleanTitle, ITEM_NAMES, ITEM_TYPES, LIMITS, LINE_W, onFloor, segmentStarts, UNIT,
   type GameMap, type ItemType, type MapProblem, type Segment,
@@ -37,12 +37,43 @@ export class Editor {
   private drag: { id: number; x: number; cam: number; moved: boolean } | null = null;
   private course!: ReturnType<typeof buildCourse>;
 
+  /** The thing itself, as the game draws it, for a tool's button. */
+  private icon(tool: Tool): HTMLCanvasElement {
+    const sizes: Partial<Record<Tool, [number, number]>> = {
+      coin: [9, 9], gold: [9, 9], diamond: [13, 11], ac: [18, 13], tank: [38, 33], line: [24, 22], drone: [26, 12], pigeon: [18, 15],
+    };
+    const [w, h] = sizes[tool] ?? (POWER_KINDS.includes(tool as PowerKind) ? [19, 19] : [11, 11]);
+    const c = document.createElement('canvas');
+    c.width = w; c.height = h;
+    c.className = 'tool-pic';
+    const g = c.getContext('2d');
+    if (!g) return c;
+    const ink = (rows: string[]) => rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') { g.fillStyle = ch === '#' ? '#fff6e0' : '#1a1230'; g.fillRect(x, y, 1, 1); } }));
+    switch (tool) {
+      case 'select': ink(['#..........', '##.........', '#o#........', '#oo#.......', '#ooo#......', '#oooo#.....', '#ooooo#....', '#ooo###....', '#o#o#......', '##.#o#.....', '....##.....']); break;
+      case 'erase': ink(['...........', '#.......#..', '.#.....#...', '..#...#....', '...#.#.....', '....#......', '...#.#.....', '..#...#....', '.#.....#...', '#.......#..', '...........']); break;
+      case 'coin': g.drawImage(this.sprites.coin[0]!, 1, 1); break;
+      case 'gold': g.drawImage(this.sprites.gold[0]!, 1, 1); break;
+      case 'diamond': drawDiamond(g, 1, 2, 1); break;
+      case 'ac': drawAc(g, 1, 1, 0); break;
+      case 'tank': drawTank(g, 1, 1); break;
+      case 'line': g.fillStyle = '#f5ead8'; g.fillRect(0, 1, w, 1); drawQuilt(g, 3, 2, 18, 0, 0); break;
+      case 'drone': drawDrone(g, 5, 1, 0); break;
+      case 'pigeon': drawPigeon(g, 3, 6, 0.1); break;
+      default: drawPower(g, tool as PowerKind, 9, 9, 0.5);
+    }
+    return c;
+  }
+
   constructor() {
     for (const tool of TOOLS) {
       const b = document.createElement('button');
       b.type = 'button';
       b.dataset.tool = tool;
-      b.textContent = tool === 'select' ? '선택' : tool === 'erase' ? '지우개' : ITEM_NAMES[tool];
+      const name = document.createElement('span');
+      name.textContent = tool === 'select' ? '선택' : tool === 'erase' ? '지우개' : ITEM_NAMES[tool];
+      b.title = name.textContent;
+      b.append(this.icon(tool), name);
       b.addEventListener('click', () => { this.tool = tool; this.refresh(); });
       $('ed-tools').append(b);
     }

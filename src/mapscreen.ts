@@ -1,5 +1,6 @@
 import { checkMap, LIMITS, parseMap, PRACTICE, serializeMap, type GameMap, type MapProblem } from './maps';
 import { MAX_MAPS, type MapStore } from './mapstore';
+import { Pager } from './pager';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 
@@ -22,8 +23,11 @@ export interface MapActions {
   times?(sharedId: string): void;
 }
 
+/** A card's button, or null for an empty slot: every card of a list has the same slots, so buttons line up. */
+export type CardButton = [label: string, run: (b: HTMLButtonElement) => void, primary?: boolean, off?: boolean, role?: string] | null;
+
 /** One card; every title goes in as text. */
-export function mapCard(title: string, detail: string, buttons: [label: string, run: (b: HTMLButtonElement) => void, primary?: boolean, off?: boolean][]): HTMLElement {
+export function mapCard(title: string, detail: string, buttons: CardButton[]): HTMLElement {
   const card = document.createElement('div');
   card.className = 'card';
   const info = document.createElement('div');
@@ -32,9 +36,14 @@ export function mapCard(title: string, detail: string, buttons: [label: string, 
   const small = document.createElement('small');
   small.textContent = detail;
   info.append(name, small);
+  // The whole line on hover, where the card cuts it short.
+  info.title = `${title}\n${detail}`;
   card.append(info);
-  for (const [label, run, primary, off] of buttons) {
+  for (const spec of buttons) {
+    if (!spec) { const slot = document.createElement('span'); slot.className = 'slot'; card.append(slot); continue; }
+    const [label, run, primary, off, role] = spec;
     const b = document.createElement('button');
+    if (role) b.dataset.role = role;
     b.type = 'button';
     b.textContent = label;
     b.disabled = !!off;
@@ -45,18 +54,32 @@ export function mapCard(title: string, detail: string, buttons: [label: string, 
   return card;
 }
 
-/** The player's own shelf: play, edit, share as a file, delete. */
+/** The player's own shelf: play, edit, share online, export as a file, delete. Shared maps are a tab beside it. */
 export class MapScreen {
   /** Lets the online side add its buttons. */
   onRefresh: () => void = () => {};
+  /** The shelf's cards, on every page. */
+  cards: HTMLElement[] = [];
+  private pages = new Pager($('map-list'), $('maps-pager'));
 
   constructor(private store: MapStore, private act: MapActions) {
+    $('tab-shared').addEventListener('click', () => this.tab('shared'));
+    $('tab-mine').addEventListener('click', () => this.tab('mine'));
+    this.tab('shared');
     const file = $('map-file') as HTMLInputElement;
     file.addEventListener('change', () => {
       const f = file.files?.[0];
       file.value = '';
       if (f) void this.load(f);
     });
+  }
+
+  /** Shared maps to play, or the player's own to make and manage. */
+  tab(name: 'shared' | 'mine'): void {
+    $('maps').dataset.tab = name;
+    $('tab-shared').setAttribute('aria-selected', String(name === 'shared'));
+    $('tab-mine').setAttribute('aria-selected', String(name === 'mine'));
+    for (const [id, on] of [['shared-list', 'shared'], ['shared-pager', 'shared'], ['map-list', 'mine'], ['maps-pager', 'mine']] as const) $(id).hidden = name !== on;
   }
 
   message(text: string): void { $('maps-msg').textContent = text; }
@@ -74,10 +97,13 @@ export class MapScreen {
   }
 
   refresh(): void {
-    const cards = [mapCard(PRACTICE.title, '기본 제공', [
+    // Same five slots on every card: play, edit, share, export, delete.
+    const cards = [mapCard(PRACTICE.title, '기본 제공 맵', [
       ['플레이', () => this.act.play(PRACTICE, null), true],
-      ['복사해 편집', () => this.act.edit({ ...PRACTICE, title: '연습 옥상 사본' }, null)],
-      ['파일로', () => downloadMap(PRACTICE)],
+      ['편집', () => this.act.edit({ ...PRACTICE, title: '연습 옥상 사본' }, null)],
+      null,
+      ['내보내기', () => downloadMap(PRACTICE)],
+      null,
     ])];
     for (const m of this.store.maps) {
       const ok = checkMap(m.map).length === 0;
@@ -85,7 +111,9 @@ export class MapScreen {
       const card = mapCard(m.map.title, detail, [
         ['플레이', () => this.act.play(m.map, m.id), true, !ok],
         ['편집', () => this.act.edit(m.map, m.id)],
-        ['파일로', () => downloadMap(m.map)],
+        // Made live by the online side once signed in.
+        ['공유', () => this.message('로그인하면 맵을 온라인에 공유할 수 있어요.'), false, !ok, 'share'],
+        ['내보내기', () => downloadMap(m.map)],
         ['삭제', (b) => {
           if (b.dataset.sure) { this.store.remove(m.id); this.refresh(); this.message('삭제했습니다.'); return; }
           b.dataset.sure = '1';
@@ -97,7 +125,8 @@ export class MapScreen {
       card.dataset.ok = ok ? '1' : '0';
       cards.push(card);
     }
-    $('map-list').replaceChildren(...cards);
+    this.cards = cards;
+    this.pages.set(cards, true);
     this.onRefresh();
     if (!this.store.available) this.message('이 브라우저에서는 저장할 수 없습니다. 맵을 파일로 내려받아 두세요.');
   }
