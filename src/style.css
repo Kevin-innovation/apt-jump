@@ -108,6 +108,23 @@ nav.row { flex-flow: row wrap; justify-content: center; width: auto; }
 .rank span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .rank span:last-child { text-align: right; color: #cfc4ee; }
 .rank.me { background: #1f5f66; outline: 2px solid #7dfff0; }
+/* Shared first place: an LED scoreboard over the list, then every holder's row marked in amber. */
+.tie-board {
+  display: grid; justify-items: center; gap: .15em; padding: .55em .8em .6em; margin-bottom: 4px;
+  background: radial-gradient(circle, #ffffff0d 1px, transparent 1.2px) 0 0 / 4px 4px, #0d0818;
+  border: 2px solid #ffcf4a; box-shadow: 0 0 0 2px #140c2e, 0 0 14px #ffcf4a55, inset 0 0 18px #ffcf4a22;
+  color: #ffd85a; text-shadow: 0 0 6px #ffcf4acc; font-variant-numeric: tabular-nums; text-align: center;
+}
+.tie-board .tie-head { font-size: .85em; letter-spacing: .25em; color: #ff9be6; text-shadow: 0 0 6px #ff9be6aa; }
+.tie-board .tie-head::before, .tie-board .tie-head::after { content: '★'; margin-inline: .5em; color: #ffd85a; }
+.tie-board .tie-names { font-size: 1.25em; max-width: 100%; overflow-wrap: anywhere; color: #fff6c8; }
+.tie-board .tie-record { font-size: .95em; color: #7dfff0; text-shadow: 0 0 6px #7dfff0aa; }
+.rank.tied:not(.me) { outline: 2px solid #ffcf4a; }
+.rank.tied > span:first-child { color: #ffd85a; }
+@media (prefers-reduced-motion: no-preference) {
+  .tie-board .tie-head::before, .tie-board .tie-head::after { animation: tie-blink 1.2s steps(2, jump-none) infinite; }
+}
+@keyframes tie-blink { 50% { opacity: .2; } }
 #rank-msg:empty, #rank-mine:empty, #r-online:empty, #rank-reset:empty { display: none; }
 .card.card button.publish { background: #1f7f86; border-color: #7dfff0; }
 .cards { display: grid; gap: 8px; width: min(760px, 100%); }

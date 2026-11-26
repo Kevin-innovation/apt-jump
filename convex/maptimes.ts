@@ -105,7 +105,9 @@ export const board = query({
     const map = await ctx.db.get(mapId);
     if (!map) return null;
     const me = (await getAuthUserId(ctx)) as Id<'users'> | null;
-    const rows = await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', map.bodyId)).take(TOP);
+    // Among equal times, whoever got there first is listed first.
+    const rows = (await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', map.bodyId)).take(TOP))
+      .sort((a, b) => a.timeMs - b.timeMs || a.achievedAt - b.achievedAt);
     const top: { rank: number; nickname: string; timeMs: number; mine: boolean }[] = [];
     for (const r of rows) {
       const user = await ctx.db.get(r.userId);

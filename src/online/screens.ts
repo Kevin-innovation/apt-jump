@@ -12,6 +12,21 @@ const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const num = (n: number) => n.toLocaleString('ko-KR');
 const note = (text: string) => { const p = document.createElement('p'); p.className = 'keys'; p.textContent = text; return p; };
 
+/** A scoreboard over a ranking whose first place is shared, naming everyone on it. Null otherwise. */
+function tieBoard(top: readonly { rank: number; nickname: string }[], record: string): HTMLElement | null {
+  const firsts = top.filter((r) => r.rank === 1);
+  if (firsts.length < 2) return null;
+  const board = document.createElement('div');
+  board.className = 'tie-board';
+  for (const [cls, text] of [['tie-head', `공동 1위 · ${firsts.length}명`], ['tie-names', firsts.map((r) => r.nickname).join(' · ')], ['tie-record', record]]) {
+    const s = document.createElement('span');
+    s.className = cls!;
+    s.textContent = text!;
+    board.append(s);
+  }
+  return board;
+}
+
 /** Account, weekly ranking and shared maps. Works, with a plain notice, when nothing is connected. */
 export class OnlineScreens {
   online: Online | null = null;
@@ -170,9 +185,11 @@ export class OnlineScreens {
     try {
       const b = await this.online.board(weekKey(this.online.now()));
       if (ticket !== this.ticket) return;
-      list.replaceChildren(...b.top.map((r) => {
+      const tied = tieBoard(b.top, `${num(b.top[0]?.score ?? 0)}점`);
+      list.replaceChildren(...(tied ? [tied] : []), ...b.top.map((r) => {
         const row = document.createElement('div');
         row.className = r.mine ? 'rank me' : 'rank';
+        if (tied && r.rank === 1) row.classList.add('tied');
         const cells: [string, string][] = [
           ['rank-place', String(r.rank)], ['rank-nick', r.nickname], ['rank-title', r.title ?? ''],
           ['rank-score', `${num(r.score)}점`], ['rank-distance', `${num(r.distance)}m`],
@@ -216,9 +233,11 @@ export class OnlineScreens {
       if (ticket !== this.timesTicket) return;
       if (!b) { list.replaceChildren(note('내려간 맵입니다.')); mine.textContent = ''; return; }
       $('mt-title').textContent = b.title;
-      list.replaceChildren(...b.top.map((r) => {
+      const tied = tieBoard(b.top, b.top[0] ? timeText(b.top[0].timeMs) : '');
+      list.replaceChildren(...(tied ? [tied] : []), ...b.top.map((r) => {
         const row = document.createElement('div');
         row.className = r.mine ? 'rank time me' : 'rank time';
+        if (tied && r.rank === 1) row.classList.add('tied');
         for (const t of [String(r.rank), r.nickname, timeText(r.timeMs)]) {
           const s = document.createElement('span');
           s.textContent = t;
