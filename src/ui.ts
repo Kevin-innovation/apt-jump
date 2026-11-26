@@ -11,6 +11,7 @@ export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' |
 export type Act = 'start' | 'resume' | 'restart' | 'home' | 'settings' | 'credits' | 'back' | 'mute' | 'music' | 'sfx' | 'shake'
   | 'maps' | 'ranking' | 'account' | 'admin' | 'logout' | 'items' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
 const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome'];
+const GOAL_NAMES = { coins: '동전', perfects: '퍼펙트', stomps: '밟기', risks: '위험' } as const;
 const VOLUME = ['끔', '작게', '보통', '크게'];
 const KEYS: Record<Device, string> = {
   key: '점프 Space · ↑ · 클릭　　일시정지 P　　음소거 M',
@@ -154,6 +155,7 @@ export class UI {
       if (POWER_TIME[kind]) chip.bar.style.transform = `scaleX(${Math.min(1, left / POWER_TIME[kind])})`;
       else { const t = `x${left}`; if (chip.n.textContent !== t) chip.n.textContent = t; }
     }
+    this.district(g);
     const m = g.mission;
     $('mission').hidden = !m;
     if (m) this.text('mission-text', `미션 ${missionText(m)} (${Math.min(m.goal, g.tally[m.what])}/${m.goal}) +${m.reward}`);
@@ -164,6 +166,19 @@ export class UI {
       $('combo-bar').style.transform = `scaleX(${Math.max(0, g.comboTimer / COMBO_TIME)})`;
     }
     this.pips.forEach((p, i) => p.classList.toggle('on', g.player.boost >= i + 0.5));
+  }
+
+  /** The district under the runner, its goal and the way to the next: endless runs only. */
+  private district(g: Game): void {
+    const info = g.districtGoal;
+    $('district').hidden = !info;
+    if (!info) return;
+    const d = info.district;
+    this.text('district-name', d.lap > 1 ? `${d.name} ${d.lap}회차` : d.name);
+    this.text('district-left', `다음 ${Math.ceil(d.remaining)}m`);
+    this.text('district-goal', info.done ? '목표 달성' : `${GOAL_NAMES[d.goal.what]} ${info.current}/${info.goal}`);
+    $('district').classList.toggle('done', info.done);
+    $('district').style.borderColor = d.palette.accent;
   }
 
   onlineNote(t: string): void { this.text('r-online', t); }

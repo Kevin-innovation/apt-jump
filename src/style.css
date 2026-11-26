@@ -229,3 +229,13 @@ nav.pair button[hidden] + button, nav.pair :only-child { grid-column: 1 / -1; }
 #hint, #update-notice :is(h2, p) { text-wrap: balance; word-break: keep-all; }
 #admin-confirm { display: grid; gap: 6px; justify-items: center; width: 100%; padding: 10px; border: 1px solid #ffd85a; }
 #admin-confirm-who { max-width: 100%; overflow-wrap: anywhere; }
+/* The district: plain CSS text under the score, never scaled with the canvas. Three short lines that don't wrap. */
+#district { display: flex; flex-direction: column; width: max-content; max-width: 100%; margin-top: 6px; padding: 4px 7px; background: #140c2ed9; border-left: 3px solid; font: 13px/1.35 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; text-shadow: none; font-variant-numeric: tabular-nums; }
+#district > * { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#district b { font-weight: 700; }
+#district-goal { color: #ffd85a; }
+#district.done #district-goal { color: #9be36b; }
+#hud .left { min-width: 0; }
+/* Paused, or any other screen over the run. */
+body:has(.screen:not([hidden])) #district { display: none; }
+@media (min-width: 560px) { #district { font-size: 14px; } }

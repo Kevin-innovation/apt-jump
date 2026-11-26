@@ -21,7 +21,6 @@ interface Theme { kind: DistrictKind | null; palette: Palette | null; layers: La
 /** Seconds one district's scenery takes to give way to the next. */
 const FADE = 1.5;
 const ROOF_CACHE = 80;
-const GOAL_NAMES = { coins: '동전', perfects: '퍼펙트', stomps: '밟기', risks: '위험' } as const;
 const KINDS: readonly DistrictKind[] = ['residential', 'construction', 'neon', 'riverside', 'highrise'];
 
 const FONT = '11px Galmuri11, "Malgun Gothic", sans-serif';
@@ -693,34 +692,6 @@ export class Renderer {
 
     this.drawPlayer(game, cx, cy, dt, moving);
     this.drawFx(cx, cy, dt, n);
-    this.drawDistrict(game);
-  }
-
-  /**
-   * One line under the running surface: the district, how far the next is, and its goal. Kept clear of the score at
-   * the top and the jump meter at the bottom, and shown only while the game's own HUD is.
-   */
-  private drawDistrict(game: Game): void {
-    const info = game.districtGoal;
-    // The opening hint has this space for the first metres.
-    if (!info || game.distance < 30 || document.getElementById('hud')?.hidden !== false) return;
-    const g = this.g, d = info.district;
-    const name = d.lap > 1 ? `${d.name} ${d.lap}회차` : d.name;
-    const left = `${Math.ceil(d.remaining)}m`;
-    const goal = info.done ? '목표 달성' : `${GOAL_NAMES[d.goal.what]} ${info.current}/${info.goal}`;
-    g.font = FONT;
-    g.textBaseline = 'top';
-    // The longest wording that fits the screen.
-    const text = [`${name} · 다음 구역 ${left} · ${goal}`, `${name} · ${left} · ${goal}`, `${d.name} · ${goal}`]
-      .find((t) => g.measureText(t).width <= this.W - 14) ?? goal;
-    const w = Math.ceil(g.measureText(text).width);
-    const px = this.el.clientHeight / this.H || 1;
-    const y = Math.max(0, Math.min(Math.round(this.H * 0.64) + 16, this.H - Math.ceil(100 / px) - 15));
-    const x = Math.round((this.W - w) / 2);
-    g.fillStyle = 'rgba(20,12,46,.8)'; g.fillRect(x - 5, y, w + 10, 15);
-    g.fillStyle = d.palette.accent; g.fillRect(x - 5, y + 14, Math.round((w + 10) * Math.max(0, Math.min(1, d.progress))), 1);
-    g.fillStyle = info.done ? '#ffd85a' : '#fff6e0';
-    g.fillText(text, x, y + 2);
   }
 
   private drawPlayer(game: Game, cx: number, cy: number, dt: number, moving: boolean): void {

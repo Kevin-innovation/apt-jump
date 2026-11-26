@@ -1,3 +1,11 @@
+# P17 — 읽기 쉬운 구역 안내 (Claude, 2026-11-26, `apt-jump/readable-district-hud`)
+
+- 캔버스 `drawDistrict` 제거. `#hud .left`의 점수 아래 `#district`(system sans-serif 13px, 560px 이상 14px, 줄바꿈 없는 세 줄)로 이동. 갱신은 `UI.update`.
+- 편집 맵은 `hidden`, 메뉴·결과는 `#hud` 숨김, 일시정지 등 화면이 덮이면 CSS(`:has`)로 숨김. 게임·랭킹·물리·backend 무변경.
+- `npm run build` 통과. 320/375·가로 화면 겹침은 브라우저에서 미확인.
+
+---
+
 # 통합 검증 (Claude, 2026-11-26)
 
 `src/progression.ts`(fe85627) cherry-pick 뒤 실행: `tsc` app·convex 통과, `npm run build` 통과, `tests/progression`·`convex`·`maptimes` 25개 통과(지시에 따라 전체 suite·admin·그 밖의 테스트는 미실행, 브라우저 미확인). 맵 시간 표시는 소수 셋째 자리. P13~P16의 "미실행" 표기는 이 결과 전의 상태.
