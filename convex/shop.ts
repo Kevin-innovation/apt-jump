@@ -1,8 +1,9 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
+import { achievementReward, WELCOME_COINS } from '../src/achievements';
 import { COSTUMES, DEFAULT_COSTUME } from '../src/shop';
 import type { Doc, Id } from './_generated/dataModel';
-import { mutation, query, type MutationCtx } from './_generated/server';
+import { internalMutation, mutation, query, type MutationCtx } from './_generated/server';
 import { requirePlayer } from './users';
 
 // The shop: the server alone moves coins, and sells only what the shared catalog lists, at its prices.
@@ -63,5 +64,32 @@ export const wear = mutation({
     if (id !== DEFAULT_COSTUME && !(user.owned ?? []).includes(id)) throw new ConvexError('가지고 있지 않은 코스튬이에요.');
     await ctx.db.patch(userId, { costume: id });
     return view((await ctx.db.get(userId))!);
+  },
+});
+
+/**
+ * Pays, once, what accounts from before the shop are owed: the welcome coins, and the reward of every achievement
+ * already earned. Safe to run again: what was paid is marked. For the operator, from the CLI:
+ *   npx convex run shop:backfill --prod
+ */
+export const backfill = internalMutation({
+  args: {},
+  returns: v.object({ welcomed: v.number(), rewards: v.number(), coins: v.number() }),
+  handler: async (ctx) => {
+    let welcomed = 0, rewards = 0, coins = 0;
+    for (const user of await ctx.db.query('users').collect()) {
+      if (user.welcomed) continue;
+      await ctx.db.patch(user._id, { welcomed: true });
+      await credit(ctx, user._id, WELCOME_COINS);
+      welcomed++; coins += WELCOME_COINS;
+    }
+    for (const row of await ctx.db.query('achievementUnlocks').collect()) {
+      if (row.paid) continue;
+      const n = achievementReward(row.achievementId);
+      await ctx.db.patch(row._id, { paid: true });
+      await credit(ctx, row.userId, n);
+      rewards++; coins += n;
+    }
+    return { welcomed, rewards, coins };
   },
 });

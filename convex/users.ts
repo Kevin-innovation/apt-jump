@@ -1,4 +1,5 @@
 import type { SignUpResult } from '@convex-dev/auth/methods/username-password/server';
+import { WELCOME_COINS } from '../src/achievements';
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { MINUTE, RateLimiter } from '@convex-dev/rate-limiter';
 import { ConvexError, v } from 'convex/values';
@@ -53,7 +54,8 @@ export const createUser = internalMutation({
   returns: v.id('users'),
   handler: async (ctx) => {
     if (!(await limiter.limit(ctx, 'createAccount')).ok) throw new ConvexError('가입이 몰리고 있습니다. 잠시 뒤 다시 시도해 주세요.');
-    return await ctx.db.insert('users', { lastActiveAt: Date.now() });
+    // Every account starts with the welcome coins.
+    return await ctx.db.insert('users', { lastActiveAt: Date.now(), coins: WELCOME_COINS, coinsEarned: WELCOME_COINS, welcomed: true });
   },
 });
 

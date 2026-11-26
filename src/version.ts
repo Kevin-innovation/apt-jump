@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.6.0', date: '2026-11-27', title: '환영 코인 · 도전과제 보상 · 대표 배지',
+    notes: [
+      '모든 계정에 환영 코인 300 (기존 회원도 한 번 지급, 새 회원은 300코인으로 시작)',
+      '도전과제 보상: 달성하면 등급별 코인 (일반 50 · 고급 100 · 희귀 200 · 영웅 400 · 전설 800 · 신화 1,500). 이미 달성한 도전과제도 소급 지급',
+      '대표 배지: 획득한 도전과제 하나를 「배지 달기」로 골라 주간 순위의 칭호 왼쪽에 달 수 있어요 (분류 글자 + 등급 색)',
+    ],
+  },
+  {
     version: '2.5.0', date: '2026-11-27', title: '상점 오픈 · 코스튬',
     notes: [
       '순위 판에서 모은 동전이 코인으로 쌓여요 (서버가 판을 다시 돌려 확인한 만큼만, 결과 화면에 「코인 +N」)',

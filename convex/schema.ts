@@ -13,6 +13,8 @@ export default defineSchema({
     // The shop: coins from verified weekly runs (balance and all ever earned), costumes bought and the one worn.
     coins: v.optional(v.number()), coinsEarned: v.optional(v.number()),
     owned: v.optional(v.array(v.string())), costume: v.optional(v.string()),
+    // The welcome coins were paid; the earned achievement shown as a badge by the title.
+    welcomed: v.optional(v.boolean()), badge: v.optional(v.string()),
   }).index('by_nickKey', ['nickKey']).index('by_lastActive', ['lastActiveAt']),
 
   // One issued run. It can be handed in once, by the player it was issued to.
@@ -66,7 +68,8 @@ export default defineSchema({
     maxScore: v.number(), maxDistance: v.number(), maxCombo: v.number(),
   }).index('by_user', ['userId']),
   // One row per earned achievement and player. Unlocks are never removed.
-  achievementUnlocks: defineTable({ userId: v.id('users'), achievementId: v.string() })
+  // `paid`: its coin reward has been paid (unlocks from before rewards are paid once by shop.backfill).
+  achievementUnlocks: defineTable({ userId: v.id('users'), achievementId: v.string(), paid: v.optional(v.boolean()) })
     .index('by_user', ['userId']).index('by_user_achievement', ['userId', 'achievementId']),
   // 'participants' and one row per achievement id: the denominator and numerator of the earned percentage.
   achievementCounts: defineTable({ key: v.string(), count: v.number() }).index('by_key', ['key']),

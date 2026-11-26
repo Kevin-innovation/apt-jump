@@ -7,6 +7,7 @@ import { Bot } from '../src/bot';
 import { Game } from '../src/game';
 import { PRACTICE, serializeMap } from '../src/maps';
 import { pauseAllowanceMs, Recorder, releasedSeeds, SIM_VERSION, verifyReplay } from '../src/replay';
+import { achievementReward, WELCOME_COINS } from '../src/achievements';
 import { STEP } from '../src/physics';
 
 // Real sign-in is in auth.test.ts. Here the caller's identity names the user row directly, without password
@@ -124,7 +125,7 @@ describe('ranked runs', () => {
     const one = play(first.seed, 10);
     vi.setSystemTime(NOW + one.ms + 1000);
     expect(await a.as.action(api.ranking.finish, { runId: first.runId, replay: one.text })).toMatchObject({ score: one.score, best: true });
-    expect((await b.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', title: null, score: one.score, distance: expect.any(Number), mine: false }]);
+    expect((await b.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', title: null, badge: null, score: one.score, distance: expect.any(Number), mine: false }]);
     // Syncing again changes nothing; a better run replaces the record on the same board.
     await a.as.action(api.ranking.syncRelease, {});
     const second = await start(a);
@@ -133,7 +134,7 @@ describe('ranked runs', () => {
     vi.setSystemTime(NOW + one.ms + two.ms + 2000);
     expect(await a.as.action(api.ranking.finish, { runId: second.runId, replay: two.text })).toMatchObject({ score: two.score, best: true });
     const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
-    expect(board.top).toEqual([{ rank: 1, nickname: '에이', title: null, score: two.score, distance: expect.any(Number), mine: true }]);
+    expect(board.top).toEqual([{ rank: 1, nickname: '에이', title: null, badge: null, score: two.score, distance: expect.any(Number), mine: true }]);
     expect(board.mine).toMatchObject({ rank: 1, score: two.score });
   });
   it('score what the replay really did', async () => {
@@ -143,7 +144,7 @@ describe('ranked runs', () => {
     vi.setSystemTime(NOW + run.ms + 1000);
     expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toMatchObject({ score: run.score, best: true });
     const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
-    expect(board.top).toEqual([{ rank: 1, nickname: '에이', title: null, score: run.score, distance: expect.any(Number), mine: true }]);
+    expect(board.top).toEqual([{ rank: 1, nickname: '에이', title: null, badge: null, score: run.score, distance: expect.any(Number), mine: true }]);
     expect(board.mine).toMatchObject({ rank: 1, score: run.score });
   });
   it('count once, only for their player', async () => {
@@ -351,7 +352,14 @@ describe('shop', () => {
     vi.setSystemTime(NOW + run.ms + 1000);
     expect(run.coins).toBeGreaterThan(0);
     expect(await a.as.action(api.ranking.finish, { runId: r.runId, replay: run.text })).toMatchObject({ coins: run.coins });
-    expect((await a.as.query(api.shop.mine, {}))!.coins).toBe(run.coins);
+    // The run's coins, and the reward of every achievement the run earned.
+    const earned = (await a.as.query(api.achievements.catalog, {})).achievements.filter((x) => x.unlocked).map((x) => x.id);
+    expect(earned.length).toBeGreaterThan(0);
+    expect((await a.as.query(api.shop.mine, {}))!.coins).toBe(run.coins + earned.reduce((n, id) => n + achievementReward(id), 0));
+    // An earned achievement can be worn as a badge by the title; one not earned can't.
+    await expect(a.as.mutation(api.achievements.equipBadge, { achievementId: 'score-500000' })).rejects.toThrow('아직');
+    await a.as.mutation(api.achievements.equipBadge, { achievementId: earned[0]! });
+    expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top[0]).toMatchObject({ badge: earned[0] });
     await expect(a.as.mutation(api.shop.buy, { id: 'gold' })).rejects.toThrow('코인이 모자라요');
     await expect(a.as.mutation(api.shop.wear, { id: 'neon' })).rejects.toThrow('가지고 있지 않은');
     await t.run((ctx) => ctx.db.patch(a.id, { coins: 1000 }));
@@ -359,5 +367,17 @@ describe('shop', () => {
     await expect(a.as.mutation(api.shop.buy, { id: 'neon' })).rejects.toThrow('이미');
     await expect(a.as.mutation(api.shop.buy, { id: 'nothing' })).rejects.toThrow('없는 상품');
     expect(await a.as.mutation(api.shop.wear, { id: 'courier' })).toMatchObject({ costume: 'courier', coins: 700 });
+  });
+  it('pays older accounts their welcome coins and the rewards of achievements already earned, once', async () => {
+    const { t, a } = await setup();
+    await t.run(async (ctx) => {
+      await ctx.db.insert('achievementUnlocks', { userId: a.id, achievementId: 'first-run' });
+      await ctx.db.insert('achievementUnlocks', { userId: a.id, achievementId: 'perfects-750' });
+    });
+    const owed = WELCOME_COINS + achievementReward('first-run') + achievementReward('perfects-750');
+    expect(await t.mutation(internal.shop.backfill, {})).toMatchObject({ rewards: 2 });
+    expect((await a.as.query(api.shop.mine, {}))!.coins).toBe(owed);
+    expect(await t.mutation(internal.shop.backfill, {})).toEqual({ welcomed: 0, rewards: 0, coins: 0 });
+    expect((await a.as.query(api.shop.mine, {}))!.coins).toBe(owed);
   });
 });

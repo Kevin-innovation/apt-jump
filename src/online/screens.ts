@@ -1,6 +1,7 @@
 import { cleanUsername, PASSWORD_MAX, PASSWORD_MIN } from '../username';
 import { cleanNickname } from '../nickname';
 import { titleClasses } from '../title-style';
+import { achievementById, achievementRank, STAT_BADGE } from '../achievements';
 import { parseMap, serializeMap, type GameMap } from '../maps';
 import { downloadMap, mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
@@ -202,7 +203,7 @@ export class OnlineScreens {
         // Gold, silver and bronze for the first three places.
         if (r.rank <= 3) row.dataset.top = String(r.rank);
         const cells: [string, string][] = [
-          ['rank-place', String(r.rank)], ['rank-nick', r.nickname], ['rank-title', r.title ?? ''],
+          ['rank-place', String(r.rank)], ['rank-nick', r.nickname], ['rank-badge', ''], ['rank-title', r.title ?? ''],
           ['rank-score', `${num(r.score)}점`], ['rank-distance', `${num(r.distance)}m`],
         ];
         for (const [cls, t] of cells) {
@@ -212,6 +213,13 @@ export class OnlineScreens {
           // The whole text on hover, where a column cuts it short.
           if (cls === 'rank-nick' || cls === 'rank-title') s.title = t;
           if (cls === 'rank-title' && t) s.classList.add(...titleClasses(t));
+          // The badge, left of the title: the achievement's stat on its rarity's colour.
+          const badge = cls === 'rank-badge' ? achievementById(r.badge) : null;
+          if (badge) {
+            s.classList.add('ach-badge', `r${achievementRank(badge.id)}`);
+            s.textContent = STAT_BADGE[badge.stat];
+            s.title = `대표 도전과제: ${badge.name}`;
+          }
           row.append(s);
         }
         return row;

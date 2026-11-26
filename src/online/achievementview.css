@@ -224,3 +224,9 @@
 @keyframes rar-myth { 0% { border-color: #ffe066; } 25% { border-color: #ff9be6; } 50% { border-color: #9ff5ff; } 75% { border-color: #fff6c8; } }
 /* The worn title stays marked whatever its rarity: a gold line inside its frame. */
 .achievement-view .achievement-title-card.rar.is-equipped { box-shadow: inset 0 0 0 2px #ffcf8a, 0 0 14px #ffcf8a77; }
+/* The foot of an achievement card: how many have it, and for an earned one the badge button. */
+.achievement-view .achievement-card-foot { display: flex; justify-content: space-between; align-items: center; gap: 6px; min-height: 26px; }
+.achievement-view .achievement-card-foot .achievement-rate { flex: 1 1 auto; text-align: left; }
+.achievement-view .achievement-badge-pick { display: inline-flex; align-items: center; gap: 4px; min-height: 26px; padding: 0 6px; font-size: 12px; background: #140c2ecc; border-color: var(--rc, #7a68b8); }
+.achievement-view .achievement-badge-pick .ach-badge { width: 18px; height: 18px; font-size: 10px; }
+.achievement-view .achievement-badge-pick.is-worn { color: #1a1230; background: var(--rc, #7dfff0); }

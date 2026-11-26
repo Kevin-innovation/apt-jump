@@ -362,6 +362,7 @@ const shop = new ShopView(() => onlineUi.online, () => onlineUi.signedIn, (id) =
 const achievements = new AchievementView(document.getElementById('achievement-view')!, {
   catalog: async () => connected().catalog(),
   equip: async (id) => connected().equip(id),
+  equipBadge: async (id) => connected().equipBadge(id),
   signedIn: () => onlineUi.signedIn,
 });
 /** Who the achievements on screen belong to. */

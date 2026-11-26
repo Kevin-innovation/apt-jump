@@ -1,6 +1,6 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
-import { titleById } from '../src/achievements';
+import { achievementById, titleById } from '../src/achievements';
 import { STEP } from '../src/physics';
 import { MAX_REPLAY, pauseAllowanceMs, releasedSeeds, SEGMENT_SEEDS, SIM_VERSION, verifyReplay } from '../src/replay';
 import { isWeekKey, weekKey } from '../src/week';
@@ -203,7 +203,7 @@ export const finish = action({
   },
 });
 
-const entry = v.object({ rank: v.number(), nickname: v.string(), title: v.optional(v.union(v.string(), v.null())), score: v.number(), distance: v.number(), mine: v.boolean() });
+const entry = v.object({ rank: v.number(), nickname: v.string(), title: v.optional(v.union(v.string(), v.null())), badge: v.optional(v.union(v.string(), v.null())), score: v.number(), distance: v.number(), mine: v.boolean() });
 
 /** One board a week, for every version of the game: it starts afresh only on Monday 00:00 in Korea. */
 export const board = query({
@@ -213,7 +213,7 @@ export const board = query({
   handler: async (ctx, { week }) => {
     if (!isWeekKey(week)) throw new ConvexError('잘못된 주간입니다.');
     const me = (await getAuthUserId(ctx)) as Id<'users'> | null;
-    const top: { rank: number; nickname: string; title: string | null; score: number; distance: number; mine: boolean }[] = [];
+    const top: { rank: number; nickname: string; title: string | null; badge: string | null; score: number; distance: number; mine: boolean }[] = [];
     // Best first, so a player's first row is their highest and the rest are passed over.
     const seen = new Set<Id<'users'>>();
     const cutoff = await weekCutoff(ctx, week);
@@ -223,7 +223,7 @@ export const board = query({
       const user = await ctx.db.get(r.userId);
       // Equal scores share a rank.
       const prev: (typeof top)[number] | undefined = top[top.length - 1];
-      top.push({ rank: prev && prev.score === r.score ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', title: titleById(user?.equippedTitle)?.name ?? null, score: r.score, distance: r.distance, mine: r.userId === me });
+      top.push({ rank: prev && prev.score === r.score ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', title: titleById(user?.equippedTitle)?.name ?? null, badge: achievementById(user?.badge)?.id ?? null, score: r.score, distance: r.distance, mine: r.userId === me });
       if (top.length >= TOP) break;
     }
     const own = me && (await bestOf(ctx, week, me, cutoff));

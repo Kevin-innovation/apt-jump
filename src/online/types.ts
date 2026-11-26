@@ -2,7 +2,7 @@ import type { AchievementCatalog } from './achievementview';
 
 /** What the game uses of the online side. The vanilla game never imports Convex or React itself. */
 export interface ShopState { coins: number; owned: string[]; costume: string }
-export interface BoardEntry { rank: number; nickname: string; title?: string | null; score: number; distance: number; mine: boolean }
+export interface BoardEntry { rank: number; nickname: string; title?: string | null; badge?: string | null; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
 /** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
 export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number }
@@ -58,6 +58,8 @@ export interface Online {
   /** Anyone may look; only a signed-in player has progress and can wear a title. */
   catalog(): Promise<AchievementCatalog>;
   equip(titleId: string | null): Promise<void>;
+  /** Shows an earned achievement as a badge by the title, or clears it with null. */
+  equipBadge(achievementId: string | null): Promise<void>;
   listMaps(order: 'new' | 'old', cursor: string | null): Promise<SharedPage>;
   getMap(id: string): Promise<string | null>;
   /** A ranked run of a published map: the server fixes the content, returned to be played. */

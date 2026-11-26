@@ -127,6 +127,25 @@ export const TITLES: readonly Title[] = [
   { id: 'crown', name: '아파트의 왕', requires: ACHIEVEMENTS.map((a) => a.id) },
 ];
 
+/** An achievement's rarity, 1 (일반) to 6 (신화): how far up its own stat's ladder it stands. */
+const RANKS = 6;
+const ACHIEVEMENT_RANK = new Map<string, number>();
+for (const stat of new Set(ACHIEVEMENTS.map((a) => a.stat))) {
+  const ladder = ACHIEVEMENTS.filter((a) => a.stat === stat).sort((a, b) => a.goal - b.goal);
+  ladder.forEach((a, i) => ACHIEVEMENT_RANK.set(a.id, 1 + Math.floor((i * RANKS) / ladder.length)));
+}
+export function achievementRank(id: string): 1 | 2 | 3 | 4 | 5 | 6 {
+  return (ACHIEVEMENT_RANK.get(id) ?? 1) as 1 | 2 | 3 | 4 | 5 | 6;
+}
+/** Coins paid once for earning an achievement, by its rarity. */
+export const ACHIEVEMENT_REWARD = [0, 50, 100, 200, 400, 800, 1500] as const;
+export const achievementReward = (id: string): number => ACHIEVEMENT_REWARD[achievementRank(id)];
+/** Coins every account starts with. */
+export const WELCOME_COINS = 300;
+/** The letter on an achievement's badge: its stat. */
+export const STAT_BADGE: Record<AchievementStat, string> = { runs: '달', score: '점', distance: '거', slides: '슬', stomps: '밟', maxCombo: '콤', perfects: '퍼' };
+export const achievementById = (id: string | null | undefined): Achievement | null => ACHIEVEMENTS.find((a) => a.id === id) ?? null;
+
 /** Pure lookup for the leaderboard: it only reads an id stored on the user. */
 export function titleById(id: string | null | undefined): Title | null {
   return TITLES.find((t) => t.id === id) ?? null;

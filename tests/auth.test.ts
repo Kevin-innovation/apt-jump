@@ -135,9 +135,9 @@ it('the board shows nicknames, as they are now, and no ids', async () => {
   const a = await join('runner_a', '에이');
   const [user] = await t.run((ctx) => ctx.db.query('users').collect());
   await t.run((ctx) => ctx.db.insert('scores', { week: '2026-11-23', release: 'initial', version: SIM_VERSION, userId: user!._id, score: 10, distance: 9, achievedAt: 1 }));
-  expect((await t.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', title: null, score: 10, distance: 9, mine: false }]);
+  expect((await t.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', title: null, badge: null, score: 10, distance: 9, mine: false }]);
   await a.mutation(api.users.setNickname, { nickname: '새이름' });
-  expect((await a.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '새이름', title: null, score: 10, distance: 9, mine: true }]);
+  expect((await a.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '새이름', title: null, badge: null, score: 10, distance: 9, mine: true }]);
 });
 
 describe('an account made past the game’s own sign-up', () => {

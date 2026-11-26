@@ -120,6 +120,7 @@ export function connect(url: string): Online {
     finish: (runId, replay) => write(() => client.action(api.ranking.finish, { runId: runId as Id<'runs'>, replay })),
     board: async (week) => { await ensureRelease(); return await client.query(api.ranking.board, { week }); },
     catalog: () => client.query(api.achievements.catalog, {}),
+    equipBadge: async (achievementId) => { await write(() => client.mutation(api.achievements.equipBadge, { achievementId })); },
     shop: () => client.query(api.shop.mine, {}),
     buy: (id) => write(() => client.mutation(api.shop.buy, { id })),
     wear: (id) => write(() => client.mutation(api.shop.wear, { id })),

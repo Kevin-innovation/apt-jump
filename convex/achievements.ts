@@ -1,9 +1,10 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
 import { ConvexError, v } from 'convex/values';
 import {
-  ACHIEVEMENTS, PARTICIPANTS_KEY, TITLES, achievementValue, countKey,
+  ACHIEVEMENTS, PARTICIPANTS_KEY, TITLES, achievementReward, achievementValue, countKey,
   type AchievementTotals, type VerifiedRunStats,
 } from '../src/achievements';
+import { credit } from './shop';
 import type { Id } from './_generated/dataModel';
 import { mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
 import { requirePlayer } from './users';
@@ -62,7 +63,9 @@ export async function awardVerified(ctx: MutationCtx, userId: Id<'users'>, stats
   const totals = totalsOf(value);
   for (const a of ACHIEVEMENTS) {
     if (have.has(a.id) || achievementValue(a, totals) < a.goal) continue;
-    await ctx.db.insert('achievementUnlocks', { userId, achievementId: a.id });
+    // Earned now: paid its coins at once.
+    await ctx.db.insert('achievementUnlocks', { userId, achievementId: a.id, paid: true });
+    await credit(ctx, userId, achievementReward(a.id));
     await bump(ctx, countKey(a.id), 1);
   }
 }
@@ -79,6 +82,7 @@ export const catalog = query({
     participants: v.number(), achievements: v.array(entry),
     titles: v.array(v.object({ id: v.string(), name: v.string(), unlocked: v.boolean() })),
     equipped: v.union(v.string(), v.null()),
+    badge: v.union(v.string(), v.null()),
   }),
   handler: async (ctx) => {
     const id = (await getAuthUserId(ctx)) as Id<'users'> | null;
@@ -108,6 +112,7 @@ export const catalog = query({
       }),
       titles: TITLES.map((t) => ({ id: t.id, name: t.name, unlocked: t.requires.every((need) => have.has(need)) })),
       equipped: eligible && typeof user?.equippedTitle === 'string' ? user.equippedTitle : null,
+      badge: eligible && typeof user?.badge === 'string' && have.has(user.badge) ? user.badge : null,
     };
   },
 });
@@ -127,6 +132,20 @@ export const equip = mutation({
     const have = new Set(await unlocksOf(ctx, userId));
     if (!title.requires.every((need) => have.has(need))) throw new ConvexError('아직 얻지 못한 칭호입니다.');
     await ctx.db.patch(userId, { equippedTitle: title.id });
+    return null;
+  },
+});
+
+/** Shows an earned achievement as a badge by the title on the weekly board, or clears it with null. */
+export const equipBadge = mutation({
+  args: { achievementId: v.union(v.string(), v.null()) },
+  returns: v.null(),
+  handler: async (ctx, { achievementId }) => {
+    const userId = await requirePlayer(ctx);
+    if (achievementId === null) { await ctx.db.patch(userId, { badge: undefined }); return null; }
+    if (!ACHIEVEMENTS.some((a) => a.id === achievementId)) throw new ConvexError('알 수 없는 도전과제입니다.');
+    if (!(await unlocksOf(ctx, userId)).includes(achievementId)) throw new ConvexError('아직 얻지 못한 도전과제입니다.');
+    await ctx.db.patch(userId, { badge: achievementId });
     return null;
   },
 });

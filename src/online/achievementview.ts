@@ -1,5 +1,5 @@
 import './achievementview.css';
-import { ACHIEVEMENTS, TITLES, type AchievementStat } from '../achievements';
+import { ACHIEVEMENTS, achievementReward, STAT_BADGE, TITLES, type AchievementStat } from '../achievements';
 import { achievementRank, RARITY, titleClasses, titleLook } from '../title-style';
 
 export interface AchievementCatalog {
@@ -16,11 +16,14 @@ export interface AchievementCatalog {
   }[];
   titles: { id: string; name: string; unlocked: boolean }[];
   equipped: string | null;
+  /** The earned achievement shown as a badge by the title. */
+  badge: string | null;
 }
 
 export interface AchievementViewCallbacks {
   catalog: () => Promise<AchievementCatalog>;
   equip: (titleId: string | null) => Promise<unknown>;
+  equipBadge: (achievementId: string | null) => Promise<unknown>;
   signedIn: () => boolean;
 }
 
@@ -171,6 +174,25 @@ export class AchievementView {
     }
   }
 
+  private async equipBadge(id: string | null): Promise<void> {
+    if (!this.catalog || this.pending || !this.callbacks.signedIn()) return;
+    const ticket = ++this.ticket;
+    this.pending = true;
+    this.notice = id === null ? '배지를 떼고 있어요…' : '배지를 달고 있어요…';
+    this.render();
+    try {
+      await this.callbacks.equipBadge(id);
+      if (ticket !== this.ticket) return;
+      if (this.catalog) this.catalog = { ...this.catalog, badge: id };
+      this.notice = id === null ? '배지를 뗐어요.' : '배지를 달았어요. 주간 순위에서 칭호 왼쪽에 보여요.';
+    } catch {
+      if (ticket !== this.ticket) return;
+      this.notice = '배지를 바꾸지 못했어요. 다시 시도해 주세요.';
+    } finally {
+      if (ticket === this.ticket) { this.pending = false; this.render(); }
+    }
+  }
+
   /** How many cards a page holds: as many rows as fit the space the list is given, measured. */
   private layout(list: HTMLElement, cardHeight: number): { cols: number; rows: number } {
     const w = this.root.clientWidth || window.innerWidth;
@@ -200,9 +222,10 @@ export class AchievementView {
     );
     // One line, whatever it has to say, so the cards never move down.
     const equippedName = data.equipped === null ? '없음' : (TITLE_BY_ID.get(data.equipped)?.name ?? data.equipped);
+    const badgeName = data.badge === null ? '없음' : (ACHIEVEMENT_BY_ID.get(data.badge)?.name ?? data.badge);
     const status = this.notice ? el('p', 'achievement-notice', this.notice)
       : !this.callbacks.signedIn() ? el('p', 'achievement-login', '로그인하면 진행 상황이 보여요.')
-        : el('p', 'achievement-equipped', `장착 칭호: ${equippedName}`);
+        : el('p', 'achievement-equipped', `배지: ${badgeName} · 칭호: ${equippedName}`);
     status.setAttribute('role', 'status');
     // Tabs, then the category, then all / in progress / earned: the same rows in the same places on either tab.
     const info = el('div', 'achievement-info');
@@ -415,7 +438,7 @@ export class AchievementView {
     const card = el('article', `achievement-card rar r${rank}${a.unlocked ? ' is-unlocked' : ''}`);
     const head = el('div', 'achievement-card-head');
     head.append(
-      el('span', `achievement-card-rarity rarity-${rank}`, `${'◆'.repeat(rank)} ${RARITY[rank - 1]}`),
+      el('span', `achievement-card-rarity rarity-${rank}`, `${'◆'.repeat(rank)} ${RARITY[rank - 1]} · ${num(achievementReward(a.id))}코인`),
       el('span', 'achievement-card-badge', a.unlocked ? '✔ 획득 완료' : `진행 중 ${num(a.progress)}/${num(a.goal)}`),
       el('span', 'achievement-card-name', a.name),
     );
@@ -430,7 +453,19 @@ export class AchievementView {
     const rate = participants > 0
       ? [`획득률 ${percentText(a.percent)}% ·`, `${num(a.earned)}/${num(participants)}명`]
       : ['집계 시작 전'];
-    card.append(units('achievement-rate', rate));
+    const foot = el('div', 'achievement-card-foot');
+    foot.append(units('achievement-rate', rate));
+    // An earned achievement can be worn as a badge by the title on the weekly board.
+    if (a.unlocked && this.callbacks.signedIn() && this.catalog) {
+      const worn = this.catalog.badge === a.id;
+      const b = button(`achievement-badge-pick${worn ? ' is-worn' : ''}`, worn ? '배지 해제' : '배지 달기');
+      const mark = el('span', `ach-badge r${achievementRank(a.id)}`, STAT_BADGE[ACHIEVEMENT_BY_ID.get(a.id)?.stat ?? 'runs']);
+      b.prepend(mark);
+      b.disabled = this.pending;
+      b.addEventListener('click', () => { void this.equipBadge(worn ? null : a.id); });
+      foot.append(b);
+    }
+    card.append(foot);
     return card;
   }
 }
