@@ -268,7 +268,8 @@ body:has(.screen:not([hidden])) #district { display: none; }
 .screen-top nav button { min-height: 40px; padding: 0 .7em; white-space: nowrap; font-size: clamp(12px, 3.4vw, 16px); }
 /* The weekly board: every row has the same columns. Map times keep their own. */
 .rank:not(.time) { grid-template-columns: 3em minmax(0, 1fr) minmax(0, 12em) 7.5em 5.5em; align-items: center; }
-.rank:not(.time) > .rank-title { justify-self: start; max-width: 100%; padding: 0 .5em; font-size: .85em; }
+/* Every worn plaque fills its column: one size, whatever its name or rank. */
+.rank:not(.time) > .rank-title { padding: 2px .5em; font-size: .85em; text-align: center; }
 .rank:not(.time) > .rank-score { text-align: right; }
 @media (max-width: 600px) {
   .rank:not(.time) { grid-template-columns: 2.4em minmax(0, 1fr) minmax(0, 1fr) 6.2em; grid-template-areas: 'rank nick title score' 'rank nick title dist'; column-gap: .4em; row-gap: 0; padding-inline: .4em; }

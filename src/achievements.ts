@@ -78,28 +78,53 @@ export const ACHIEVEMENTS: readonly Achievement[] = [
 ];
 
 const STATS: readonly AchievementStat[] = ['runs', 'score', 'distance', 'slides', 'stomps', 'maxCombo', 'perfects'];
-const LABEL: Record<AchievementStat, string> = {
-  runs: '러너', score: '점수', distance: '거리', slides: '슬라이드', stomps: '밟기', maxCombo: '콤보', perfects: '퍼펙트',
-};
 
 const ladderIds = (stat: AchievementStat): readonly string[] =>
   ACHIEVEMENTS.filter((a) => a.stat === stat).sort((a, b) => a.goal - b.goal).map((a) => a.id);
 
-/** 30 titles: the original three, per-stat tiers, and five cross-stat ranks. */
+/**
+ * Six tiers per stat: a tier's number is how many goals of its ladder it asks for.
+ * Ids and requirements of the first 30 titles never change: players have them equipped.
+ */
+const TIER_MARKS: Record<AchievementStat, readonly number[]> = {
+  runs: [1, 3, 5, 7, 10, 13], score: [1, 3, 5, 7, 9, 11], distance: [1, 3, 5, 7, 9, 11], slides: [1, 3, 5, 7, 9, 11],
+  stomps: [1, 3, 5, 7, 9, 11], maxCombo: [1, 3, 5, 7, 9, 11], perfects: [1, 3, 5, 7, 9, 11],
+};
+const TIER_NAMES: Record<AchievementStat, readonly string[]> = {
+  runs: ['동네 러너', '출근길 단골', '계단 마니아', '옥상 순찰대', '잠들지 않는 발', '도시의 심장'],
+  score: ['점수 수집가', '하이스코어러', '스코어 헌터', '숫자의 마술사', '전광판 점령자', '점수의 신'],
+  distance: ['산책 러너', '장거리 러너', '지평선 추적자', '끝없는 질주', '도시 횡단자', '지도 밖의 러너'],
+  slides: ['미끄럼 초보', '슬라이더', '바닥 스치기', '틈새 장인', '그림자 미끄럼', '마찰 제로'],
+  stomps: ['발도장', '쿵쿵 러너', '지붕 위 망치', '실외기 파괴자', '비둘기의 공포', '발밑의 지배자'],
+  maxCombo: ['리듬 타기', '연속 동작', '흐름의 주인', '콤보 장인', '폭주 기관', '무한 연쇄'],
+  perfects: ['착지 연습생', '깔끔한 착지', '정밀 착지', '깃털 착지', '무중력 발끝', '완벽주의자'],
+};
+/** Two stats at once: [id, name, stat, stat, how far up each ladder]. */
+const DUOS: readonly [string, string, AchievementStat, AchievementStat, number][] = [
+  ['duo-acrobat', '곡예사', 'slides', 'maxCombo', 5],
+  ['duo-hunter', '옥상 사냥꾼', 'stomps', 'perfects', 5],
+  ['duo-marathon', '마라토너', 'runs', 'distance', 7],
+  ['duo-showman', '쇼맨', 'score', 'maxCombo', 7],
+  ['duo-night', '야간 질주자', 'slides', 'distance', 7],
+  ['duo-spotlight', '스포트라이트', 'score', 'perfects', 9],
+];
+
+/** 57 titles: the original three, six tiers per stat, five cross-stat ranks, six pairs and a crown. */
 export const TITLES: readonly Title[] = [
   { id: 'runner', name: '새벽의 러너', requires: ['first-run'] },
   { id: 'slipper', name: '슬라이드 장인', requires: ['slide-1', 'slide-10', 'stomp-10'] },
   { id: 'legend', name: '도시의 전설', requires: ['score-10000', 'distance-1000', 'combo-20', 'perfect-10'] },
   ...STATS.flatMap((stat) => {
     const ids = ladderIds(stat);
-    const marks = stat === 'runs' ? [1, 3, 5, 7] : [1, 3, 5];
-    return marks.map((n) => ({ id: `${stat}-tier${n}`, name: `${LABEL[stat]} ${n}단계`, requires: ids.slice(0, n) }));
+    return TIER_MARKS[stat].map((n, i) => ({ id: `${stat}-tier${n}`, name: TIER_NAMES[stat][i]!, requires: ids.slice(0, n) }));
   }),
   ...[1, 3, 5, 7, 9].map((at, i) => ({
     id: `all-rounder-${i + 1}`,
     name: `올라운더 ${['I', 'II', 'III', 'IV', 'V'][i]}`,
     requires: STATS.map((stat) => ladderIds(stat)[at - 1]!).filter((id): id is string => !!id),
   })),
+  ...DUOS.map(([id, name, a, b, n]) => ({ id, name, requires: [...ladderIds(a).slice(0, n), ...ladderIds(b).slice(0, n)] })),
+  { id: 'crown', name: '아파트의 왕', requires: ACHIEVEMENTS.map((a) => a.id) },
 ];
 
 /** Pure lookup for the leaderboard: it only reads an id stored on the user. */

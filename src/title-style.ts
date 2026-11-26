@@ -2,24 +2,33 @@ import { TITLES, type Title } from './achievements';
 import './title-style.css';
 
 /** How a title looks: a colour theme from what earns it, and how hard it is to earn. Looks only. */
-export interface TitleLook { theme: string; rank: 1 | 2 | 3 | 4 }
-export const RARITY = ['일반', '희귀', '영웅', '전설'] as const;
+export interface TitleLook { theme: string; rank: 1 | 2 | 3 | 4 | 5 | 6 }
+export const RARITY = ['일반', '고급', '희귀', '영웅', '전설', '신화'] as const;
 
-const ORIGINAL: Record<string, TitleLook> = {
+const FIXED: Record<string, TitleLook> = {
   runner: { theme: 'runs', rank: 1 },
   slipper: { theme: 'slides', rank: 2 },
   legend: { theme: 'all', rank: 3 },
+  'duo-acrobat': { theme: 'duo', rank: 3 },
+  'duo-hunter': { theme: 'duo', rank: 3 },
+  'duo-marathon': { theme: 'duo', rank: 4 },
+  'duo-showman': { theme: 'duo', rank: 4 },
+  'duo-night': { theme: 'duo', rank: 4 },
+  'duo-spotlight': { theme: 'duo', rank: 5 },
+  crown: { theme: 'crown', rank: 6 },
 };
-const TIER_RANK: Record<string, TitleLook['rank']> = { '1': 1, '3': 2, '5': 3, '7': 4 };
-const ALL_ROUNDER_RANK: readonly TitleLook['rank'][] = [2, 3, 3, 4, 4];
+const ALL_ROUNDER_RANK: readonly TitleLook['rank'][] = [2, 3, 4, 5, 5];
 
 function lookOf(title: Title): TitleLook {
-  const own = ORIGINAL[title.id];
+  const own = FIXED[title.id];
   if (own) return own;
   const around = /^all-rounder-(\d+)$/.exec(title.id);
-  if (around) return { theme: 'all', rank: ALL_ROUNDER_RANK[Number(around[1]) - 1] ?? 4 };
-  const tier = /^(.+)-tier(\d+)$/.exec(title.id);
-  return tier ? { theme: tier[1]!, rank: TIER_RANK[tier[2]!] ?? 4 } : { theme: 'runs', rank: 1 };
+  if (around) return { theme: 'all', rank: ALL_ROUNDER_RANK[Number(around[1]) - 1] ?? 5 };
+  const tier = /^(.+)-tier\d+$/.exec(title.id);
+  if (!tier) return { theme: 'runs', rank: 1 };
+  // A stat's six tiers run from common to mythic in the order they're listed.
+  const step = TITLES.filter((t) => t.id.startsWith(`${tier[1]}-tier`)).indexOf(title);
+  return { theme: tier[1]!, rank: Math.min(6, Math.max(1, step + 1)) as TitleLook['rank'] };
 }
 
 const BY_ID = new Map(TITLES.map((t) => [t.id, lookOf(t)]));

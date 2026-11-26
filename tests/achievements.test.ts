@@ -38,13 +38,20 @@ describe('achievements', () => {
     const { t, player } = await setup();
     const guest = await t.query(ach.catalog, {});
     expect(ACHIEVEMENTS).toHaveLength(80);
-    expect(TITLES).toHaveLength(30);
+    expect(TITLES).toHaveLength(57);
     expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(80);
-    expect(new Set(TITLES.map((x) => x.id)).size).toBe(30);
+    expect(new Set(TITLES.map((x) => x.id)).size).toBe(57);
+    expect(new Set(TITLES.map((x) => x.name)).size).toBe(57);
+    // Players have these equipped: they must keep existing.
+    const stats = ['runs', 'score', 'distance', 'slides', 'stomps', 'maxCombo', 'perfects'];
+    const kept = ['runner', 'slipper', 'legend', 'runs-tier7', ...stats.flatMap((s) => [1, 3, 5].map((n) => `${s}-tier${n}`)),
+      ...[1, 2, 3, 4, 5].map((n) => `all-rounder-${n}`)];
+    expect(kept).toHaveLength(30);
+    expect(TITLES.map((x) => x.id)).toEqual(expect.arrayContaining(kept));
     const ids = new Set(ACHIEVEMENTS.map((a) => a.id));
     expect(TITLES.every((x) => x.requires.every((need) => ids.has(need)))).toBe(true);
     expect(guest.achievements).toHaveLength(80);
-    expect(guest.titles).toHaveLength(30);
+    expect(guest.titles).toHaveLength(57);
     expect(guest.participants).toBe(0);
     expect(guest.achievements.find((a: { id: string }) => a.id === 'first-run'))
       .toMatchObject({ unlocked: false, progress: 0, earned: 0, percent: 0 });
