@@ -8,6 +8,8 @@ export default defineSchema({
   users: defineTable({
     nickname: v.optional(v.string()), nickKey: v.optional(v.string()),
     suspended: v.optional(v.boolean()), lastActiveAt: v.optional(v.number()), plays: v.optional(v.number()),
+    // Id of an earned title, chosen by the player; read by the leaderboard through a pure lookup.
+    equippedTitle: v.optional(v.string()),
   }).index('by_nickKey', ['nickKey']).index('by_lastActive', ['lastActiveAt']),
 
   // One issued run. It can be handed in once, by the player it was issued to.
@@ -52,4 +54,15 @@ export default defineSchema({
     action: v.union(v.literal('resetPassword'), v.literal('suspend'), v.literal('unsuspend'), v.literal('revokeSessions')),
     sessions: v.number(),
   }),
+
+  // Progress starts with the first verified normal run after this update; old scores are never backfilled.
+  achievementProgress: defineTable({
+    userId: v.id('users'), runs: v.number(), slides: v.number(), stomps: v.number(), perfects: v.number(),
+    maxScore: v.number(), maxDistance: v.number(), maxCombo: v.number(),
+  }).index('by_user', ['userId']),
+  // One row per earned achievement and player. Unlocks are never removed.
+  achievementUnlocks: defineTable({ userId: v.id('users'), achievementId: v.string() })
+    .index('by_user', ['userId']).index('by_user_achievement', ['userId', 'achievementId']),
+  // 'participants' and one row per achievement id: the denominator and numerator of the earned percentage.
+  achievementCounts: defineTable({ key: v.string(), count: v.number() }).index('by_key', ['key']),
 });
