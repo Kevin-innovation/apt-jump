@@ -46,8 +46,10 @@ export const update = mutation({
     const old = await own(ctx, args.id);
     const m = accept(args.json);
     if (Date.now() - old.updatedAt < MIN_UPDATE_GAP) throw new ConvexError('잠시 뒤 다시 시도해 주세요.');
-    await ctx.db.patch(old.bodyId, { json: m.json });
-    await ctx.db.patch(args.id, { title: m.title, segments: m.segments, updatedAt: Date.now() });
+    // Changed content is a new body, with times of its own; the old one stays for the times and runs made on it.
+    const same = (await ctx.db.get(old.bodyId))?.json === m.json;
+    const bodyId = same ? old.bodyId : await ctx.db.insert('mapBodies', { json: m.json });
+    await ctx.db.patch(args.id, { title: m.title, segments: m.segments, bodyId, updatedAt: Date.now() });
     return null;
   },
 });
@@ -73,6 +75,7 @@ export const list = query({
     const page = await Promise.all(r.page.map(async (m) => ({
       id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, mine: m.ownerId === me,
       author: (await ctx.db.get(m.ownerId))?.nickname ?? '(탈퇴)',
+      best: (await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', m.bodyId)).first())?.timeMs ?? null,
     })));
     return { page, isDone: r.isDone, continueCursor: r.continueCursor };
   },

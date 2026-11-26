@@ -5,13 +5,14 @@ import { FirstVisit } from './entry';
 import { watchReleases } from './updates';
 import { Game, type GameEvent } from './game';
 import { Input } from './input';
-import { buildCourse, blankMap, PRACTICE, type GameMap } from './maps';
+import { buildCourse, blankMap, PRACTICE, type GameMap, parseMap } from './maps';
 import { downloadMap, MapScreen } from './mapscreen';
 import { MapStore, MAX_MAPS } from './mapstore';
 import { PatchTest } from './patchtest';
 import { AdminScreen } from './online/admin';
 import { OnlineScreens } from './online/screens';
-import { errorText, onlineUrl } from './online/types';
+import { errorText, onlineUrl, Refusal } from './online/types';
+import { timeOf, timeText } from './mapreplay';
 import { Recorder } from './replay';
 import { STEP, type JumpInput } from './physics';
 import { Renderer } from './render';
@@ -20,7 +21,8 @@ import { UI, type Act, type ScreenName } from './ui';
 
 export type Phase = 'title' | 'playing' | 'countdown' | 'paused' | 'dying' | 'result' | 'editor' | 'issuing';
 /** What is being played, so a restart repeats it and scores never mix. */
-type Mode = { kind: 'endless' } | { kind: 'map'; map: GameMap; id: string | null; from: 'maps' | 'editor' };
+/** `shared` marks a published map: only its runs are ranked by time, never the shelf's or the editor's. */
+type Mode = { kind: 'endless' } | { kind: 'map'; map: GameMap; id: string | null; from: 'maps' | 'editor'; shared?: string };
 declare global {
   interface Window { patch?: EventTarget & { quality?: 'low' | 'medium' | 'high' } }
 }
@@ -54,7 +56,7 @@ let assistHold = false;
 let lastCount = 0;
 let leaving = false;
 /** The ranked run being played, when the server issued one. */
-let ranked: { runId: string; recorder: Recorder } | null = null;
+let ranked: { runId: string; recorder: Recorder; map: boolean } | null = null;
 /** Why this run counts for no ranking, shown while it starts (and again on the result). */
 let unrankedNote = '';
 let starting = 0;
@@ -70,8 +72,8 @@ function syncEntry(): void {
   document.querySelectorAll<HTMLElement>('.release-announcement').forEach(el => {
     el.hidden = !release;
     if (release) {
-      const detail = `새 난이도가 적용되어 리더보드가 초기화되었습니다. ${new Date(release.builtAt).toLocaleString('ko-KR', { month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' })}부터 새 기록을 집계합니다.`;
-      el.textContent = el.closest('#title, #welcome') ? '새 난이도 적용 · 리더보드 초기화' : detail;
+      const detail = '업데이트가 적용됐어요. 주간 기록은 유지돼요. 순위는 월요일 00:00(KST)에만 새로 시작해요.';
+      el.textContent = el.closest('#title, #welcome') ? '업데이트 적용 · 주간 기록 유지' : detail;
       el.title = detail;
     }
   });
@@ -144,8 +146,8 @@ function saveMap(): boolean {
   return true;
 }
 
-function playMap(map: GameMap, id: string | null, from: 'maps' | 'editor'): void {
-  mode = { kind: 'map', map: structuredClone(map), id, from };
+function playMap(map: GameMap, id: string | null, from: 'maps' | 'editor', shared?: string): void {
+  mode = { kind: 'map', map: structuredClone(map), id, from, shared };
   startRun();
 }
 
@@ -163,11 +165,12 @@ const START_WAIT = 6000;
 function startRun(): void {
   const online = onlineUi.online;
   const ticket = ++starting;
-  if (testing || mode.kind !== 'endless' || !online) { begin(null, ''); return; }
+  const shared = mode.kind === 'map' ? mode.shared : undefined;
+  if (testing || (mode.kind !== 'endless' && !shared) || !online) { begin(null, ''); return; }
   const account = online.account();
   if (!onlineUi.signedIn) {
     begin(null, account.status === 'in' ? '닉네임을 정하면 순위에 오릅니다. 이번 판은 순위에 오르지 않습니다.'
-      : account.status === 'loading' ? '계정을 확인하는 중이라 이번 판은 순위에 오르지 않습니다.' : '');
+      : account.status === 'loading' ? '계정을 확인하는 중이라 이번 판은 순위에 오르지 않습니다.' : shared ? '로그인하면 맵 기록이 등록돼요.' : '');
     return;
   }
   ui.show(null);
@@ -177,22 +180,34 @@ function startRun(): void {
   setPhase('issuing');
   ui.wait('기록 준비 중…');
   let settled = false;
-  const go = (run: { runId: string; seed: number } | null, why: string) => {
+  const go = (run: Issued | null, why: string) => {
     if (settled || ticket !== starting || phase !== 'issuing') return;
     settled = true;
     begin(run, why);
   };
-  online.start().then((r) => go(r, ''), (e) => go(null, errorText(e)));
+  const issue: Promise<Issued> = shared
+    ? online.mapStart(shared).then((r) => {
+        const map = parseMap(r.json).map;
+        if (!map) throw new Refusal('이 맵을 열 수 없습니다.');
+        return { runId: r.runId, map };
+      })
+    : online.start();
+  issue.then((r) => go(r, ''), (e) => go(null, errorText(e)));
   setTimeout(() => go(null, '온라인 응답이 늦어 이번 판은 순위에 오르지 않습니다.'), START_WAIT);
 }
 
-function begin(run: { runId: string; seed: number } | null, why: string): void {
+/** What the server issued: a city's seed, or a published map as it is now. */
+interface Issued { runId: string; seed?: number; map?: GameMap }
+
+function begin(run: Issued | null, why: string): void {
   const away = phase === 'issuing' && awayAtStart;
   ui.wait('');
-  ranked = run && { runId: run.runId, recorder: new Recorder() };
+  ranked = run && { runId: run.runId, recorder: new Recorder(), map: mode.kind === 'map' };
+  // The content the server fixed this run to is the one played.
+  if (mode.kind === 'map' && run?.map) mode = { ...mode, map: run.map };
   ui.onlineNote(why);
   unrankedNote = why;
-  game = mode.kind === 'map' ? new Game(buildCourse(mode.map)) : new Game(run ? run.seed : testing ? TEST_SEED : Math.floor(Math.random() * 2 ** 31));
+  game = mode.kind === 'map' ? new Game(buildCourse(mode.map)) : new Game(run?.seed !== undefined ? run.seed : testing ? TEST_SEED : Math.floor(Math.random() * 2 ** 31));
   ui.homeLabel(mode.kind === 'endless' ? '타이틀로' : mode.from === 'editor' ? '편집기로' : '맵 목록으로');
   view.reset();
   acc = 0;
@@ -285,6 +300,8 @@ const mapScreen = new MapScreen(maps, {
 const onlineUi = new OnlineScreens(maps, {
   play: (map, id) => playMap(map, id, 'maps'),
   edit: (map, id) => openEditor(map, id),
+  playShared: (map, shared) => playMap(map, null, 'maps', shared),
+  times: (shared) => { ui.show('maptimes'); onlineUi.openTimes(shared); },
 });
 addEventListener('beforeunload', (event) => {
   if (!updating && (editor.dirty || onlineUi.online?.pending())) {
@@ -301,6 +318,18 @@ function submitRun(): void {
   if (!run || !online) return;
   const at = ++starting;
   const say = (t: string) => { if (at === starting) ui.onlineNote(t); };
+  if (run.map) {
+    if (!game.finished) { say('완주해야 기록이 등록돼요.'); return; }
+    say('기록을 등록하는 중…');
+    online.mapFinish(run.runId, run.recorder.text()).then(
+      (r) => {
+        say(r.best ? `${timeText(r.timeMs)} 내 최단 기록을 등록했어요!` : '내 최단 기록에는 못 미쳤어요.');
+        if (ui.screen === 'maptimes') void onlineUi.refreshTimes();
+      },
+      (e) => say(errorText(e)),
+    );
+    return;
+  }
   ui.onlineNote('순위에 등록하는 중…');
   online.finish(run.runId, run.recorder.text()).then(
     (r) => {
@@ -436,6 +465,7 @@ function frame(now: number): void {
         input.release();
         ui.hud(false); ui.hint(false);
         ui.result(game, isBest, best);
+        if (mode.kind === 'map' && mode.shared) ui.bestNote(game.finished ? `완주 시간 ${timeText(timeOf(Math.round(game.time / STEP)))}` : '완주하지 못했어요');
         submitRun();
       }
       break;
@@ -497,7 +527,7 @@ function offerUpdate(version: string): void {
     now.hidden = true; exportMap.focus(); return;
   }
   let seconds = 5;
-  const text = () => { message.textContent = `새 난이도가 적용되며 리더보드가 초기화됩니다. ${seconds}초 뒤 자동 새로고침합니다.${wasRunning ? ' 진행 중인 판은 종료되며 순위에 등록되지 않습니다.' : ''} 저장된 맵과 로그인은 유지됩니다.`; };
+  const text = () => { message.textContent = `${seconds}초 뒤 새 버전으로 자동 새로고침합니다. 주간 기록은 유지됩니다.${wasRunning ? ' 진행 중인 판은 종료되며 순위에 등록되지 않습니다.' : ''} 저장된 맵과 로그인은 유지됩니다.`; };
   text(); now.focus();
   const timer = setInterval(() => { seconds--; text(); if (seconds <= 0) { clearInterval(timer); reload(); } }, 1000);
 }

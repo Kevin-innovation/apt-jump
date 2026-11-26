@@ -16,19 +16,31 @@ export default defineSchema({
     status: v.union(v.literal('open'), v.literal('claimed'), v.literal('done'), v.literal('rejected')),
   }).index('by_user_started', ['userId', 'startedAt']),
 
-  // Each player's best of each week, for one version of the game's rules: scores made under others never mix.
-  // Past weeks and versions stay. Rows from before versions were recorded have none, and are on no board.
+  // Players' bests by week. A week has one board over every row, whatever its version or release (kept only as a note);
+  // a player with several rows is shown by the highest. Rows are never deleted.
   scores: defineTable({
     week: v.string(), version: v.optional(v.number()), release: v.optional(v.string()), userId: v.id('users'), score: v.number(), distance: v.number(), achievedAt: v.number(),
   }).index('by_board_score', ['week', 'version', 'score']).index('by_board_user', ['week', 'version', 'userId'])
-    .index('by_release_score', ['week', 'release', 'version', 'score']).index('by_release_user', ['week', 'release', 'version', 'userId']),
+    .index('by_release_score', ['week', 'release', 'version', 'score']).index('by_release_user', ['week', 'release', 'version', 'userId'])
+    .index('by_week_score', ['week', 'score']).index('by_week_user_score', ['week', 'userId', 'score']),
   leaderboardState: defineTable({ key: v.string(), release: v.string(), builtAt: v.number() }).index('by_key', ['key']),
 
   // What a list needs; the map itself is read one at a time.
   maps: defineTable({
     ownerId: v.id('users'), title: v.string(), segments: v.number(), bodyId: v.id('mapBodies'), updatedAt: v.number(),
   }).index('by_owner', ['ownerId']).index('by_updated', ['updatedAt']),
+  // A map's content. A change makes a new one, so that times always belong to what was played.
   mapBodies: defineTable({ json: v.string() }),
+
+  // One issued run of a published map, fixed to a content; handed in once.
+  mapRuns: defineTable({
+    userId: v.id('users'), mapId: v.id('maps'), bodyId: v.id('mapBodies'), version: v.number(), startedAt: v.number(),
+    status: v.union(v.literal('open'), v.literal('claimed'), v.literal('done'), v.literal('rejected')),
+  }).index('by_user_started', ['userId', 'startedAt']),
+  // Each player's fastest completion of each content of a map, for all time.
+  mapTimes: defineTable({
+    mapId: v.id('maps'), bodyId: v.id('mapBodies'), userId: v.id('users'), timeMs: v.number(), achievedAt: v.number(),
+  }).index('by_body_time', ['bodyId', 'timeMs']).index('by_body_user', ['bodyId', 'userId']),
 
   // Runs started each day (KST date), for the admin page: runs themselves are cleared after a day.
   dailyStats: defineTable({ day: v.string(), plays: v.number() }).index('by_day', ['day']),

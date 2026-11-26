@@ -2,7 +2,6 @@ import { getAuthUserId } from '@convex-dev/auth/server';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { nicknameKey } from '../src/nickname';
-import { SIM_VERSION } from '../src/replay';
 import { PASSWORD_MAX, PASSWORD_MIN, SIGN_UP_ERRORS } from '../src/username';
 import { weekKey } from '../src/week';
 import { components } from './_generated/api';
@@ -62,8 +61,11 @@ export const stats = query({
       plays7d += d.plays;
       if (d.day === new Date(now + 9 * 3_600_000).toISOString().slice(0, 10)) playsToday = d.plays;
     }
-    const release = (await ctx.db.query('leaderboardState').withIndex('by_key', (q) => q.eq('key', 'current')).unique())?.release ?? 'initial';
     let suspended = 0;
+    // Members with a record this week, however many rows each has.
+    const recorded = new Set<Id<'users'>>();
+    let rows = 0;
+    for await (const r of ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', weekKey(now)))) { recorded.add(r.userId); if (++rows >= COUNT_CAP) break; }
     let seen = 0;
     for await (const u of ctx.db.query('users')) { if (u.suspended) suspended++; if (++seen >= COUNT_CAP) break; }
     return {
@@ -71,7 +73,7 @@ export const stats = query({
       signups7d: await count(ctx.db.query('users').withIndex('by_creation_time', (q) => q.gte('_creationTime', weekAgo))),
       active7d: await count(ctx.db.query('users').withIndex('by_lastActive', (q) => q.gte('lastActiveAt', weekAgo))),
       plays7d, playsToday,
-      weeklyRecords: await count(ctx.db.query('scores').withIndex('by_release_score', (q) => q.eq('week', weekKey(now)).eq('release', release).eq('version', SIM_VERSION))),
+      weeklyRecords: recorded.size,
       maps: await count(ctx.db.query('maps')),
       suspended,
       cap: COUNT_CAP,

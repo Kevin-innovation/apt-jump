@@ -18,13 +18,15 @@ const STARTS_PER_WINDOW = 60;
 const SLACK = 4000;
 /** The page waits longer than this for a run (START_WAIT in main.ts). */
 const MANIFEST_WAIT = 4000;
-const RESET_MESSAGE = '새 난이도가 적용되어 리더보드가 초기화되었습니다. 새로 시작해 주세요.';
 
 async function activeRelease(ctx: QueryCtx | MutationCtx): Promise<string> {
   return (await ctx.db.query('leaderboardState').withIndex('by_key', q => q.eq('key', 'current')).unique())?.release ?? 'initial';
 }
 
-/** Only this server's trusted production manifest can select a new board. Clients supply no release id. */
+/**
+ * Notes the newest production release, for the page's update notice; the ranking doesn't depend on it. Only this
+ * server's trusted manifest is read: clients supply no release id.
+ */
 export const syncRelease = action({
   args: {},
   returns: v.object({ id: v.string(), builtAt: v.number() }),
@@ -44,13 +46,18 @@ export const activateRelease = internalMutation({
   returns: v.object({ id: v.string(), builtAt: v.number() }),
   handler: async (ctx, { id, builtAt }) => {
     const old = await ctx.db.query('leaderboardState').withIndex('by_key', q => q.eq('key', 'current')).unique();
-    // A delayed response from an older deployment must not reactivate its scores.
+    // A delayed response from an older deployment must not replace a newer one.
     if (old && old.builtAt >= builtAt) return { id: old.release, builtAt: old.builtAt };
     if (old) await ctx.db.patch(old._id, { release: id, builtAt });
     else await ctx.db.insert('leaderboardState', { key: 'current', release: id, builtAt });
     return { id, builtAt };
   },
 });
+
+/** A player's highest row of a week. */
+function bestOf(ctx: QueryCtx | MutationCtx, week: string, userId: Id<'users'>) {
+  return ctx.db.query('scores').withIndex('by_week_user_score', (q) => q.eq('week', week).eq('userId', userId)).order('desc').first();
+}
 
 export const clock = mutation({ args: {}, returns: v.number(), handler: async () => Date.now() });
 
@@ -90,7 +97,6 @@ export const claim = internalMutation({
     const run = await ctx.db.get(runId);
     if (!run || run.userId !== userId) throw new ConvexError('기록을 찾을 수 없습니다.');
     if (run.status !== 'open') throw new ConvexError('이미 제출했거나 무효가 된 기록입니다.');
-    if (run.release !== await activeRelease(ctx)) throw new ConvexError(RESET_MESSAGE);
     const elapsed = Date.now() - run.startedAt;
     const late = elapsed > RUN_LIFE || run.version !== SIM_VERSION;
     await ctx.db.patch(runId, { status: 'claimed' });
@@ -104,15 +110,15 @@ export const settle = internalMutation({
   handler: async (ctx, { runId, result }) => {
     const run = await ctx.db.get(runId);
     if (!run || run.status !== 'claimed') return { best: false };
-    if (result && run.release !== await activeRelease(ctx)) throw new ConvexError(RESET_MESSAGE);
     await ctx.db.patch(runId, { status: result ? 'done' : 'rejected' });
     if (!result) return { best: false };
     const now = Date.now();
     const week = weekKey(now);
-    const old = await ctx.db.query('scores').withIndex('by_release_user', (q) => q.eq('week', week).eq('release', run.release).eq('version', run.version).eq('userId', run.userId)).unique();
+    const old = await bestOf(ctx, week, run.userId);
     if (old && old.score >= result.score) return { best: false };
-    if (old) await ctx.db.patch(old._id, { ...result, achievedAt: now });
-    else await ctx.db.insert('scores', { week, release: run.release, version: run.version, userId: run.userId, ...result, achievedAt: now });
+    const row = { release: run.release, version: run.version, ...result, achievedAt: now };
+    if (old) await ctx.db.patch(old._id, row);
+    else await ctx.db.insert('scores', { week, userId: run.userId, ...row });
     return { best: true };
   },
 });
@@ -137,28 +143,36 @@ export const finish = action({
 
 const entry = v.object({ rank: v.number(), nickname: v.string(), score: v.number(), distance: v.number(), mine: v.boolean() });
 
-/** One current weekly board, reset automatically for every new production release. */
+/** One board a week, for every version of the game: it starts afresh only on Monday 00:00 in Korea. */
 export const board = query({
-  // Accept the old field during the rolling upgrade, but it cannot select archived records.
+  // `version` is still accepted from older pages, and selects nothing.
   args: { week: v.string(), version: v.optional(v.number()) },
   returns: v.object({ top: v.array(entry), mine: v.union(v.null(), v.object({ rank: v.union(v.null(), v.number()), score: v.number(), distance: v.number() })) }),
   handler: async (ctx, { week }) => {
     if (!isWeekKey(week)) throw new ConvexError('잘못된 주간입니다.');
-    const release = await activeRelease(ctx);
     const me = (await getAuthUserId(ctx)) as Id<'users'> | null;
-    const rows = await ctx.db.query('scores').withIndex('by_release_score', (q) => q.eq('week', week).eq('release', release).eq('version', SIM_VERSION)).order('desc').take(TOP);
     const top: { rank: number; nickname: string; score: number; distance: number; mine: boolean }[] = [];
-    for (const r of rows) {
+    // Best first, so a player's first row is their highest and the rest are passed over.
+    const seen = new Set<Id<'users'>>();
+    for await (const r of ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', week)).order('desc')) {
+      if (seen.has(r.userId)) continue;
+      seen.add(r.userId);
       const user = await ctx.db.get(r.userId);
       // Equal scores share a rank.
       const prev: (typeof top)[number] | undefined = top[top.length - 1];
       top.push({ rank: prev && prev.score === r.score ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', score: r.score, distance: r.distance, mine: r.userId === me });
+      if (top.length >= TOP) break;
     }
-    const own = me && (await ctx.db.query('scores').withIndex('by_release_user', (q) => q.eq('week', week).eq('release', release).eq('version', SIM_VERSION).eq('userId', me)).unique());
+    const own = me && (await bestOf(ctx, week, me));
     let mine = null;
     if (own) {
-      const above = await ctx.db.query('scores').withIndex('by_release_score', (q) => q.eq('week', week).eq('release', release).eq('version', SIM_VERSION).gt('score', own.score)).take(RANK_CAP);
-      mine = { rank: above.length < RANK_CAP ? above.length + 1 : null, score: own.score, distance: own.distance };
+      const above = new Set<Id<'users'>>();
+      let read = 0;
+      for await (const r of ctx.db.query('scores').withIndex('by_week_score', (q) => q.eq('week', week).gt('score', own.score))) {
+        above.add(r.userId);
+        if (++read >= RANK_CAP) break;
+      }
+      mine = { rank: read < RANK_CAP ? above.size + 1 : null, score: own.score, distance: own.distance };
     }
     return { top, mine };
   },

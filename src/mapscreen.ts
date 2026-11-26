@@ -16,6 +16,10 @@ export function downloadMap(map: GameMap): void {
 export interface MapActions {
   play(map: GameMap, id: string | null): void;
   edit(map: GameMap, id: string | null): void;
+  /** A published map, whose completion times are ranked. */
+  playShared?(map: GameMap, sharedId: string): void;
+  /** Opens a published map's ranking. */
+  times?(sharedId: string): void;
 }
 
 /** One card; every title goes in as text. */

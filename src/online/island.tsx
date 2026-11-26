@@ -29,7 +29,7 @@ export function connect(url: string): Online {
   /**
    * Asks the server to take up the newest production release, at most once a minute after a failure. Never rejects:
    * a server without it (or a slow manifest) only keeps its current board, and a run still starts on that board.
-   * A run is issued only after this has settled, so a release this page activates can't void the run it just began.
+   * It only feeds the update notice: the weekly ranking doesn't depend on releases.
    */
   const ensureRelease = (): Promise<ReleaseInfo | null> => {
     if (release) return Promise.resolve(release);
@@ -120,6 +120,9 @@ export function connect(url: string): Online {
     board: async (week) => { await ensureRelease(); return await client.query(api.ranking.board, { week }); },
     listMaps: (order, cursor) => client.query(api.maps.list, { order, paginationOpts: { numItems: 10, cursor } }),
     getMap: (id) => client.query(api.maps.get, { id: id as Id<'maps'> }),
+    mapStart: (id) => write(() => client.mutation(api.maptimes.start, { mapId: id as Id<'maps'>, version: SIM_VERSION })),
+    mapFinish: (runId, replay) => write(() => client.action(api.maptimes.finish, { runId: runId as Id<'mapRuns'>, replay })),
+    mapBoard: (id) => client.query(api.maptimes.board, { mapId: id as Id<'maps'> }),
     publishMap: (json) => write(() => client.mutation(api.maps.publish, { json })),
     updateMap: async (id, json) => { await write(() => client.mutation(api.maps.update, { id: id as Id<'maps'>, json })); },
     removeMap: async (id) => { await write(() => client.mutation(api.maps.remove, { id: id as Id<'maps'> })); },

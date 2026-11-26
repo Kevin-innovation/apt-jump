@@ -56,24 +56,17 @@ describe('accounts', () => {
 });
 
 describe('ranked runs', () => {
-  it('resets on a new production release, rejects pre-reset runs and never rolls back to an older release', async () => {
+  it('keeps the week’s board across releases, and takes a run begun before one', async () => {
     const { t, a } = await setup();
-    await t.run(ctx => ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, release: 'initial', userId: a.id, score: 100000, distance: 1000, achievedAt: NOW }));
-    expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top).toHaveLength(1);
-    const old = await start(a);
-    await t.mutation(internal.ranking.activateRelease, { id: 'new-release', builtAt: NOW });
-    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null });
-    await expect(a.as.action(api.ranking.finish, { runId: old.runId, replay: 'A9' })).rejects.toThrow('초기화');
-    const fresh = await start(a), run = play(fresh.seed, 5);
-    vi.setSystemTime(NOW + run.ms + 1000);
-    await a.as.action(api.ranking.finish, { runId: fresh.runId, replay: run.text });
+    await t.run((ctx) => ctx.db.insert('scores', { week: '2026-11-23', version: SIM_VERSION, release: 'initial', userId: a.id, score: 100000, distance: 1000, achievedAt: NOW }));
     const before = await a.as.query(api.ranking.board, { week: '2026-11-23' });
-    expect(before.top).toHaveLength(1);
-    expect(await t.mutation(internal.ranking.activateRelease, { id: 'stale-release', builtAt: NOW - 1000 })).toEqual({ id: 'new-release', builtAt: NOW });
+    const old = await start(a), run = play(old.seed, 5);
     await t.mutation(internal.ranking.activateRelease, { id: 'new-release', builtAt: NOW });
     expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual(before);
-    await t.mutation(internal.ranking.activateRelease, { id: 'next-release', builtAt: NOW + run.ms });
-    expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([]);
+    vi.setSystemTime(NOW + run.ms + 1000);
+    expect(await a.as.action(api.ranking.finish, { runId: old.runId, replay: run.text })).toEqual({ score: run.score, best: false });
+    // An older deployment answering late doesn't replace the newer one.
+    expect(await t.mutation(internal.ranking.activateRelease, { id: 'stale-release', builtAt: NOW - 1000 })).toEqual({ id: 'new-release', builtAt: NOW });
   });
   it('takes its release only from the canonical production manifest, never from player arguments', async () => {
     const { t } = await setup();
@@ -193,22 +186,35 @@ describe('ranked runs', () => {
     expect((await a.as.query(api.ranking.board, { week: '2026-11-30' })).mine!.score).toBe(next.score);
     expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).mine!.score).toBe(good.score);
   });
-  it('scores made under other rules are on no current board, and never block a new one', async () => {
+  it('shows each player once, by their best of any version or release, and deletes no row', async () => {
     const { t, a, b } = await setup();
+    const c = await t.run((ctx) => ctx.db.insert('users', { nickname: '씨이', nickKey: '씨이' }));
     await t.run(async (ctx) => {
-      for (const version of [undefined, SIM_VERSION - 1, SIM_VERSION + 1]) for (const p of [a, b])
-        await ctx.db.insert('scores', { week: '2026-11-23', version, release: 'initial', userId: p.id, score: 1e9, distance: 1, achievedAt: NOW });
+      const add = (userId: typeof c, score: number, extra: { version?: number; release?: string }, week = '2026-11-23') =>
+        ctx.db.insert('scores', { week, userId, score, distance: 1, achievedAt: NOW, ...extra });
+      await add(a.id, 2, {});
+      await add(a.id, 3, { version: SIM_VERSION - 1, release: 'initial' });
+      await add(a.id, 1, { version: SIM_VERSION, release: 'new-release' });
+      await add(b.id, 3, { release: 'other' });
+      await add(c, 1, { version: 1 });
+      await add(c, 1e9, {}, '2026-11-16');
     });
-    expect(await a.as.query(api.ranking.board, { week: '2026-11-23' })).toEqual({ top: [], mine: null });
-    expect(await a.as.query(api.ranking.board, { week: '2026-11-23', version: SIM_VERSION - 1 })).toEqual({ top: [], mine: null });
+    const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
+    expect(board.top.map((r) => [r.rank, r.score])).toEqual([[1, 3], [1, 3], [3, 1]]);
+    expect(board.mine).toMatchObject({ rank: 1, score: 3 });
+    // A better run raises the player's highest row only.
     const { runId, seed } = await start(a);
-    const run = play(seed, 5);
+    const run = play(seed, 20);
+    expect(run.score).toBeGreaterThan(3);
     vi.setSystemTime(NOW + run.ms + 1000);
     expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toEqual({ score: run.score, best: true });
-    const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
-    expect(board.top).toHaveLength(1);
-    expect(board.mine).toMatchObject({ rank: 1, score: run.score });
-    expect(await t.run((ctx) => ctx.db.query('scores').collect())).toHaveLength(7);
+    const after = await a.as.query(api.ranking.board, { week: '2026-11-23' });
+    expect(after.top.map((r) => [r.rank, r.score, r.mine])).toEqual([[1, run.score, true], [2, 3, false], [3, 1, false]]);
+    const rows = await t.run((ctx) => ctx.db.query('scores').collect());
+    expect(rows).toHaveLength(6);
+    expect(rows.filter((r) => r.userId === a.id).map((r) => r.score).sort((x, y) => x - y)).toEqual([1, 2, run.score]);
+    expect((await a.as.query(api.ranking.board, { week: '2026-11-16' })).top).toHaveLength(1);
+    expect((await a.as.query(api.ranking.board, { week: '2026-11-30' })).top).toEqual([]);
   });
   it('a run begun under other rules can’t be handed in', async () => {
     const { t, a } = await setup();
@@ -242,7 +248,7 @@ describe('shared maps', () => {
     const { t, a } = await setup();
     const id = await a.as.mutation(api.maps.publish, { json: serializeMap(PRACTICE) });
     const list = await t.query(api.maps.list, { paginationOpts: page, order: 'new' });
-    expect(list.page).toEqual([{ id, title: '연습 옥상', segments: PRACTICE.segments.length, updatedAt: expect.closeTo(NOW, -2), mine: false, author: '에이' }]);
+    expect(list.page).toEqual([{ id, title: '연습 옥상', segments: PRACTICE.segments.length, updatedAt: expect.closeTo(NOW, -2), mine: false, author: '에이', best: null }]);
     expect(JSON.parse((await t.query(api.maps.get, { id }))!)).toEqual(PRACTICE);
     expect((await a.as.query(api.maps.list, { paginationOpts: page, order: 'new' })).page[0]!.mine).toBe(true);
   });
@@ -258,7 +264,8 @@ describe('shared maps', () => {
     expect(JSON.parse((await t.query(api.maps.get, { id }))!).title).toBe('바꾼 이름');
     await a.as.mutation(api.maps.remove, { id });
     expect(await t.query(api.maps.get, { id })).toBeNull();
-    expect(await t.run((ctx) => ctx.db.query('mapBodies').collect())).toEqual([]);
+    // Only the content that was replaced stays, for the times made on it.
+    expect(await t.run((ctx) => ctx.db.query('mapBodies').collect())).toHaveLength(1);
   });
   it('must be valid, playable and small', async () => {
     const { a } = await setup();

@@ -1,7 +1,8 @@
 /** What the game uses of the online side. The vanilla game never imports Convex or React itself. */
 export interface BoardEntry { rank: number; nickname: string; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
-export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean }
+export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null }
+export interface MapBoard { title: string; top: { rank: number; nickname: string; timeMs: number; mine: boolean }[]; mine: { rank: number | null; timeMs: number } | null }
 export interface SharedPage { page: SharedMapInfo[]; isDone: boolean; continueCursor: string }
 
 export interface Account {
@@ -44,6 +45,10 @@ export interface Online {
   board(week: string): Promise<Board>;
   listMaps(order: 'new' | 'old', cursor: string | null): Promise<SharedPage>;
   getMap(id: string): Promise<string | null>;
+  /** A ranked run of a published map: the server fixes the content, returned to be played. */
+  mapStart(id: string): Promise<{ runId: string; json: string }>;
+  mapFinish(runId: string, replay: string): Promise<{ timeMs: number; best: boolean }>;
+  mapBoard(id: string): Promise<MapBoard | null>;
   publishMap(json: string): Promise<string>;
   updateMap(id: string, json: string): Promise<void>;
   removeMap(id: string): Promise<void>;

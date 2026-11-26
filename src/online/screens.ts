@@ -3,6 +3,7 @@ import { cleanNickname } from '../nickname';
 import { parseMap, serializeMap, type GameMap } from '../maps';
 import { downloadMap, mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
+import { timeText } from '../mapreplay';
 import { weekEnd, weekKey } from '../week';
 import { errorText, type Online, type SharedMapInfo } from './types';
 
@@ -19,6 +20,9 @@ export class OnlineScreens {
   private order: 'new' | 'old' = 'new';
   private mapTicket = 0;
   private adminTicket = 0;
+  private timesTicket = 0;
+  /** The map whose ranking is open. */
+  private timesOf = '';
   private joining = false;
 
   constructor(private store: MapStore, private maps: MapActions) {
@@ -185,6 +189,44 @@ export class OnlineScreens {
     }
   }
 
+  // ---- A map's times -----------------------------------------------------
+
+  openTimes(id: string): void {
+    this.timesOf = id;
+    $('mt-title').textContent = '';
+    $('mt-list').replaceChildren(note('불러오는 중입니다.'));
+    $('mt-mine').textContent = '';
+    void this.refreshTimes();
+  }
+
+  async refreshTimes(): Promise<void> {
+    const list = $('mt-list'), mine = $('mt-mine'), ticket = ++this.timesTicket;
+    if (!this.online || !this.timesOf) { list.replaceChildren(note('기록은 온라인 연결 뒤에 보여요.')); return; }
+    try {
+      const b = await this.online.mapBoard(this.timesOf);
+      if (ticket !== this.timesTicket) return;
+      if (!b) { list.replaceChildren(note('내려간 맵입니다.')); mine.textContent = ''; return; }
+      $('mt-title').textContent = b.title;
+      list.replaceChildren(...b.top.map((r) => {
+        const row = document.createElement('div');
+        row.className = r.mine ? 'rank time me' : 'rank time';
+        for (const t of [String(r.rank), r.nickname, timeText(r.timeMs)]) {
+          const s = document.createElement('span');
+          s.textContent = t;
+          row.append(s);
+        }
+        return row;
+      }));
+      if (!b.top.length) list.append(note('아직 완주 기록이 없어요.'));
+      mine.textContent = b.mine ? `내 기록 ${b.mine.rank === null ? '1000위 밖' : `${b.mine.rank}위`} · ${timeText(b.mine.timeMs)}`
+        : this.signedIn ? '내 완주 기록이 없어요.' : '로그인하면 기록이 등록돼요.';
+    } catch (e) {
+      if (ticket !== this.timesTicket) return;
+      list.replaceChildren(note(errorText(e)));
+      mine.textContent = '';
+    }
+  }
+
   // ---- Shared maps -------------------------------------------------------
 
   async refreshMaps(): Promise<void> {
@@ -235,7 +277,8 @@ export class OnlineScreens {
 
   private card(m: SharedMapInfo): HTMLElement {
     const buttons: Parameters<typeof mapCard>[2] = [
-      ['플레이', () => void this.open(m.id, (map) => this.maps.play(map, null)), true],
+      ['플레이', () => void this.open(m.id, (map) => this.maps.playShared ? this.maps.playShared(map, m.id) : this.maps.play(map, null)), true],
+      ['기록', () => this.maps.times?.(m.id)],
       ['파일로', () => void this.open(m.id, downloadMap)],
     ];
     if (m.mine) {
@@ -253,7 +296,7 @@ export class OnlineScreens {
         }, (e) => this.tell(errorText(e)));
       }]);
     }
-    return mapCard(m.title, `${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}`, buttons);
+    return mapCard(m.title, `${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}${m.best === null ? '' : ` · 최단 ${timeText(m.best)}`}`, buttons);
   }
 
   /** Adds publish buttons to the player's own maps when signed in. */

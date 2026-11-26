@@ -7,10 +7,10 @@ import type { Device, MenuAction } from './input';
 import type { SaveFile } from './storage';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
-export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'items' | 'welcome';
+export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'maptimes' | 'items' | 'welcome';
 export type Act = 'start' | 'resume' | 'restart' | 'home' | 'settings' | 'credits' | 'back' | 'mute' | 'music' | 'sfx' | 'shake'
   | 'maps' | 'ranking' | 'account' | 'admin' | 'logout' | 'items' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
-const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'items', 'welcome'];
+const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome'];
 const VOLUME = ['끔', '작게', '보통', '크게'];
 const KEYS: Record<Device, string> = {
   key: '점프 Space · ↑ · 클릭　　일시정지 P　　음소거 M',
@@ -108,6 +108,7 @@ export class UI {
       else if (this.screen === 'welcome') this.onAct('guest');
       else if (this.screen === 'result' || this.screen === 'maps' || this.screen === 'ranking' || this.screen === 'account') this.onAct('home');
       else if (this.screen === 'admin') this.onAct('account');
+      else if (this.screen === 'maptimes') this.onAct('maps');
       else if (this.screen === 'editor') this.onAct('ed-back');
     } else (list[i] ?? list.find((b) => b.classList.contains('primary')))?.click();
     return true;
@@ -166,6 +167,8 @@ export class UI {
   }
 
   onlineNote(t: string): void { this.text('r-online', t); }
+  /** Replaces the result's line about the best score, for runs ranked otherwise. */
+  bestNote(t: string): void { this.text('r-best', t); }
   wait(t: string): void {
     $('hint').hidden = !t;
     this.text('hint', t || HINTS[this.device]);

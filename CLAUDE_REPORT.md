@@ -1,3 +1,50 @@
+# 통합 검증 (Claude, 2026-11-26)
+
+`src/progression.ts`(fe85627) cherry-pick 뒤 실행: `tsc` app·convex 통과, `npm run build` 통과, `tests/progression`·`convex`·`maptimes` 25개 통과(지시에 따라 전체 suite·admin·그 밖의 테스트는 미실행, 브라우저 미확인). 맵 시간 표시는 소수 셋째 자리. P13~P16의 "미실행" 표기는 이 결과 전의 상태.
+
+---
+
+# P16 — 구역별 생성 프로필 (Claude, 2026-11-26, `apt-jump/progression-integration`)
+
+- `src/world.ts`: 구역 프로필·압박/회복 리듬·lap 상승, 틈 상한 0.88. `physics.ts` 무변경, `enemyChance`/`difficulty` export 유지.
+- `tests/progression.test.ts` 추가. **미실행**(`progression.ts` 통합 전). 통합 후 world/progression 테스트와 tsc·build 필요. 첫 구역부터 생성 결과가 달라지므로 기존 world·moves·bot 관련 테스트 기대값 확인 필요.
+
+---
+
+# P15 — 공개 맵 최단 시간 순위 (Claude, 2026-11-26, `apt-jump/progression-integration`)
+
+- 새 파일 `convex/maptimes.ts`, `src/mapreplay.ts`, `tests/maptimes.test.ts`. 스키마에 `mapRuns`, `mapTimes` 추가(기존 변경 없음).
+- `replay.ts`: 입력 해석을 `readReplay`로 분리(검증 규칙 동일). `maps.update`: 내용이 바뀌면 새 본문(이전 본문 유지), `maps.list`에 `best`.
+- 화면: 공유 맵 카드의 `기록` → `#maptimes`, 완주 결과에 시간·등록 결과.
+- **미실행**: `src/progression.ts` 통합 전이라 tsc·build·테스트·브라우저 모두 미확인. 통합 후 tsc(app, convex)·build·convex/maptimes 테스트 필요. `convex.test.ts`의 맵 목록·삭제 기대값은 새 동작에 맞춰 수정.
+
+---
+
+# P14 — 주간 순위 유지 (Claude, 2026-11-26, `apt-jump/progression-integration`)
+
+새 사용자 규칙: 패치·난이도 변경에도 순위 유지, KST 월요일 00:00에만 새 주. 배포별 초기화 규칙(P11)은 폐기.
+
+- `ranking.ts`: claim/settle의 release 거부 제거. board·개인 최고는 week(+user) 기준, 회원별 최고점 dedup, 동점 공동 순위. settle은 그 주 회원의 최고 행만 갱신. `SIM_VERSION`은 start·재실행 일치 확인에만 사용.
+- `schema.ts`: `by_week_score`, `by_week_user_score` 추가(기존 인덱스·행 유지). Convex를 먼저 배포.
+- `admin.ts`: 이번 주 기록 = 고유 회원 수(최대 2,000행 조회).
+- `main.ts`: 초기화 문구 제거, 주간 기록 유지 안내.
+- 테스트(`convex.test.ts`) 새 규칙으로 수정·추가. **미실행**: `src/progression.ts`가 없으면 import되지 않음 → 통합 후 tsc·build·convex 테스트 필요.
+- 남음: `src/online/island.tsx`의 release 주석은 예전 설명(수정 범위 밖).
+
+---
+
+# P13 — 구역 배경·구역 도전 (Claude, 2026-11-26)
+
+브랜치 `apt-jump/progression-integration` (main `20f67f1`에서 분기, 커밋 없음). `src/progression.ts`·`world.ts`는 OpenCode 담당이며 이 브랜치에 아직 없음.
+
+- `game.ts`: `district`/`districtGoal` getter, 구역 진입 시 집계 기준 초기화, 목표 보상 1회, 이벤트 `district`/`districtGoal`. 편집 맵 무변경.
+- `render.ts`: 구역별 하늘·실루엣(주택가 지붕/공사장 크레인/네온 간판/강변 다리·강/초고층)·외벽·옥상 장식, 1.5초 전환, 캐시 상한, low 품질, 한 줄 구역 HUD(`#hud` 표시 여부를 읽음).
+- `replay.ts`: `SIM_VERSION` 4.
+- **검증 안 함**: `progression.ts`가 없어 tsc·build·테스트·브라우저 실행 모두 미실행(지시). 통합 후 확인 필요: 타입, game/replay 관련 테스트, 모바일 HUD 위치, 구역 전환 화면.
+- 가정: 팔레트 색은 `#rrggbb`, `sky`는 1개 이상. 보상 값은 `progression.ts`의 `goal.reward`를 그대로 사용.
+
+---
+
 # P12 — 관리자 페이지·계정/순위 화면 분리·줄바꿈 (Claude, 2026-11-26)
 
 브랜치 `apt-jump/admin-layout` (main `61aa935`에서 분기, 커밋 없음). gameplay 파일은 건드리지 않음(OpenCode의 별도 worktree 담당). Patch 검색에서 관리자 UI에 쓸 블록은 없었음.

@@ -11,6 +11,7 @@
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
 import type * as maps from "../maps.js";
+import type * as maptimes from "../maptimes.js";
 import type * as ranking from "../ranking.js";
 import type * as users from "../users.js";
 
@@ -24,6 +25,7 @@ declare const fullApi: ApiFromModules<{
   admin: typeof admin;
   auth: typeof auth;
   maps: typeof maps;
+  maptimes: typeof maptimes;
   ranking: typeof ranking;
   users: typeof users;
 }>;

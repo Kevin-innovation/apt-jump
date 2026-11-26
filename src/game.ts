@@ -4,6 +4,7 @@ import {
   DEFAULT_PACE, jumpReach, newPlayer, paceSpeed, PH, PW, PX_PER_M, STEP, stepPlayer, timeRate,
   type JumpInput, type Pace, type PhysEvent, type Player, type SurfaceKind,
 } from './physics';
+import { districtAt, type District } from './progression';
 import { World, type City, type CoinKind } from './world';
 
 export const COMBO_TIME = 4;
@@ -35,9 +36,13 @@ export type GameEvent =
   | { type: 'roadExit'; x: number; y: number }
   | { type: 'speedup'; level: number }
   | { type: 'goal' }
+  | { type: 'district'; district: District }
+  | { type: 'districtGoal'; district: District; points: number }
   | { type: 'comboLost'; combo: number };
 
 export interface Course { city: City; pace: Readonly<Pace>; startY: number }
+/** The challenge of the district being run: counted from the moment it was entered. */
+export interface DistrictGoal { district: District; current: number; goal: number; done: boolean }
 
 /** One run: physics plus scoring. Pure simulation, no DOM. */
 export class Game {
@@ -68,6 +73,8 @@ export class Game {
   private riskTaken = new Set<number>();
   private lastSurface: SurfaceKind = 'roof';
   private onRoad = false;
+  /** The district being run: its number, what the tally read on the way in, and whether its goal is paid. */
+  private zone = { index: 0, from: {} as Partial<Tally>, done: false };
 
   /** A seed plays the endless city, a course plays a made map. */
   constructor(source: number | Course) {
@@ -89,6 +96,35 @@ export class Game {
       coins: this.coins, powers: this.powers, perfects: this.perfects, stomps: this.stomps, risks: this.risks,
       diamonds: this.diamonds, maxCombo: this.maxCombo, distance: Math.floor(this.distance),
     };
+  }
+  /** The district under the runner: endless runs only. */
+  get district(): District | null { return this.world.goalX === null ? districtAt(this.distance) : null; }
+  get districtGoal(): DistrictGoal | null {
+    const district = this.district;
+    if (!district) return null;
+    // Past a border the step has yet to cross, nothing is counted for the new district.
+    const same = district.index === this.zone.index;
+    const { what, goal } = district.goal;
+    const done = same && this.zone.done;
+    const current = done ? goal : same ? Math.max(0, Math.min(goal, this.tally[what] - (this.zone.from[what] ?? 0))) : 0;
+    return { district, current, goal, done };
+  }
+  /** Pays the district's goal once, then starts counting afresh in the next one. */
+  private stepDistrict(): void {
+    const district = this.district;
+    if (!district) return;
+    if (district.index !== this.zone.index) {
+      this.zone = { index: district.index, from: this.tally, done: false };
+      this.events.push({ type: 'district', district });
+      return;
+    }
+    const { what, goal, reward } = district.goal;
+    if (!this.zone.done && this.tally[what] - (this.zone.from[what] ?? 0) >= goal) {
+      // A flat reward, as for missions.
+      this.zone.done = true;
+      this.bonus += reward;
+      this.events.push({ type: 'districtGoal', district, points: reward });
+    }
   }
   /** Seconds left of an item's effect, or how many are held of those that wait. */
   effect(kind: PowerKind): number {
@@ -209,6 +245,7 @@ export class Game {
       this.bonus += mission.reward;
       this.events.push({ type: 'mission', mission, points: mission.reward });
     }
+    this.stepDistrict();
     if (this.world.goalX !== null && p.x >= this.world.goalX && !p.crashed) {
       this.finished = true;
       this.events.push({ type: 'goal' });

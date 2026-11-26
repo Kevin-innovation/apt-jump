@@ -1,8 +1,9 @@
-import type { Game, GameEvent } from './game';
+import { START_X, type Game, type GameEvent } from './game';
 import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawScaffold, drawTank, drawWarning, powerColor } from './art';
 import { MAGNET_RANGE, POWER_NAMES } from './items';
 import { missionText } from './missions';
-import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, roofEnd, timeRate } from './physics';
+import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, timeRate } from './physics';
+import { districtAt, type District, type DistrictKind } from './progression';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
 import { ROAD_DEPTH, type Roof } from './world';
@@ -13,6 +14,15 @@ type RGB = [number, number, number];
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; g: number }
 interface Popup { x: number; y: number; life: number; text: string; color: string }
 interface Pair { day: HTMLCanvasElement; night: HTMLCanvasElement }
+interface Layer { pair: Pair; speed: number; base: number }
+type Palette = District['palette'];
+/** The scenery of one district, or of a made map (no kind). Only the current one and the one fading out are kept. */
+interface Theme { kind: DistrictKind | null; palette: Palette | null; layers: Layer[]; sky: HTMLCanvasElement | null; skyKey: number }
+/** Seconds one district's scenery takes to give way to the next. */
+const FADE = 1.5;
+const ROOF_CACHE = 80;
+const GOAL_NAMES = { coins: '동전', perfects: '퍼펙트', stomps: '밟기', risks: '위험' } as const;
+const KINDS: readonly DistrictKind[] = ['residential', 'construction', 'neon', 'riverside', 'highrise'];
 
 const FONT = '11px Galmuri11, "Malgun Gothic", sans-serif';
 const HEAD = 54;
@@ -37,6 +47,16 @@ const canvas = (w: number, h: number) => {
   return c;
 };
 const ctxOf = (c: HTMLCanvasElement) => c.getContext('2d')!;
+/** Between two #rrggbb colours, as #rrggbb. */
+const blend = (a: string, b: string, t: number) => {
+  const to = hex(b);
+  return `#${hex(a).map((v, i) => Math.round(v + (to[i]! - v) * t).toString(16).padStart(2, '0')).join('')}`;
+};
+/** A palette's sky stretched over as many bands as the dusk sky has. */
+const bandsOf = (colors: readonly string[]) => DUSK.map((_, i) => {
+  const at = (i / (DUSK.length - 1)) * (colors.length - 1), j = Math.floor(at);
+  return hex(blend(colors[j]!, colors[Math.min(colors.length - 1, j + 1)]!, at - j));
+});
 
 /** Copies a dusk picture, darkens only its own pixels, then lets the caller add lights. */
 function nightOf(day: HTMLCanvasElement, color: string, alpha: number, lights: (g: Ctx) => void): HTMLCanvasElement {
@@ -63,9 +83,9 @@ export class Renderer {
   private shake = 0;
   private t = 0;
   private roofs = new Map<number, Pair>();
-  private layers: { pair: Pair; speed: number; base: number }[] = [];
-  private sky: HTMLCanvasElement | null = null;
-  private skyKey = -1;
+  private theme: Theme | null = null;
+  private leaving: Theme | null = null;
+  private fade = 1;
   private particles: Particle[] = [];
   private popups: Popup[] = [];
   private squash = 0;
@@ -88,22 +108,27 @@ export class Renderer {
     this.el.height = this.H;
     this.el.style.width = `${(this.W * s) / dpr}px`;
     this.el.style.height = `${(this.H * s) / dpr}px`;
+    this.dropScenery();
+  }
+
+  /** Forgets everything drawn ahead of time: it is made again when next needed. */
+  private dropScenery(): void {
     this.roofs.clear();
-    this.skyKey = -1;
-    this.buildLayers();
+    this.theme = this.leaving = null;
+    this.fade = 1;
   }
 
   setQuality(q: 'low' | 'medium' | 'high'): void {
     if (q === this.quality) return;
     this.quality = q;
-    this.buildLayers();
+    this.dropScenery();
   }
 
   reset(): void {
     this.particles = [];
     this.popups = [];
     this.trail = [];
-    this.roofs.clear();
+    this.dropScenery();
     this.camY = -this.H * 0.64;
     this.shake = 0;
   }
@@ -115,7 +140,14 @@ export class Renderer {
 
   // ---- Art ---------------------------------------------------------------
 
-  private buildLayers(): void {
+  private themeFor(district: District | null): Theme {
+    const layers = district ? this.districtLayers(district.kind, district.palette) : this.classicLayers();
+    return { kind: district?.kind ?? null, palette: district?.palette ?? null, layers, sky: null, skyKey: -1 };
+  }
+
+  /** The city of the made maps. */
+  private classicLayers(): Layer[] {
+    const layers: Layer[] = [];
     const mk = (seed: number, w: number, h: number, color: string, nightColor: string, min: number, max: number, speed: number, base: number) => {
       const rng = new Rng(seed);
       const day = canvas(w, h);
@@ -140,9 +172,8 @@ export class Renderer {
         }
         n.globalAlpha = 1;
       });
-      this.layers.push({ pair: { day, night }, speed, base });
+      layers.push({ pair: { day, night }, speed, base });
     };
-    this.layers = [];
     const hills = canvas(512, 70);
     const g = ctxOf(hills);
     g.fillStyle = '#8c3f7c';
@@ -153,23 +184,149 @@ export class Renderer {
     }
     // A hilltop transmission mast, blinking at night.
     g.fillRect(150, 0, 2, 30); g.fillRect(146, 8, 10, 3); g.fillRect(148, 11, 6, 4);
-    this.layers.push({ pair: { day: hills, night: nightOf(hills, '#161446', 0.95, (n) => { n.fillStyle = '#ff5566'; n.fillRect(150, 0, 2, 2); }) }, speed: 0.04, base: 0.5 });
+    layers.push({ pair: { day: hills, night: nightOf(hills, '#161446', 0.95, (n) => { n.fillStyle = '#ff5566'; n.fillRect(150, 0, 2, 2); }) }, speed: 0.04, base: 0.5 });
     if (this.quality !== 'low') mk(11, 640, 120, '#a1467f', '#191a52', 34, 96, 0.1, 0.56);
     mk(23, 768, 130, '#75356f', '#12143f', 30, 90, 0.22, 0.68);
     if (this.quality === 'high') mk(37, 896, 110, '#4d265c', '#0b0d2c', 18, 66, 0.4, 0.8);
+    return layers;
   }
 
-  private drawSky(n: number, distance: number): void {
+  /** A district's skyline: its own shapes, not only its own colours. Far to near, as many as the quality allows. */
+  private districtLayers(kind: DistrictKind, p: Palette): Layer[] {
+    const make = (seed: number, depth: 0 | 1 | 2, w: number, h: number, speed: number, base: number): Layer => {
+      const rng = new Rng(seed);
+      const day = canvas(w, h);
+      const g = ctxOf(day);
+      const color = [p.far, p.mid, p.near][depth]!;
+      const lights: [x: number, y: number, w: number, h: number, color: string][] = [];
+      const box = (x: number, y: number, bw: number, bh: number, c = color) => { g.fillStyle = c; g.fillRect(Math.round(x), Math.round(y), Math.round(bw), Math.round(bh)); };
+      const lamp = (x: number, y: number, lw = 2, lh = 3, c = '#f2c66b') => lights.push([x, y, lw, lh, c]);
+      const windows = (x: number, y: number, bw: number, bh: number, share: number) => {
+        for (let wy = y + 5; wy < y + bh - 4; wy += 7) for (let wx = x + 4; wx < x + bw - 4; wx += 6) if (rng.chance(share)) lamp(wx, wy);
+      };
+      const tree = (x: number) => { box(x + 3, h - 10, 2, 10); box(x, h - 17, 8, 8); box(x + 2, h - 20, 4, 3); };
+      for (let x = 0; x < w - 50;) {
+        let step: number;
+        if (kind === 'residential') {
+          if (depth === 2 && rng.chance(0.6)) {
+            // Houses with pitched roofs, and trees between them.
+            const bw = rng.int(22, 34), bh = rng.int(14, 26);
+            box(x, h - bh, bw, bh);
+            for (let i = 0; i < bw / 2; i += 2) box(x + i, h - bh - i / 2 - 1, bw - i * 2, 2, blend(color, p.accent, 0.25));
+            lamp(x + 5, h - bh + 6, 4, 4);
+            tree(x + bw + 3);
+            step = bw + 14;
+          } else {
+            // Slab blocks with their water tanks.
+            const bw = rng.int(30, 48), bh = rng.int(34, 78);
+            box(x, h - bh, bw, bh); box(x + 5, h - bh - 6, 10, 6); box(x + 7, h - bh - 9, 6, 3);
+            windows(x, h - bh, bw, bh, 0.32);
+            step = bw + rng.int(3, 9);
+          }
+        } else if (kind === 'construction') {
+          const bw = rng.int(28, 48), bh = rng.int(28, 62);
+          // A bare frame: floors and columns, open between them.
+          for (let y = h - bh; y < h; y += 10) box(x, y, bw, 2);
+          for (let c = 0; c <= bw; c += 12) box(x + Math.min(c, bw - 2), h - bh - 4, 2, bh + 4);
+          box(x, h - 12, bw, 12);
+          if (rng.chance(0.55)) {
+            // A tower crane: mast, jib, counterweight, cable and hook.
+            const mx = x + bw + 14, top = rng.int(6, 22);
+            box(mx, top, 2, h - top);
+            for (let y = top + 4; y < h; y += 8) box(mx - 2, y, 6, 1);
+            box(mx - 12, top, 46, 2); box(mx - 12, top + 2, 7, 5, blend(color, p.accent, 0.5));
+            box(mx + 28, top + 2, 1, 18); box(mx + 26, top + 20, 5, 3, p.accent);
+            lamp(mx, top - 2, 2, 2, '#ff5566');
+            step = bw + 50;
+          } else step = bw + rng.int(8, 18);
+        } else if (kind === 'neon') {
+          const bw = rng.int(24, 40), bh = rng.int(30, depth === 2 ? 54 : 74);
+          box(x, h - bh, bw, bh);
+          windows(x, h - bh, bw, bh, 0.22);
+          const glow = rng.chance(0.5) ? p.accent : '#ff5fc8';
+          if (rng.chance(0.65)) {
+            // A tall sign hung off the corner.
+            const sh = rng.int(16, Math.max(17, Math.min(34, bh - 6))), sx = x + bw - 3, sy = h - bh + 4;
+            box(sx, sy, 7, sh, blend(color, '#140c2e', 0.5));
+            for (let y = sy + 2; y < sy + sh - 3; y += 6) { box(sx + 2, y, 3, 3, glow); lamp(sx + 2, y, 3, 3, glow); }
+          } else {
+            // A rooftop billboard on two legs.
+            box(x + 5, h - bh - 8, 1, 8); box(x + bw - 6, h - bh - 8, 1, 8);
+            box(x + 3, h - bh - 17, bw - 6, 10, glow); box(x + 5, h - bh - 15, bw - 10, 6);
+            lamp(x + 3, h - bh - 17, bw - 6, 2, glow);
+          }
+          step = bw + rng.int(5, 10);
+        } else if (kind === 'riverside') {
+          if (depth === 1) {
+            // A suspension bridge: towers, sagging cables, hangers and deck. 128px spans tile the 768px layer.
+            const span = 128, deck = h - 20;
+            box(x, deck, span, 4); box(x + 4, h - 62, 4, 62);
+            for (let i = 0; i <= span; i += 2) {
+              const t = i / span, y = h - 60 + Math.round(4 * t * (1 - t) * 36);
+              box(x + 6 + i, y, 2, 1);
+              if (i % 12 === 0) { box(x + 6 + i, y, 1, deck - y); lamp(x + 6 + i, deck - 2, 1, 1); }
+            }
+            step = span;
+          } else {
+            const bw = rng.int(18, 34), bh = rng.int(10, depth === 0 ? 40 : 22);
+            box(x, h - bh, bw, bh); windows(x, h - bh, bw, bh, 0.3);
+            if (depth === 2) tree(x + bw + 4);
+            step = bw + rng.int(14, 34);
+          }
+        } else {
+          // Slender towers with setbacks, glass bands and spires.
+          const bw = rng.int(16, 30), bh = rng.int(depth === 2 ? 48 : 66, h - 22);
+          box(x, h - bh, bw, bh); box(x + 3, h - bh - 9, bw - 6, 9); box(x + bw / 2 - 1, h - bh - 20, 2, 11);
+          for (let c = x + 4; c < x + bw - 3; c += 5) box(c, h - bh + 3, 1, bh - 6, blend(color, p.accent, 0.3));
+          windows(x, h - bh, bw, bh, 0.4);
+          lamp(x + Math.round(bw / 2) - 1, h - bh - 21, 2, 2, '#ff5566');
+          step = bw + rng.int(4, 14);
+        }
+        x += step;
+      }
+      if (kind === 'riverside' && depth === 2) {
+        // The river along the foot of the nearest bank, with broken reflections.
+        box(0, h - 7, w, 7, blend(p.near, p.accent, 0.35));
+        for (let x = 3; x < w; x += rng.int(9, 22)) { box(x, h - rng.int(2, 5), rng.int(4, 10), 1, p.accent); lamp(x, h - 3, 4, 1, '#8fd6ff'); }
+      }
+      const night = nightOf(day, blend(color, '#0b0d2c', 0.8), 0.9, (n) => {
+        for (const [x, y, lw, lh, c] of lights) { n.fillStyle = c; n.globalAlpha = 0.4 + speed; n.fillRect(x, y, lw, lh); }
+        n.globalAlpha = 1;
+      });
+      return { pair: { day, night }, speed, base };
+    };
+    const seed = 101 + KINDS.indexOf(kind) * 53;
+    const horizon = canvas(512, 60);
+    const g = ctxOf(horizon);
+    g.fillStyle = blend(p.far, p.sky[Math.floor(p.sky.length / 2)]!, 0.4);
+    // Hills behind low districts, nearly flat ground behind built-up ones.
+    const rise = kind === 'residential' || kind === 'riverside' ? 9 : 3;
+    for (let x = 0; x < 512; x++) {
+      const a = (x / 512) * Math.PI * 2;
+      const y = Math.round(30 - rise * Math.sin(a * 2) - rise * 0.6 * Math.sin(a * 5 + 1));
+      g.fillRect(x, y, 1, 60 - y);
+    }
+    const layers: Layer[] = [{ pair: { day: horizon, night: nightOf(horizon, '#161446', 0.92, () => {}) }, speed: 0.04, base: 0.5 }];
+    if (this.quality !== 'low') layers.push(make(seed, 0, 640, 120, 0.1, 0.56));
+    layers.push(make(seed + 1, 1, 768, 130, 0.22, 0.68));
+    if (this.quality === 'high') layers.push(make(seed + 2, 2, 896, 110, 0.4, 0.8));
+    return layers;
+  }
+
+  private skyOf(theme: Theme, n: number): HTMLCanvasElement {
     const key = Math.round(n * 40);
-    if (key !== this.skyKey || !this.sky || this.sky.width !== this.W || this.sky.height !== this.H) {
+    if (key !== theme.skyKey || !theme.sky) {
       const c = canvas(this.W, this.H);
       const g = ctxOf(c);
       const k = key / 40;
+      const dusk = theme.palette ? bandsOf(theme.palette.sky) : DUSK;
+      // A district's night keeps a trace of its own colour.
+      const night = theme.palette ? NIGHT.map((v, i) => v.map((x, j) => Math.round(x * 0.75 + dusk[i]![j]! * 0.25)) as RGB) : NIGHT;
       const top = this.H * 0.82;
-      const bands = DUSK.length;
+      const bands = dusk.length;
       for (let i = 0; i < bands; i++) {
         const y0 = Math.round((top * i) / bands), y1 = Math.round((top * (i + 1)) / bands);
-        g.fillStyle = mix(DUSK[i]!, NIGHT[i]!, k);
+        g.fillStyle = mix(dusk[i]!, night[i]!, k);
         g.fillRect(0, y0, this.W, i === bands - 1 ? this.H - y0 : y1 - y0);
         if (i > 0) for (let d = 0; d < 4; d++) for (let x = (d * 3) % (2 + d * 2); x < this.W; x += 2 + d * 2) g.fillRect(x, y0 - 1 - d, 1, 1);
       }
@@ -183,11 +340,18 @@ export class Renderer {
         }
         g.globalAlpha = 1;
       }
-      this.sky = c;
-      this.skyKey = key;
+      theme.sky = c;
+      theme.skyKey = key;
     }
+    return theme.sky;
+  }
+
+  private drawSky(n: number, distance: number): void {
     const g = this.g;
-    g.drawImage(this.sky, 0, 0);
+    if (this.leaving) g.drawImage(this.skyOf(this.leaving, n), 0, 0);
+    g.globalAlpha = this.leaving ? this.fade : 1;
+    g.drawImage(this.skyOf(this.theme!, n), 0, 0);
+    g.globalAlpha = 1;
     // Sun sinks while the moon climbs.
     const disc = (cx: number, cy: number, r: number, color: string, stripes: boolean) => {
       g.fillStyle = color;
@@ -223,11 +387,13 @@ export class Renderer {
     }
   }
 
-  private roofArt(r: Roof): Pair {
+  /** A block as its own district builds them; a made map's blocks keep the plain look. */
+  private roofArt(r: Roof, district: District | null): Pair {
     const cached = this.roofs.get(r.id);
     if (cached) return cached;
     const rng = new Rng(r.seed);
-    const p = WALLS[r.style]!;
+    const base = WALLS[r.style]!, kind = district?.kind ?? null, tint = district?.palette.wall;
+    const p = tint ? { wall: blend(base.wall, tint, 0.65), shade: blend(base.shade, tint, 0.45), trim: base.trim, rail: base.rail } : base;
     const h = HEAD + this.H + 80;
     const day = canvas(r.w, h);
     const g = ctxOf(day);
@@ -249,13 +415,34 @@ export class Renderer {
       for (let c = 0; c < cols; c++) {
         const x = margin + c * 30 + 3;
         if (y === HEAD + 50 && x + 25 > lx - 4 && x < lx + lw + 4) continue;
+        if (kind === 'construction') {
+          // Unglazed openings, with a brace across some.
+          g.fillStyle = p.trim; g.fillRect(x, y, 24, 15);
+          g.fillStyle = '#35304f'; g.fillRect(x + 2, y + 2, 20, 13);
+          if (rng.chance(0.4)) { g.fillStyle = district!.palette.accent; for (let k = 0; k < 20; k += 2) g.fillRect(x + 2 + k, y + 13 - Math.round(k * 0.55), 2, 1); }
+          wins.push({ x: x + 6, y: y + 3, on: rng.next() * 1.6 });
+          continue;
+        }
+        if (kind === 'highrise') {
+          // A glass curtain wall.
+          g.fillStyle = '#4a5f8a'; g.fillRect(x - 2, y - 3, 28, 20);
+          g.fillStyle = '#7d9cc4'; g.fillRect(x - 1, y - 2, 4, 18);
+          g.fillStyle = p.trim; g.fillRect(x + 12, y - 3, 1, 20);
+          wins.push({ x: x + 1, y: y + 1, on: rng.next() });
+          continue;
+        }
         g.fillStyle = p.trim; g.fillRect(x, y, 24, 15);
         g.fillStyle = '#4a4a78'; g.fillRect(x + 1, y + 1, 11, 9); g.fillRect(x + 13, y + 1, 10, 9);
         g.fillStyle = '#e88f84'; g.fillRect(x + 2, y + 2, 4, 2); g.fillRect(x + 14, y + 2, 3, 2);
         g.fillStyle = p.rail; g.fillRect(x - 1, y + 10, 26, 1);
         for (let k = 0; k < 24; k += 3) g.fillRect(x + k, y + 11, 1, 4);
         wins.push({ x: x + 1, y: y + 1, on: rng.next() });
-        if (rng.chance(0.2)) {
+        if (kind === 'neon' && rng.chance(0.35)) {
+          // A shop sign under the window.
+          g.fillStyle = '#2a1c40'; g.fillRect(x, y + 15, 24, 5);
+          g.fillStyle = rng.chance(0.5) ? district!.palette.accent : '#ff5fc8';
+          for (let k = 2; k < 22; k += 5) g.fillRect(x + k, y + 16, 3, 3);
+        } else if (rng.chance(0.2)) {
           g.fillStyle = '#e8e6ee'; g.fillRect(x + 15, y + 9, 9, 6);
           g.fillStyle = '#8c88a8'; g.fillRect(x + 17, y + 10, 4, 4);
         } else if (rng.chance(0.15)) {
@@ -268,7 +455,8 @@ export class Renderer {
     g.fillText(label, lx, HEAD + 51);
     // Muted rooftop scenery: never solid.
     const bg = '#6d4a72', bg2 = '#573a63';
-    for (let x = 14; x < r.w - 30; x += rng.int(48, 96)) {
+    if (district && district.kind !== 'residential') this.roofScenery(g, rng, r.w, district);
+    else for (let x = 14; x < r.w - 30; x += rng.int(48, 96)) {
       const kind = rng.int(0, 4);
       g.fillStyle = bg;
       if (kind === 0) { g.fillRect(x, HEAD - 40, 1, 40); g.fillRect(x - 6, HEAD - 38, 13, 1); g.fillRect(x - 4, HEAD - 33, 9, 1); g.fillRect(x - 3, HEAD - 28, 7, 1); }
@@ -301,14 +489,65 @@ export class Renderer {
       n.fillText(label, lx, HEAD + 51);
     });
     const pair = { day, night };
+    // Blocks the world dropped before they scrolled out of sight leave oldest first.
+    if (this.roofs.size >= ROOF_CACHE) this.roofs.delete(this.roofs.keys().next().value!);
     this.roofs.set(r.id, pair);
     return pair;
   }
 
-  private drawPair(p: Pair, x: number, y: number, n: number): void {
+  /** What stands on a district's roofs. Never solid, so kept muted and behind the runner. */
+  private roofScenery(g: Ctx, rng: Rng, width: number, d: District): void {
+    const bg = blend(d.palette.mid, '#6d4a72', 0.35), dim = blend(d.palette.accent, bg, 0.45);
+    const box = (x: number, y: number, w: number, h: number, c = bg) => { g.fillStyle = c; g.fillRect(x, y, w, h); };
+    const sparse = this.quality === 'low';
+    for (let x = 14; x < width - 44; x += rng.int(sparse ? 96 : 52, sparse ? 150 : 100)) {
+      const first = rng.chance(0.5);
+      if (d.kind === 'construction') {
+        if (first) { box(x + 8, HEAD - 42, 2, 42); box(x, HEAD - 42, 38, 2); box(x + 32, HEAD - 40, 1, 14); box(x + 30, HEAD - 26, 5, 3, dim); }
+        else { for (let k = 0; k < 3; k++) box(x + k * 2, HEAD - 3 - k * 5, 30 - k * 4, 3); box(x + 34, HEAD - 8, 6, 8, dim); box(x + 36, HEAD - 11, 2, 3, dim); }
+      } else if (d.kind === 'neon') {
+        if (first) { box(x + 3, HEAD - 12, 1, 12); box(x + 30, HEAD - 12, 1, 12); box(x, HEAD - 30, 36, 19); box(x + 3, HEAD - 27, 30, 2, dim); box(x + 7, HEAD - 21, 22, 2, dim); box(x + 11, HEAD - 16, 14, 2, dim); }
+        else { box(x, HEAD - 38, 9, 38); for (let y = HEAD - 35; y < HEAD - 5; y += 8) box(x + 2, y, 5, 4, dim); }
+      } else if (d.kind === 'riverside') {
+        if (first) { box(x + 2, HEAD - 30, 1, 30); box(x, HEAD - 33, 5, 3, dim); box(x + 12, HEAD - 8, 14, 8); box(x + 15, HEAD - 11, 8, 3); }
+        else { box(x, HEAD - 10, 37, 1); for (let k = 0; k <= 36; k += 6) box(x + k, HEAD - 10, 1, 10); }
+      } else if (first) { box(x + 8, HEAD - 44, 1, 44); box(x + 5, HEAD - 30, 7, 1); box(x + 6, HEAD - 38, 5, 1); box(x + 8, HEAD - 46, 1, 2, dim); }
+      else { box(x, HEAD - 12, 30, 12); box(x + 3, HEAD - 15, 24, 3); box(x + 11, HEAD - 10, 2, 8, dim); box(x + 18, HEAD - 10, 2, 8, dim); box(x + 13, HEAD - 7, 5, 2, dim); }
+    }
+  }
+
+  private drawPair(p: Pair, x: number, y: number, n: number, alpha = 1): void {
     const g = this.g;
+    g.globalAlpha = alpha;
     if (n < 1) g.drawImage(p.day, x, y);
-    if (n > 0) { g.globalAlpha = n; g.drawImage(p.night, x, y); g.globalAlpha = 1; }
+    if (n > 0) { g.globalAlpha = n * alpha; g.drawImage(p.night, x, y); }
+    g.globalAlpha = 1;
+  }
+
+  private drawLayers(theme: Theme, cx: number, cy: number, n: number, alpha: number): void {
+    const g = this.g;
+    for (const l of theme.layers) {
+      const w = l.pair.day.width;
+      const y = Math.round(this.H * l.base - l.pair.day.height * 0.45 - (cy + this.H * 0.64) * l.speed * 0.6);
+      for (let x = -(((Math.round(cx * l.speed) % w) + w) % w); x < this.W; x += w) this.drawPair(l.pair, x, y, n, alpha);
+      const foot = y + l.pair.day.height;
+      if (foot < this.H) {
+        g.globalAlpha = alpha;
+        g.fillStyle = mix(hex(theme.palette?.near ?? '#4d265c'), hex('#0b0d2c'), n);
+        g.fillRect(0, foot, this.W, this.H - foot);
+        g.globalAlpha = 1;
+      }
+    }
+  }
+
+  /** Takes up the scenery of the district now under the runner, fading from the last one. */
+  private turnTheme(district: District | null, dt: number): void {
+    if (!this.theme || this.theme.kind !== (district?.kind ?? null)) {
+      this.leaving = this.quality === 'low' ? null : this.theme;
+      this.fade = this.leaving ? 0 : 1;
+      this.theme = this.themeFor(district);
+    }
+    if (this.leaving && (this.fade += dt / FADE) >= 1) { this.leaving = null; this.fade = 1; }
   }
 
   // ---- Frame -------------------------------------------------------------
@@ -354,6 +593,8 @@ export class Renderer {
       case 'trafficHit': this.shake = 9; burst(30, e.x, e.y - 8, ['#ff5566', '#ffd85a', '#fff'], 170, 60); pop(e.x - 20, e.y - 30, '차량 충돌!', '#ff7a7a'); break;
       case 'roadExit': pop(e.x, e.y - 30, '옥상 복귀!', '#9be36b'); break;
       case 'speedup': pop(p.x - 10, p.y - 44, `속도 UP! Lv.${e.level}`, '#ffb84a'); break;
+      case 'district': pop(p.x - 14, p.y - 58, `${e.district.name} 진입`, e.district.palette.accent); break;
+      case 'districtGoal': burst(24, p.x + 5, p.y - 20, [e.district.palette.accent, '#ffd85a', '#fff'], 140, 40); pop(p.x - 14, p.y - 70, `구역 목표 달성 +${e.points}`, '#ffd85a'); break;
       case 'goal': burst(40, p.x + 6, p.y - 20, ['#ffd85a', '#7dfff0', '#ff7ad9', '#fff'], 170, 60); break;
       case 'risk': pop(e.x, e.y - 6, `${RISK_NAMES[e.kind]} +${e.points}`, '#ff9be6'); break;
       case 'stumble': this.shake = 4; burst(14, p.x + 10, p.y - 8, ['#fff', '#ff5566', '#ffcf4a'], 120, 40); pop(p.x, p.y - 22, '쿵!', '#ff7a7a'); break;
@@ -377,17 +618,11 @@ export class Renderer {
     const cx = Math.round(p.x - this.W * look + (Math.random() - 0.5) * sh * 2);
     const cy = Math.round(this.camY + (Math.random() - 0.5) * sh * 2);
 
+    const district = game.district;
+    this.turnTheme(district, dt);
     this.drawSky(n, game.distance);
-    for (const l of this.layers) {
-      const w = l.pair.day.width;
-      const y = Math.round(this.H * l.base - l.pair.day.height * 0.45 - (cy + this.H * 0.64) * l.speed * 0.6);
-      for (let x = -(((Math.round(cx * l.speed) % w) + w) % w); x < this.W; x += w) this.drawPair(l.pair, x, y, n);
-      const foot = y + l.pair.day.height;
-      if (foot < this.H) {
-        g.fillStyle = mix(hex('#4d265c'), hex('#0b0d2c'), n);
-        g.fillRect(0, foot, this.W, this.H - foot);
-      }
-    }
+    if (this.leaving) this.drawLayers(this.leaving, cx, cy, n, 1);
+    this.drawLayers(this.theme!, cx, cy, n, this.leaving ? this.fade : 1);
 
     // Buildings and scaffolds first, then streets over the scaffold feet, then everything on top.
     const seen: Roof[] = [];
@@ -397,7 +632,7 @@ export class Renderer {
       seen.push(r);
       if (x > this.W || x + r.w < 0) continue;
       if (r.kind === 'scaffold') drawScaffold(g, x, Math.round(r.y - cy), r.w, ROAD_DEPTH + 60);
-      else this.drawPair(this.roofArt(r), x, r.y - HEAD - cy, n);
+      else this.drawPair(this.roofArt(r, district ? districtAt(Math.max(0, (r.x - START_X) / PX_PER_M)) : null), x, r.y - HEAD - cy, n);
     }
     for (const r of seen) if (r.road) drawRoad(g, r.road, cx, cy, this.H, n);
     for (const r of seen) if (r.road) for (const car of roadCars(r.road, p.time)) {
@@ -458,6 +693,34 @@ export class Renderer {
 
     this.drawPlayer(game, cx, cy, dt, moving);
     this.drawFx(cx, cy, dt, n);
+    this.drawDistrict(game);
+  }
+
+  /**
+   * One line under the running surface: the district, how far the next is, and its goal. Kept clear of the score at
+   * the top and the jump meter at the bottom, and shown only while the game's own HUD is.
+   */
+  private drawDistrict(game: Game): void {
+    const info = game.districtGoal;
+    // The opening hint has this space for the first metres.
+    if (!info || game.distance < 30 || document.getElementById('hud')?.hidden !== false) return;
+    const g = this.g, d = info.district;
+    const name = d.lap > 1 ? `${d.name} ${d.lap}회차` : d.name;
+    const left = `${Math.ceil(d.remaining)}m`;
+    const goal = info.done ? '목표 달성' : `${GOAL_NAMES[d.goal.what]} ${info.current}/${info.goal}`;
+    g.font = FONT;
+    g.textBaseline = 'top';
+    // The longest wording that fits the screen.
+    const text = [`${name} · 다음 구역 ${left} · ${goal}`, `${name} · ${left} · ${goal}`, `${d.name} · ${goal}`]
+      .find((t) => g.measureText(t).width <= this.W - 14) ?? goal;
+    const w = Math.ceil(g.measureText(text).width);
+    const px = this.el.clientHeight / this.H || 1;
+    const y = Math.max(0, Math.min(Math.round(this.H * 0.64) + 16, this.H - Math.ceil(100 / px) - 15));
+    const x = Math.round((this.W - w) / 2);
+    g.fillStyle = 'rgba(20,12,46,.8)'; g.fillRect(x - 5, y, w + 10, 15);
+    g.fillStyle = d.palette.accent; g.fillRect(x - 5, y + 14, Math.round((w + 10) * Math.max(0, Math.min(1, d.progress))), 1);
+    g.fillStyle = info.done ? '#ffd85a' : '#fff6e0';
+    g.fillText(text, x, y + 2);
   }
 
   private drawPlayer(game: Game, cx: number, cy: number, dt: number, moving: boolean): void {

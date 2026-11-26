@@ -1,4 +1,5 @@
-import { baseSpeed, ease, jumpHeightAt, jumpReach, jumpTime, roofEnd } from './physics';
+import { baseSpeed, ease, jumpHeightAt, jumpReach, jumpTime, PX_PER_M, roofEnd } from './physics';
+import { districtAt, type DistrictKind } from './progression';
 import { POWER_KINDS, type Power, type PowerKind } from './items';
 import { Rng } from './rng';
 
@@ -44,6 +45,41 @@ export const OBSTACLE_SIZE = { ac: { w: 16, h: 11 }, tank: { w: 36, h: 31 } } as
 export function difficulty(x: number): number { return ease(x, 2600); }
 export function enemyChance(x: number): number {
   return x < ENEMY_START ? 0 : 0.22 + 0.65 * ease(x - ENEMY_START, 2500);
+}
+
+/** No gap asks for more of a single jump than this. */
+export const MAX_GAP_RATIO = 0.88;
+
+/** How a district builds: factors and additions on the plain city. */
+interface Profile {
+  /** Roof width. */ width: number;
+  /** Added to a gap's share of the jump. */ gap: number;
+  /** Height changes between roofs. */ rise: number;
+  /** Added to the chance of something more standing on a roof. */ busy: number;
+  /** Chance of a hostile one among those. */ enemy: number;
+  /** Share of water tanks among obstacles. */ tank: number;
+  /** Added to the chance of laundry across a wide gap. */ line: number;
+  /** Roofs between streets at most, the chance of one sooner, and scaffolds added over it. */
+  roadEvery: number; roadChance: number; scaffolds: number;
+}
+const PLAIN: Profile = { width: 1, gap: 0, rise: 1, busy: 0, enemy: 1, tank: 0.4, line: 0, roadEvery: 7, roadChance: 0.08, scaffolds: 0 };
+export const PROFILES: Record<DistrictKind, Profile> = {
+  residential: { ...PLAIN, width: 1.15 },
+  construction: { ...PLAIN, tank: 0.5, roadEvery: 5, roadChance: 0.2, scaffolds: 1 },
+  neon: { ...PLAIN, busy: 0.05, enemy: 1.5 },
+  riverside: { ...PLAIN, gap: 0.07, rise: 0.35, line: 0.2 },
+  highrise: { ...PLAIN, width: 0.95, rise: 1.4, busy: 0.08, tank: 0.7 },
+};
+
+/**
+ * The district a point lies in, and where in its rhythm: pressure builds through the second half and lets up just
+ * before the next one. From the second lap everything presses a little harder, up to a limit.
+ */
+function zoneAt(x: number) {
+  const d = districtAt(Math.max(0, (x - 60) / PX_PER_M));
+  const rest = d.progress >= 0.85;
+  const surge = !rest && d.progress >= 0.5;
+  return { profile: PROFILES[d.kind], rest, surge, lap: Math.min(0.06, (d.lap - 1) * 0.03) };
 }
 
 /** Deterministic city: each gap is sized from what an unboosted, fully held single jump can cross. */
@@ -104,17 +140,21 @@ export class World implements City {
     const edge = r.x + r.w;
     const d = difficulty(edge);
     const overRoad = this.scaffolds > 0 || this.roadOwner !== null;
-    let dy = Math.round(this.rng.range(-MAX_RISE, MAX_DROP) * (0.45 + 0.55 * d));
+    const z = zoneAt(edge);
+    let dy = Math.round(this.rng.range(-MAX_RISE, MAX_DROP) * (0.45 + 0.55 * d) * z.profile.rise * (z.rest ? 0.5 : 1));
+    dy = Math.max(-MAX_RISE, Math.min(MAX_DROP, dy));
     if (overRoad) dy = Math.round(this.rng.range(-18, 18)); // keep scaffolds clear of the street
     if (r.y + dy < -80) dy = Math.abs(dy);
     if (r.y + dy > 80) dy = -Math.min(MAX_RISE, Math.abs(dy));
     const speed = baseSpeed(edge);
     const pressure = Math.min(1, Math.max(0, edge - 4000) / 20000);
     const ratio = this.rng.range(0.38 + 0.14 * d + 0.12 * pressure, 0.6 + 0.2 * d + 0.08 * pressure);
+    const reach = jumpReach(speed, dy);
+    const share = ratio + z.profile.gap + z.lap + (z.rest ? -0.08 : z.surge ? 0.04 : 0);
     r.nextDy = dy;
-    r.gap = Math.max(overRoad ? 70 : 26, Math.round(jumpReach(speed, dy) * ratio));
+    r.gap = Math.max(overRoad ? 70 : 26, Math.min(Math.floor(reach * MAX_GAP_RATIO), Math.round(reach * share)));
 
-    if (!overRoad && r.gap >= 56 && this.rng.chance(0.2 + 0.2 * d)) {
+    if (!overRoad && r.gap >= 56 && this.rng.chance(0.2 + 0.2 * d + z.profile.line)) {
       const w = Math.max(28, Math.round(r.gap * 0.42));
       const y = r.y - 26 + Math.round(Math.min(0, dy) / 2);
       const x = Math.round(edge + r.gap * 0.28);
@@ -125,7 +165,7 @@ export class World implements City {
       const n = this.rng.int(3, 5);
       for (let i = 0; i < n; i++) {
         const t = T * (0.15 + (0.7 * i) / (n - 1));
-        this.coin(r, edge - 8 + speed * t * Math.min(1, ratio + 0.2), r.y - jumpHeightAt(t) - 6);
+        this.coin(r, edge - 8 + speed * t * Math.min(1, share + 0.2), r.y - jumpHeightAt(t) - 6);
       }
     }
   }
@@ -135,10 +175,15 @@ export class World implements City {
     const end = r.x + r.w - runupZone(r.x + r.w);
     const speed = baseSpeed(r.x);
     const d = difficulty(r.x);
+    const z = zoneAt(r.x);
+    const more = z.profile.busy + z.lap + (z.rest ? -0.3 : z.surge ? 0.08 : 0);
+    const chance = (base: number) => Math.max(0, Math.min(0.95, base + more));
     let placed = false;
-    while (x < end - 40 && this.rng.chance(placed ? 0.5 + 0.2 * d : 0.6 + 0.35 * d)) {
+    while (x < end - 40 && this.rng.chance(chance(placed ? 0.5 + 0.2 * d : 0.6 + 0.35 * d))) {
       const room = Math.min(end - 40, x + 50);
-      if (this.rng.chance(enemyChance(x))) {
+      // None at all before ENEMY_START, whatever the district.
+      const hostile = enemyChance(x) * z.profile.enemy * (z.rest ? 0.4 : z.surge ? 1.15 : 1);
+      if (this.rng.chance(Math.min(0.95, hostile))) {
         const ex = Math.round(this.rng.range(x, room));
         const drone = this.rng.chance(0.5);
         r.enemies.push({
@@ -147,7 +192,7 @@ export class World implements City {
         });
         x = ex + Math.round(speed * (0.85 - 0.22 * d));
       } else {
-        const kind = this.rng.chance(0.4) ? 'tank' : 'ac';
+        const kind = this.rng.chance(z.profile.tank) ? 'tank' : 'ac';
         const { w, h } = OBSTACLE_SIZE[kind];
         const ox = Math.round(this.rng.range(x, Math.max(x, Math.min(room, end - w))));
         r.obstacles.push({ id: this.nextId++, kind, x: ox, y: r.y - h, w, h });
@@ -173,10 +218,12 @@ export class World implements City {
   /** Decide whether a road starts after r, before its gap is planned. */
   private maybeRoad(r: Roof): void {
     this.sinceRoad++;
-    if (r.x < ROAD_START || (this.sinceRoad < 7 && !this.rng.chance(0.08))) return;
+    const z = zoneAt(r.x);
+    // No new street in a district's breather.
+    if (r.x < ROAD_START || z.rest || (this.sinceRoad < z.profile.roadEvery && !this.rng.chance(z.profile.roadChance))) return;
     this.sinceRoad = 0;
     this.roadOwner = r;
-    this.scaffolds = this.rng.int(3, 4);
+    this.scaffolds = this.rng.int(3, 4) + z.profile.scaffolds;
     const x = r.x + r.w;
     r.road = { id: this.nextId++, x, y: r.y + ROAD_DEPTH, rampStart: x, rampEnd: x, rampY: r.y };
   }
@@ -207,7 +254,8 @@ export class World implements City {
       this.roofs.push(r);
       return;
     }
-    const w = Math.round(speed * this.rng.range(1.2 - 0.2 * d, 2.3 - 0.7 * d));
+    const z = zoneAt(x);
+    const w = Math.round(speed * this.rng.range(1.2 - 0.2 * d, 2.3 - 0.7 * d) * z.profile.width * (z.rest ? 1.2 : 1));
     const wide = this.rng.chance(0.6 + 0.3 * d) ? landingZone(x) + runupZone(x + 600) + this.rng.int(60, 200) : 0;
     const r = this.blank(x, Math.max(w, wide), y);
     this.closeRoad(r);
