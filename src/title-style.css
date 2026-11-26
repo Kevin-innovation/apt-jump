@@ -1,0 +1,49 @@
+/* A title's plaque, shared by the title cards and the ranking. Static colours; only a transform and an opacity move. */
+.title-fx.title-fx {
+  --edge: #7a68b8; --from: #2c2052; --to: #3a2c6a; --ink: #fff6e0;
+  position: relative;
+  isolation: isolate;
+  overflow: hidden;
+  color: var(--ink);
+  background: linear-gradient(135deg, var(--from), var(--to));
+  border: 2px solid var(--edge);
+  text-shadow: 1px 1px #140c2e;
+  white-space: nowrap;
+  text-wrap: nowrap;
+  text-overflow: ellipsis;
+}
+.title-theme-runs.title-theme-runs { --edge: #7dfff0; --from: #14454f; --to: #2a6b78; }
+.title-theme-score.title-theme-score { --edge: #ffd85a; --from: #5a3a14; --to: #8a6420; }
+.title-theme-distance.title-theme-distance { --edge: #8fc2ff; --from: #1d2f66; --to: #31549a; }
+.title-theme-slides.title-theme-slides { --edge: #b8f27a; --from: #25461f; --to: #46712c; }
+.title-theme-stomps.title-theme-stomps { --edge: #ffab58; --from: #622a18; --to: #99492a; }
+.title-theme-maxCombo.title-theme-maxCombo { --edge: #ff9be6; --from: #5a1c55; --to: #8c3482; }
+.title-theme-perfects.title-theme-perfects { --edge: #d3b8ff; --from: #34206a; --to: #5c3fa4; }
+.title-theme-all.title-theme-all { --edge: #fff0b8; --from: #5b2466; --to: #1f6f78; }
+.title-rank-3.title-rank-3 { box-shadow: 0 0 0 2px #140c2e, 0 0 0 3px var(--edge); }
+.title-rank-4.title-rank-4 { border-style: double; border-width: 4px; box-shadow: 0 0 10px var(--edge); }
+
+/* A soft band of light that crosses now and then. */
+.title-fx.title-fx::after {
+  content: '';
+  position: absolute;
+  z-index: -1;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  width: 45%;
+  background: linear-gradient(105deg, transparent, #ffffff55, transparent);
+  transform: translateX(-120%);
+  pointer-events: none;
+}
+.title-rank-1.title-rank-1::after { opacity: .5; }
+
+@media (prefers-reduced-motion: no-preference) {
+  .title-fx.title-fx::after { animation: title-shine 6s ease-in-out infinite; }
+  .title-rank-3.title-rank-3::after { animation-duration: 5s; }
+  .title-rank-4.title-rank-4::after { animation-duration: 4s; }
+}
+@keyframes title-shine {
+  0%, 55% { transform: translateX(-120%); }
+  85%, 100% { transform: translateX(260%); }
+}

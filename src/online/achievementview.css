@@ -6,7 +6,8 @@
   width: 100%;
   max-width: 100%;
   min-width: 0;
-  overflow: hidden;
+  /* Its full height: the screen around it is what scrolls. */
+  flex: 0 0 auto;
   color: #fff6e0;
   font-size: inherit;
   line-height: 1.5;
@@ -209,3 +210,51 @@
   .achievement-view .achievement-equip:not(:disabled) { transition: background-color .12s ease; }
   .achievement-view .achievement-equip:not(:disabled):hover { background: #3a2c6a; }
 }
+
+/* Every card of a list is as tall as every other. */
+.achievement-view .achievement-cards { grid-auto-rows: 1fr; }
+.achievement-view .achievement-card { display: flex; flex-direction: column; }
+.achievement-view .achievement-card .achievement-meter { margin-top: auto; }
+.achievement-view .achievement-unit { display: inline-block; max-width: 100%; white-space: nowrap; }
+/* Whole text, wrapped between words, never cut. */
+.achievement-view .achievement-equipped,
+.achievement-view .achievement-card-name,
+.achievement-view .achievement-rate,
+.achievement-view .achievement-requirement {
+  white-space: normal;
+  overflow: visible;
+  text-wrap: balance;
+}
+.achievement-view .achievement-card-name { flex: 1 0 100%; }
+.achievement-view .achievement-card-badge { margin-left: 0; }
+.achievement-view .achievement-card-progress { margin-left: auto; }
+
+.achievement-view .achievement-title-card { height: 292px; gap: 6px; }
+.achievement-view .achievement-title-plaque {
+  display: flex;
+  flex: 0 0 52px;
+  align-items: center;
+  justify-content: center;
+  min-width: 0;
+  padding: 0 .5em;
+  font-size: 1.15em;
+}
+.achievement-view .achievement-title-head { flex: 0 0 auto; flex-wrap: nowrap; justify-content: space-between; }
+.achievement-view .achievement-title-rarity { color: #ffd85a; font-size: .82em; white-space: nowrap; }
+.achievement-view .achievement-title-count { flex: 0 0 auto; margin: 0; color: #cfc4ee; font-size: .82em; white-space: nowrap; }
+.achievement-view .achievement-requirements {
+  flex: 1 1 0;
+  flex-direction: column;
+  flex-wrap: nowrap;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: thin;
+}
+.achievement-view .achievement-requirements:focus-visible { outline: 2px solid #7dfff0; }
+.achievement-view .achievement-requirement { display: block; flex: 0 0 auto; }
+.achievement-view .achievement-equip { flex: 0 0 42px; }
+/* Not yet earned: the plaque still shows, a little dimmed and still. Worn: framed and marked. */
+.achievement-view .achievement-title-card:not(.is-unlocked):not(.is-equipped) .achievement-title-plaque { opacity: .7; }
+.achievement-view .achievement-title-card:not(.is-unlocked):not(.is-equipped) .achievement-title-plaque::after { animation: none; }
+.achievement-view .achievement-title-card.is-equipped { background: #3a2c1c; box-shadow: 0 0 0 2px #ffcf8a, 0 0 14px #ffcf8a66; }
+.achievement-view .achievement-title-card.is-equipped .achievement-title-state::before { content: '✔ '; }

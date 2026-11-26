@@ -1,5 +1,6 @@
 import './achievementview.css';
 import { ACHIEVEMENTS, TITLES } from '../achievements';
+import { RARITY, titleClasses, titleLook } from '../title-style';
 
 export interface AchievementCatalog {
   participants: number;
@@ -32,6 +33,16 @@ const el = (tag: string, cls = '', text = ''): HTMLElement => {
   const node = document.createElement(tag);
   if (cls) node.className = cls;
   node.textContent = text;
+  return node;
+};
+
+/** Short units that each stay on one line: a break only ever falls between them. */
+const units = (cls: string, parts: readonly string[]): HTMLElement => {
+  const node = el('span', cls);
+  parts.forEach((part, i) => {
+    if (i) node.append(' ');
+    node.append(el('span', 'achievement-unit', part));
+  });
   return node;
 };
 
@@ -147,7 +158,7 @@ export class AchievementView {
     const summary = el('div', 'achievement-summary');
     summary.append(
       el('span', 'achievement-summary-item', `기준 회원 ${num(data.participants)}명`),
-      el('span', 'achievement-summary-note', '분모: 일반 모드 기록 제출 회원 · 업데이트 이후부터 집계'),
+      units('achievement-summary-note', ['분모: 일반 모드 기록 제출 회원 ·', '업데이트 이후부터 집계']),
     );
     const equippedName = data.equipped === null ? '없음' : (TITLE_BY_ID.get(data.equipped)?.name ?? data.equipped);
     this.root.append(
@@ -192,23 +203,33 @@ export class AchievementView {
   private titleCard(title: CatalogTitle, data: AchievementCatalog): HTMLElement {
     const equipped = data.equipped === title.id;
     const card = el('article', `achievement-title-card${equipped ? ' is-equipped' : title.unlocked ? ' is-unlocked' : ''}`);
+    const look = titleLook(title.id);
+    const plaque = el('div', 'achievement-title-plaque');
+    const name = el('span', 'achievement-title-name', title.name);
+    plaque.classList.add(...titleClasses(title.id));
+    plaque.append(name);
     const head = el('div', 'achievement-title-head');
     head.append(
-      el('span', 'achievement-title-name', title.name),
+      el('span', 'achievement-title-rarity', look ? `${'★'.repeat(look.rank)} ${RARITY[look.rank - 1]}` : ''),
       el('span', 'achievement-title-state', equipped ? '장착됨' : title.unlocked ? '장착 가능' : '미해금'),
     );
-    card.append(head);
+    card.append(plaque, head);
 
     const needs = el('div', 'achievement-requirements');
+    // Scrolls inside its fixed room when long, by keyboard too.
+    needs.tabIndex = 0;
+    needs.setAttribute('role', 'group');
+    needs.setAttribute('aria-label', `${title.name} 해금 조건`);
     const pure = TITLE_BY_ID.get(title.id);
     const unlocked = new Set(data.achievements.filter((a) => a.unlocked).map((a) => a.id));
     for (const id of pure?.requires ?? []) {
       const source = ACHIEVEMENT_BY_ID.get(id);
       const met = unlocked.has(id);
-      const label = source ? `${source.name} · 목표 ${num(source.goal)}` : id;
-      needs.append(el('span', `achievement-requirement${met ? ' is-met' : ''}`, label));
+      const parts = source ? [`${source.name} ·`, `목표 ${num(source.goal)}`] : [id];
+      needs.append(units(`achievement-requirement${met ? ' is-met' : ''}`, parts));
     }
-    card.append(needs);
+    const wanted = pure?.requires ?? [];
+    card.append(el('p', 'achievement-title-count', `조건 ${wanted.filter((id) => unlocked.has(id)).length}/${wanted.length} 달성`), needs);
 
     const signedIn = this.callbacks.signedIn();
     const control = button('achievement-equip', !signedIn ? '로그인 필요' : !title.unlocked ? '미해금' : equipped ? '장착 해제' : '장착');
@@ -263,9 +284,9 @@ export class AchievementView {
     card.append(meter);
 
     const rate = participants > 0
-      ? `획득률 ${percentText(a.percent)}% · ${num(a.earned)}/${num(participants)}명`
-      : '집계 시작 전';
-    card.append(el('span', 'achievement-rate', rate));
+      ? [`획득률 ${percentText(a.percent)}% ·`, `${num(a.earned)}/${num(participants)}명`]
+      : ['집계 시작 전'];
+    card.append(units('achievement-rate', rate));
     return card;
   }
 }

@@ -33,6 +33,8 @@ const legs = (...rows: string[]) => sprite([...BODY, ...rows]);
 
 export interface Sprites {
   run: HTMLCanvasElement[]; jump: HTMLCanvasElement; fall: HTMLCanvasElement;
+  /** Going down, gliding and getting up: drawn at their own size, never squeezed from another pose. */
+  slide: HTMLCanvasElement[];
   coin: HTMLCanvasElement[]; gold: HTMLCanvasElement[];
 }
 
@@ -52,6 +54,45 @@ export function makeSprites(): Sprites {
     ],
     jump: legs('....kddddkk...', '...kddkkddwk..', '..kwwk..kkk...', '...kk.........'),
     fall: legs('...kkddddk....', '..kwddkkddk...', '...kkk..kwwk..', '.........kk...'),
+    // Knees folded, legs out ahead, the parcel still on the back.
+    slide: [
+      sprite([
+        '.......kkkkk........',
+        '......kyyyyyk.......',
+        '.....kyyyyyyyk......',
+        '.....kYYYYYkkkkk....',
+        '.....khssksskk......',
+        '..kkkkkssssskk......',
+        '.koookrrrrrrk.......',
+        '.kowokbbbbbsskkkk...',
+        '.kOOOkBBbddddddwwk..',
+        '..kkkkkkkkkkkkkkkk..',
+      ]),
+      sprite([
+        '....................',
+        '.....kkkkk..........',
+        '....kyyyyyk.........',
+        '...kyyyyyyyk........',
+        '...kYYYYYkkkkk......',
+        '.kkkhssksskk........',
+        'koookssssskk..kk....',
+        'kowokrrrrbbkkkddk...',
+        'kOOOkBBbbssddkddwwwk',
+        '.kkkkkkkkkkkkkkkkkk.',
+      ]),
+      sprite([
+        '......kkkkk.........',
+        '.....kyyyyyk........',
+        '....kyyyyyyyk.......',
+        '....kYYYYYkkkkk.....',
+        '....khssksskk.......',
+        '.kkkkkssssskk.......',
+        'koookrrrrrrk.kkk....',
+        'kowokbbbbsskkdddk...',
+        'kOOOkBBBddddkkdwwk..',
+        '.kkkkkkkkkkk..kkkk..',
+      ]),
+    ],
     coin: coin.map((r) => sprite(r)),
     gold: coin.map((r) => sprite(r, { ...PAL, y: '#ff7ad9', Y: '#c23fb0' })),
   };

@@ -2,7 +2,7 @@ import { START_X, type Game, type GameEvent } from './game';
 import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawRoute, drawScaffold, drawTank, drawWarning, powerColor } from './art';
 import { MAGNET_RANGE, POWER_NAMES } from './items';
 import { missionText } from './missions';
-import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, SLIDE_H, timeRate } from './physics';
+import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, SLIDE_TIME, timeRate } from './physics';
 import { districtAt, type District, type DistrictKind } from './progression';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
@@ -731,7 +731,7 @@ export class Renderer {
       this.trail.forEach((q, i) => {
         g.globalAlpha = (i / this.trail.length) * 0.4;
         g.fillStyle = ['#7dfff0', '#ffd85a', '#ff7ad9'][i % 3]!;
-        g.fillRect(Math.round(q.x - cx), Math.round(q.y - cy - 12), 8, 9);
+        g.fillRect(Math.round(q.x - cx), Math.round(q.y - cy) - (p.slide > 0 ? 7 : 12), 8, p.slide > 0 ? 6 : 9);
       });
       g.globalAlpha = 1;
     }
@@ -744,9 +744,11 @@ export class Renderer {
     const low = p.slide > 0;
     // Blinks while cars can't hurt yet.
     if (p.grace > 0 && Math.floor(this.t * 14) % 2) g.globalAlpha = 0.55;
-    const w = low ? 18 : Math.round(14 * (1 + this.squash * 1.5)), h = low ? SLIDE_H + 1 : Math.round(16 * (1 - this.squash * 1.5));
-    const px = Math.round(p.x - cx - 2 - (w - 14) / 2), py = Math.round(p.y - cy - h + 1);
-    if (p.ground) { g.fillStyle = 'rgba(10,6,30,.35)'; g.fillRect(px + 1, Math.round(p.y - cy), 12, 1); }
+    if (low) s = this.sprites.slide[p.slide > SLIDE_TIME - 0.12 ? 0 : p.slide < 0.12 ? 2 : 1]!;
+    // A slide is its own picture, pixel for pixel; the others stretch a little with landings and jumps.
+    const w = low ? s.width : Math.round(14 * (1 + this.squash * 1.5)), h = low ? s.height : Math.round(16 * (1 - this.squash * 1.5));
+    const px = Math.round(p.x - cx) - (low ? 5 : 2 + Math.round((w - 14) / 2)), py = Math.round(p.y - cy - h + 1);
+    if (p.ground) { g.fillStyle = 'rgba(10,6,30,.35)'; g.fillRect(px + 1, Math.round(p.y - cy), low ? w - 2 : 12, 1); }
     g.drawImage(s, px, py, w, h);
     if (p.vy < 0 && (p.jumping || p.holdTime >= HOLD_MAX)) {
       const fill = Math.min(1, p.holdTime / HOLD_MAX);
@@ -755,13 +757,17 @@ export class Renderer {
     }
     // Scarf tail
     g.fillStyle = '#ff4d5e';
-    if (low) { g.fillRect(px - 8, py + 3, 9, 2); g.fillStyle = 'rgba(255,255,255,.4)'; g.fillRect(px - 14, py + h - 2, 8, 1); }
-    else for (let i = 0; i < 5; i++) {
+    if (low) {
+      // Streaming back over the parcel, with dust off the heels.
+      const wave = Math.floor(this.t * 14) % 2;
+      g.fillRect(px, py + 4, 5, 2); g.fillRect(px - 4, py + 3 + wave, 4, 2); g.fillRect(px - 7, py + 4 - wave, 3, 1);
+      if (p.ground) { g.fillStyle = 'rgba(255,255,255,.4)'; g.fillRect(px - 9 - wave * 2, py + h - 2, 6, 1); g.fillRect(px - 4, py + h - 3 - wave, 2, 1); }
+    } else for (let i = 0; i < 5; i++) {
       const yy = Math.sin(this.t * 14 - i) * (i * 0.4) - Math.max(-3, Math.min(3, p.vy / 120)) * (i / 4);
       g.fillRect(px + 2 - i * 2, Math.round(py + 7 + yy), 2, i < 3 ? 2 : 1);
     }
     g.globalAlpha = 1;
-    this.drawAura(game, px, py);
+    this.drawAura(game, low ? px + 3 : px, low ? py - 4 : py);
     // Speed lines
     const fast = (p.vx - paceSpeed(p.pace, p.x)) / BOOST_SPEED + (timeRate(p) > 1 ? 3 : 0);
     if (moving && fast > 1.5 && this.quality === 'high') {

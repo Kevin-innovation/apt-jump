@@ -1,5 +1,6 @@
 import { cleanUsername, PASSWORD_MAX, PASSWORD_MIN } from '../username';
 import { cleanNickname } from '../nickname';
+import { titleClasses } from '../title-style';
 import { parseMap, serializeMap, type GameMap } from '../maps';
 import { downloadMap, mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
@@ -180,6 +181,7 @@ export class OnlineScreens {
         if (r.title) {
           const worn = document.createElement('small');
           worn.textContent = worn.title = r.title;
+          worn.classList.add(...titleClasses(r.title));
           row.children[1]!.prepend(worn);
         }
         return row;

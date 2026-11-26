@@ -243,10 +243,12 @@ body:has(.screen:not([hidden])) #district { display: none; }
 #btn-slide b { font-size: 24px; color: #7dfff0; }
 #btn-slide small { font-size: 10px; white-space: nowrap; }
 #btn-slide:active { background: #1f5f66; }
-#achievements { justify-content: flex-start; background: #140c2ee6; }
+#achievements { justify-content: flex-start; background: #140c2ee6; overflow-x: hidden; overflow-y: auto; overscroll-behavior: contain; touch-action: pan-y; -webkit-overflow-scrolling: touch; }
+/* Nothing in this long screen is squeezed to fit: it scrolls. */
+#achievements > * { flex-shrink: 0; }
 #achievement-view { width: min(760px, 100%); }
 /* A worn title sits on its own line above the nickname. */
-.rank small { display: block; margin-right: 0; white-space: nowrap; text-wrap: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffd85a; font-size: .8em; }
+.rank small { display: block; width: max-content; max-width: 100%; margin-right: 0; padding: 0 .4em; white-space: nowrap; text-wrap: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffd85a; font-size: .8em; }
 #route-note { width: max-content; max-width: 44vw; margin: 0 auto 4px; padding: 3px 8px; background: #140c2ed9; border: 1px solid #7dfff0; color: #7dfff0; font: 13px/1.4 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; text-shadow: none; text-align: center; word-break: keep-all; text-wrap: balance; }
 /* Narrow screens: score and gauges share the top row; notes, mission and combo get the whole width under it. */
 #hud .score { white-space: nowrap; }
