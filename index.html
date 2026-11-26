@@ -21,12 +21,14 @@
       <div id="effects" aria-label="작동 중인 아이템"></div>
     </div>
     <div class="mid">
+      <div id="route-note" role="status" hidden>앞 유리에서 ↓ 보너스</div>
       <div id="mission" hidden><span id="mission-text"></span></div>
       <div id="combo" hidden>
         <div><b id="combo-n">0</b> 콤보 <em id="combo-x">x1</em></div>
         <div class="bar"><i id="combo-bar"></i></div>
       </div>
     </div>
+    <button id="btn-slide" type="button" aria-label="슬라이드" hidden><b>↓</b><small>슬라이드</small></button>
     <div class="right">
       <div class="sub coins"><i class="coin"></i><span id="coins">0</span></div>
       <div id="air" aria-label="2단 점프"><span>2단</span><i><b id="air-bar"></b></i></div>
@@ -48,10 +50,12 @@
       <li>짧게 누르면 낮게 · 길게 누르면 높게</li>
       <li>공중에서 한 번 더 · 2단 점프</li>
       <li>착지 직후 점프 · 퍼펙트 가속</li>
+      <li>↓ 슬라이드 · 실내 보너스</li>
     </ul>
     <nav>
       <button type="button" data-act="start" class="primary">달리기 시작</button>
       <button type="button" data-act="ranking">주간 순위</button>
+      <button type="button" data-act="achievements">도전과제</button>
       <button type="button" data-act="signup" id="title-account">회원가입</button>
       <button type="button" data-act="login" id="title-login">로그인</button>
       <button type="button" data-act="maps">유저 맵</button>
@@ -89,7 +93,7 @@
       <div><dt>동전</dt><dd id="r-coins"></dd></div>
       <div><dt>최대 콤보</dt><dd id="r-combo"></dd></div>
       <div><dt>퍼펙트</dt><dd id="r-perfect"></dd></div>
-      <div><dt>밟기</dt><dd id="r-stomp"></dd></div>
+      <div><dt>밟기 / 슬라이드</dt><dd id="r-stomp"></dd></div>
       <div><dt>다이아</dt><dd id="r-diamond"></dd></div>
       <div><dt>위험 보너스</dt><dd id="r-risk"></dd></div>
       <div><dt>아이템</dt><dd id="r-power"></dd></div>
@@ -135,6 +139,12 @@
     <p id="rank-mine" class="ye"></p>
     <div id="rank-list"></div>
     <p id="rank-off" class="warn"></p>
+    <nav><button type="button" data-act="home" class="primary">타이틀로</button></nav>
+  </section>
+
+  <section class="screen" id="achievements" hidden>
+    <h2>도전과제</h2>
+    <div id="achievement-view"></div>
     <nav><button type="button" data-act="home" class="primary">타이틀로</button></nav>
   </section>
 

@@ -183,8 +183,8 @@ dd { margin: 0; font-size: 1.3em; }
 #title .lead { white-space: nowrap; font-size: clamp(12px, 3.4vw, 18px); }
 #title .tips { grid-template-columns: 1fr; gap: 3px; text-align: center; font-size: clamp(11px, 3vw, 15px); }
 #title .tips li { white-space: nowrap; } #title .tips li::before { content: none; }
-#title nav { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); width: min(480px, 100%); gap: 8px; }
-#title nav button, #welcome nav button { width: 100%; height: 48px; min-height: 48px; padding: 0 10px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(13px, 3vw, 18px); }
+#title nav { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); width: min(520px, 100%); gap: 8px; }
+#title nav button, #welcome nav button { width: 100%; height: 48px; min-height: 48px; padding: 0 4px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; font-size: clamp(13px, 3vw, 18px); }
 #welcome h2, #welcome p:not(.release-announcement) { white-space: nowrap; }
 #welcome .welcome-card { gap: 15px; }
 #welcome p:not(.release-announcement) { font-size: clamp(11px, 3.2vw, 15px); }
@@ -239,3 +239,25 @@ nav.pair button[hidden] + button, nav.pair :only-child { grid-column: 1 / -1; }
 /* Paused, or any other screen over the run. */
 body:has(.screen:not([hidden])) #district { display: none; }
 @media (min-width: 560px) { #district { font-size: 14px; } }
+#btn-slide { position: fixed; right: max(8px, env(safe-area-inset-right)); bottom: max(22px, env(safe-area-inset-bottom)); width: 64px; height: 64px; display: grid; place-content: center; justify-items: center; padding: 0; pointer-events: auto; touch-action: none; background: #1a1230cc; border: 2px solid #7dfff0; line-height: 1.2; }
+#btn-slide b { font-size: 24px; color: #7dfff0; }
+#btn-slide small { font-size: 10px; white-space: nowrap; }
+#btn-slide:active { background: #1f5f66; }
+#achievements { justify-content: flex-start; background: #140c2ee6; }
+#achievement-view { width: min(760px, 100%); }
+/* A worn title sits on its own line above the nickname. */
+.rank small { display: block; margin-right: 0; white-space: nowrap; text-wrap: nowrap; overflow: hidden; text-overflow: ellipsis; color: #ffd85a; font-size: .8em; }
+#route-note { width: max-content; max-width: 44vw; margin: 0 auto 4px; padding: 3px 8px; background: #140c2ed9; border: 1px solid #7dfff0; color: #7dfff0; font: 13px/1.4 system-ui, -apple-system, "Apple SD Gothic Neo", "Malgun Gothic", sans-serif; text-shadow: none; text-align: center; word-break: keep-all; text-wrap: balance; }
+/* Narrow screens: score and gauges share the top row; notes, mission and combo get the whole width under it. */
+#hud .score { white-space: nowrap; }
+@media (max-width: 640px) {
+  #hud { grid-template-columns: minmax(0, 1fr) auto; grid-template-rows: max-content max-content; align-content: start; column-gap: 8px; row-gap: 4px; }
+  #hud .left { grid-area: 1 / 1; }
+  #hud .right { grid-area: 1 / 2; }
+  #hud .mid { grid-area: 2 / 1 / auto / -1; justify-self: stretch; text-align: center; }
+  #hud .left .sub { flex-direction: row; flex-wrap: wrap; column-gap: .7em; }
+  #hud .left .sub > span { white-space: nowrap; }
+  #mission, #route-note { max-width: 100%; }
+  #route-note { white-space: nowrap; }
+  #effects { flex-direction: row; flex-wrap: wrap; column-gap: 8px; }
+}

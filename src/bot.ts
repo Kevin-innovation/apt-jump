@@ -1,6 +1,6 @@
 import type { Game } from './game';
 import { DIAMOND_HEIGHT } from './world';
-import { canAirJump, STEP, stepPlayer, type JumpInput, type Player } from './physics';
+import { canAirJump, PW, STEP, stepPlayer, type JumpInput, type Player } from './physics';
 
 type Goal = 'risk' | 'stomp';
 interface Plan { hold: number; wanted: boolean }
@@ -29,6 +29,7 @@ export class Bot {
       return IDLE;
     }
     if (!p.ground) return this.inAir(g);
+    if (p.slide <= 0 && p.slideBuffer <= 0 && this.lowAhead(g)) return { pressed: false, held: false, slide: true };
     if (this.script.length) return p.groundTime < 0.4 ? IDLE : this.press(this.script.shift()!);
     this.wait -= STEP;
     if (this.wait > 0) return IDLE;
@@ -50,6 +51,13 @@ export class Bot {
     const plan = this.plan(g, !must);
     if (!plan) return leaving && !road ? this.press(0.3) : IDLE;
     return plan.wanted || must || perfect ? this.press(plan.hold) : IDLE;
+  }
+
+  /** Something just ahead that is met by sliding. */
+  private lowAhead(g: Game): boolean {
+    const p = g.player;
+    return g.world.roofs.some((r) => r.obstacles.some((o) => (o.kind === 'bar' || o.kind === 'box') && !p.gone.includes(o.id)
+      && o.x + o.w > p.x + PW && o.x - (p.x + PW) < p.vx * 0.28 && o.y < p.y && o.y + o.h >= p.y - 12));
   }
 
   private press(hold: number): JumpInput {

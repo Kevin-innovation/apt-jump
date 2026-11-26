@@ -22,7 +22,7 @@ describe('replay', () => {
   it('gives exactly the run that was played', () => {
     for (let s = 1; s <= 6; s++) {
       const { g, text } = play(s, 60);
-      expect(verifyReplay(s, text)).toEqual({ ok: true, score: g.score, distance: Math.floor(g.distance), steps: Math.round(g.time * 120) });
+      expect(verifyReplay(s, text)).toMatchObject({ ok: true, score: g.score, distance: Math.floor(g.distance), steps: Math.round(g.time * 120) });
       expect(text.length).toBeLessThan(6000);
     }
   });
@@ -32,8 +32,8 @@ describe('replay', () => {
   }, 15_000); // Ten minutes of planning also evaluates moving traffic on copied players.
   const { text } = play(1, 10);
   it.each([
-    ['empty', ''], ['junk', 'hello'], ['zero count', 'A0'], ['unknown code', 'E5'], ['split runs', 'A5A5'],
-    ['held press', 'A9B9'], ['too long', 'A'.repeat(MAX_REPLAY + 1)], ['years of it', Array(40).fill('AzzzzCzzzz').join('')],
+    ['empty', ''], ['junk', 'hello'], ['zero count', 'A0'], ['unknown code', 'I5'], ['split runs', 'A5A5'],
+    ['held press', 'A9B9'], ['held slide', 'A9E9'], ['too long', 'A'.repeat(MAX_REPLAY + 1)], ['years of it', Array(40).fill('AzzzzCzzzz').join('')],
     ['cut short', text.slice(0, text.length - 2)], ['carried on after the fall', text + 'D1'], ['spaces', ` ${text}`],
   ])('refuses %s', (_n, t) => { expect(verifyReplay(1, t).ok).toBe(false); });
   it('refuses more presses than a person makes', () => {

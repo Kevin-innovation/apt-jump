@@ -13,7 +13,11 @@ export const COIN_POINTS = 10;
 export const PERFECT_POINTS = 25;
 export const RISK_POINTS = 60;
 export const FAR_POINTS = 40;
-export const STOMP_POINTS = { ac: 30, pigeon: 50, drone: 60 } as const;
+export const STOMP_POINTS = { ac: 30, box: 20, pigeon: 50, drone: 60 } as const;
+/** Sliding under or through something; twice that inside a passage. */
+export const SLIDE_POINTS = 30;
+export const BREAKIN_POINTS = 80;
+export const BREAKOUT_POINTS = 60;
 /** A gap this large a share of the longest unboosted jump counts as far. */
 export const FAR_RATIO = 0.5;
 export const START_X = 60;
@@ -22,12 +26,14 @@ export const LEVEL_SPEED = 15;
 
 export function multiplier(combo: number): number { return 1 + Math.min(4, Math.floor(combo / 5)); }
 
-export type RiskKind = 'tank' | 'line' | 'far';
+export type RiskKind = 'tank' | 'line' | 'far' | 'inside';
 export type GameEvent =
   | PhysEvent
   | { type: 'coin'; kind: CoinKind; points: number; x: number; y: number }
   | { type: 'perfectBonus'; points: number; x: number; y: number }
   | { type: 'stompBonus'; points: number; x: number; y: number }
+  | { type: 'slideBonus'; what: 'dodge' | 'smash'; points: number; x: number; y: number }
+  | { type: 'escape'; points: number; x: number; y: number }
   | { type: 'risk'; kind: RiskKind; points: number; x: number; y: number }
   | { type: 'power'; kind: PowerKind; points: number; x: number; y: number }
   | { type: 'dash'; points: number; x: number; y: number }
@@ -56,6 +62,8 @@ export class Game {
   coins = 0;
   diamonds = 0;
   stomps = 0;
+  /** Things slid under or broken by sliding, each counted once. */
+  slides = 0;
   combo = 0;
   comboTimer = 0;
   maxCombo = 0;
@@ -268,6 +276,16 @@ export class Game {
         this.stomps++;
         this.addCombo();
         this.events.push({ type: 'stompBonus', points: this.award(STOMP_POINTS[e.target]), x: e.x, y: e.y });
+        break;
+      case 'smash': case 'dodge':
+        this.slides++;
+        this.addCombo();
+        this.events.push({ type: 'slideBonus', what: e.type, points: this.award(SLIDE_POINTS * (e.inside ? 2 : 1)), x: e.x, y: e.y });
+        break;
+      case 'breakin': this.risk('inside', BREAKIN_POINTS); break;
+      case 'breakout':
+        this.addCombo();
+        this.events.push({ type: 'escape', points: this.award(BREAKOUT_POINTS), x: e.x, y: e.y - PH });
         break;
       case 'land': this.onLand(e.surface.kind, e.surface.id); break;
       case 'stumble': case 'wall': this.loseCombo(); break;

@@ -1,3 +1,10 @@
+# P21 — 슬라이드·틈새 드론·도로 안전·지름길·도전과제 연결 (Claude, 2026-11-26, `apt-jump/slide-routes-achievements`)
+
+- 내용은 DEVELOPMENT.md의 'SIM_VERSION 6' 절. 판정이 바뀌므로 Convex와 웹을 함께(Convex 먼저) 배포. 주간 순위 행·cutoff 무변경, `resetCurrentWeek` 다시 실행하지 않음.
+- 도전과제 화면은 `src/online/achievementview.{ts,css}`(OpenCode)에 연결.
+
+---
+
 # P20 — 착지 직전 점프 지연 수정 (Claude, 2026-11-26, `apt-jump/jump-response`)
 
 - 재현: 공중점프가 가능해도 착지 약 100ms 안의 입력은 착지까지 대기(지연 = 남은 시간, 최대 100ms). root도 67ms 지연 재현.

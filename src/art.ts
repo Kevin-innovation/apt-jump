@@ -27,6 +27,65 @@ export function drawTank(g: Ctx, x: number, y: number): void {
   box('#b9562b', 14, 11, 8, 5); box('#fff0b8', 16, 12, 4, 3);
 }
 
+/** A crate: slide into it or land on it to break it. */
+export function drawBox(g: Ctx, x: number, y: number): void {
+  const box = (c: string, a: number, b: number, w: number, h: number) => { g.fillStyle = c; g.fillRect(x + a, y + b, w, h); };
+  box(INK, -1, -1, 16, 13);
+  box('#c98a4b', 0, 0, 14, 12); box('#e8b370', 0, 0, 14, 2); box('#8a5530', 0, 10, 14, 2);
+  for (let k = 0; k < 8; k++) box('#8a5530', 3 + k, 2 + k, 2, 1);
+  box('#fff0b8', 6, 4, 2, 2);
+}
+
+/** Something hung low from above: the striped board marks the part to slide under. */
+export function drawBar(g: Ctx, x: number, top: number, w: number, h: number, t: number): void {
+  const bottom = top + h, board = Math.min(16, h);
+  // The whole frame is solid, so all of it shows.
+  g.fillStyle = 'rgba(232,70,95,.25)'; g.fillRect(x, top, w, h - board);
+  g.fillStyle = INK; g.fillRect(x + 3, top, 3, h - board); g.fillRect(x + w - 6, top, 3, h - board);
+  g.fillStyle = '#8c88a8'; g.fillRect(x + 4, top, 1, h - board); g.fillRect(x + w - 5, top, 1, h - board);
+  g.fillStyle = INK; g.fillRect(x - 1, bottom - board - 1, w + 2, board + 1);
+  g.fillStyle = '#e8465f'; g.fillRect(x, bottom - board, w, board - 1);
+  for (let k = 0; k < w; k += 4) { g.fillStyle = Math.floor(k / 4) % 2 ? INK : '#ffd85a'; g.fillRect(x + k, bottom - 4, Math.min(4, w - k), 3); }
+  // A blinking arrow: down is the way.
+  g.fillStyle = Math.floor(t * 4) % 2 ? '#fff6e0' : '#ffd85a';
+  const cx = x + Math.floor(w / 2), ay = bottom - board + 2;
+  if (board >= 12) { g.fillRect(cx - 1, ay, 3, 3); g.fillRect(cx - 3, ay + 3, 7, 1); g.fillRect(cx - 2, ay + 4, 5, 1); g.fillRect(cx - 1, ay + 5, 3, 1); }
+}
+
+/** A marked roof's way inside, drawn where it is solid: the opening, its floor and the ramp back up, and the glass. */
+export function drawRoute(g: Ctx, x: number, roofY: number, flat: number, ramp: number, depth: number, hatch: number, broken: boolean, t: number): void {
+  g.fillStyle = INK; g.fillRect(x, roofY + 6, flat, depth - 6);
+  g.fillStyle = '#2c2052'; g.fillRect(x + 2, roofY + 8, flat - 4, depth - 10);
+  g.fillStyle = '#493a7c';
+  for (let k = 20; k < flat - 10; k += 46) g.fillRect(x + k, roofY + 14, 14, 12);
+  g.fillStyle = '#ffd85a'; g.fillRect(x, roofY + depth, flat, 2);
+  for (let k = 0; k < ramp; k++) {
+    const top = Math.round(roofY + depth - (depth * k) / ramp);
+    g.fillStyle = '#2c2052'; g.fillRect(x + flat + k, roofY, 1, top - roofY);
+    g.fillStyle = Math.floor(k / 8) % 2 ? '#ffd85a' : '#fff6e0'; g.fillRect(x + flat + k, top, 1, 3);
+  }
+  // The pane in the deck: bright until someone goes through it.
+  if (broken) {
+    g.fillStyle = INK; g.fillRect(x + 6, roofY, hatch - 12, 8);
+    g.fillStyle = '#bff6ff';
+    for (let k = 8; k < hatch - 8; k += 9) g.fillRect(x + k, roofY + 2 + (k % 3) * 2, 3, 2);
+  } else {
+    g.fillStyle = INK; g.fillRect(x - 1, roofY - 2, hatch + 2, 9);
+    g.fillStyle = '#7fd8f0'; g.fillRect(x, roofY - 1, hatch, 6);
+    g.fillStyle = '#e8fdff';
+    for (let k = 6; k < hatch - 6; k += 11) { g.fillRect(x + k, roofY, 2, 2); g.fillRect(x + k + 2, roofY + 2, 3, 1); }
+  }
+  // The sign that marks the building, ahead of the pane.
+  // Well ahead of the pane, so it is read before it is reached.
+  const sx = x - 130;
+  g.fillStyle = INK; g.fillRect(sx + 26, roofY - 20, 3, 20); g.fillRect(sx - 2, roofY - 46, 60, 27);
+  g.fillStyle = '#1f7f86'; g.fillRect(sx, roofY - 44, 56, 23);
+  g.fillStyle = '#fff6e0'; g.font = '11px Galmuri11, sans-serif'; g.textBaseline = 'alphabetic';
+  g.fillText('↓ 실내', sx + 10, roofY - 34);
+  g.fillStyle = '#ffd85a'; g.fillText('보너스', sx + 12, roofY - 23);
+  if (!broken && Math.floor(t * 4) % 2) { const cx = x + Math.floor(hatch / 2); g.fillStyle = '#7dfff0'; g.fillRect(cx - 1, roofY - 14, 3, 6); g.fillRect(cx - 3, roofY - 8, 7, 1); g.fillRect(cx - 1, roofY - 7, 3, 2); }
+}
+
 export function drawDrone(g: Ctx, x: number, y: number, t: number): void {
   const box = (c: string, a: number, b: number, w: number, h: number) => { g.fillStyle = c; g.fillRect(x + a, y + b, w, h); };
   box(INK, 2, 2, 12, 8); box('#e8465f', 3, 3, 10, 5); box('#a82a4a', 3, 7, 10, 2);
@@ -114,7 +173,7 @@ export function drawRoadSign(g: Ctx, r: Roof, x: number, y: number, t: number): 
   g.fillStyle = '#fff6e0';
   g.font = '11px Galmuri11, sans-serif';
   g.textBaseline = 'alphabetic';
-  g.fillText('도로', sx + 4, y - 30);
+  g.fillText('↓차', sx + 4, y - 30);
   const b = Math.floor(t * 4) % 2;
   g.fillRect(sx + 34, y - 41 + b, 3, 8); g.fillRect(sx + 31, y - 35 + b, 9, 2); g.fillRect(sx + 33, y - 33 + b, 5, 2);
 }

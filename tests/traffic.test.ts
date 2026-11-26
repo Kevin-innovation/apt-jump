@@ -14,7 +14,7 @@ it('traffic moves deterministically on the flat street and stops with simulation
 });
 it('a collision is lethal immediately even with a helmet; a jump clears the car', () => {
   const car = roadCars(road, STEP)[0]!;
-  const p = newPlayer(car.x + 8, road.y); p.shield = true;
+  const p = newPlayer(car.x + 8, road.y); p.shield = true; p.road = road.id; // already running it
   const seen: string[] = [];
   stepPlayer(p, { pressed: false, held: false }, [roof], e => seen.push(e.type));
   expect(seen).toContain('trafficHit'); expect(p.crashed).toBe(true);
@@ -25,7 +25,7 @@ it('the real game ends on a road collision', () => {
   const g = new Game(buildCourse(PRACTICE));
   g.world = { roofs: [roof], goalX: null, ensure() {} };
   const car = roadCars(road, STEP)[0]!;
-  g.player = newPlayer(car.x + 8, road.y); g.step({ pressed: false, held: false });
+  g.player = newPlayer(car.x + 8, road.y); g.player.road = road.id; g.step({ pressed: false, held: false });
   expect(g.dead).toBe(true); expect(g.deathCause).toBe('traffic'); expect(g.drain().some(e => e.type === 'trafficHit')).toBe(true);
 });
 it('an old map containing the removed slow pickup retains the course', () => {

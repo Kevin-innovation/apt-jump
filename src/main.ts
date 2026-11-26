@@ -1,4 +1,5 @@
 import { Audio8 } from './audio';
+import { AchievementView } from './online/achievementview';
 import { Bot } from './bot';
 import { Editor } from './editor';
 import { FirstVisit } from './entry';
@@ -253,6 +254,7 @@ function act(a: Act): void {
       break;
     case 'logout': firstVisit.dismiss(); onlineUi.signOut(); break;
     case 'admin': ui.show('admin'); void adminUi.open(); break;
+    case 'achievements': ui.show('achievements'); void achievements.open(); break;
     case 'start': mode = { kind: 'endless' }; startRun(); break;
     case 'restart': startRun(); break;
     case 'resume': resume(); break;
@@ -310,6 +312,23 @@ addEventListener('beforeunload', (event) => {
 });
 mapScreen.onRefresh = () => onlineUi.refreshMaps();
 const adminUi = new AdminScreen(() => onlineUi.online);
+const connected = () => onlineUi.online ?? (() => { throw new Refusal('온라인 연결 뒤에 보여요.'); })();
+const achievements = new AchievementView(document.getElementById('achievement-view')!, {
+  catalog: async () => connected().catalog(),
+  equip: async (id) => connected().equip(id),
+  signedIn: () => onlineUi.signedIn,
+});
+/** Who the achievements on screen belong to. */
+let achiever = '';
+/** Another account, or none: nothing of the last one stays, and an open page is read again. */
+function syncAchievements(): void {
+  const a = onlineUi.online?.account();
+  const who = a ? `${a.status}|${a.nickname ?? ''}` : '';
+  if (who === achiever) return;
+  achiever = who;
+  achievements.clear();
+  if (ui.screen === 'achievements') void achievements.open();
+}
 
 /** Hands a finished ranked run in; the result screen says how it went. */
 function submitRun(): void {
@@ -358,6 +377,8 @@ input.onDevice = () => ui.setDevice(input.device);
 input.onBlur = () => { if (phase === 'issuing') awayAtStart = true; else pause(); };
 ui.setDevice(input.device);
 document.getElementById('btn-pause')!.addEventListener('click', () => { if (!testing) pause(); });
+// On the press, not the click: a slide is timed.
+document.getElementById('btn-slide')!.addEventListener('pointerdown', (e) => { e.preventDefault(); input.pressSlide(); });
 
 const test = testing
   ? new PatchTest({
@@ -378,6 +399,12 @@ function onEvent(e: GameEvent): void {
     case 'coin': audio.play(e.kind); break;
     case 'airjump': audio.play('air'); break;
     case 'stomp': audio.play('stomp'); input.rumble(60, 0.4); break;
+    case 'slide': audio.play('land'); break;
+    case 'dive': audio.play('air'); break;
+    case 'smash': audio.play('stomp'); input.rumble(60, 0.4); break;
+    case 'dodge': audio.play('risk'); break;
+    case 'breakin': audio.play('shield'); input.rumble(110, 0.6); break;
+    case 'escape': audio.play('risk'); break;
     case 'power': audio.play(e.kind === 'boost' ? e.kind : 'power'); break;
     case 'shielded': audio.play('shield'); input.rumble(90, 0.5); break;
     case 'mission': audio.play('mission'); break;
@@ -407,7 +434,7 @@ function runInput(): JumpInput {
   const pressed = input.takePress();
   // After a pause mid-jump, finish that jump for the player unless they take over.
   if (assistHold && (pressed || !game.player.jumping)) assistHold = false;
-  return { pressed, held: input.held || assistHold };
+  return { pressed, held: input.held || assistHold, slide: input.takeSlide() };
 }
 
 function simulate(dt: number, next: () => JumpInput): void {
@@ -493,7 +520,7 @@ if (url) {
   onlineUi.refresh();
   import('./online/island').then((m) => {
     const online = m.connect(url);
-    onlineUi.attach(online); online.onAccount(syncEntry); syncEntry();
+    onlineUi.attach(online); online.onAccount(() => { syncEntry(); syncAchievements(); }); syncEntry(); syncAchievements();
   }, () => { onlineUi.connecting = false; onlineUi.refresh(); });
 }
 

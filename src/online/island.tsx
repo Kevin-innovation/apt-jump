@@ -118,6 +118,8 @@ export function connect(url: string): Online {
     }),
     finish: (runId, replay) => write(() => client.action(api.ranking.finish, { runId: runId as Id<'runs'>, replay })),
     board: async (week) => { await ensureRelease(); return await client.query(api.ranking.board, { week }); },
+    catalog: () => client.query(api.achievements.catalog, {}),
+    equip: async (titleId) => { await write(() => client.mutation(api.achievements.equip, { titleId })); },
     listMaps: (order, cursor) => client.query(api.maps.list, { order, paginationOpts: { numItems: 10, cursor } }),
     getMap: (id) => client.query(api.maps.get, { id: id as Id<'maps'> }),
     mapStart: (id) => write(() => client.mutation(api.maptimes.start, { mapId: id as Id<'maps'>, version: SIM_VERSION })),

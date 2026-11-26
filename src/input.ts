@@ -1,6 +1,10 @@
 export type MenuAction = 'up' | 'down' | 'confirm' | 'back';
 export type Device = 'key' | 'touch' | 'pad';
 const JUMP_KEYS = new Set(['Space', 'ArrowUp', 'KeyW', 'KeyX', 'KeyZ']);
+/** The one key that slides. */
+const SLIDE_KEY = 'ArrowDown';
+/** Pad buttons that slide: down on the cross, and the left face button. */
+const SLIDE_BUTTONS = [13, 2];
 const MENU_KEYS: Record<string, MenuAction> = {
   ArrowUp: 'up', KeyW: 'up', ArrowDown: 'down', KeyS: 'down',
   Enter: 'confirm', NumpadEnter: 'confirm', Space: 'confirm', Backspace: 'back',
@@ -26,6 +30,7 @@ export class Input {
   private pointers = new Set<number>();
   private padJump = false;
   private edge = false;
+  private slideEdge = false;
   private padPrev = new Set<number>();
   private padPrimed = false;
   private stickPrev = 0;
@@ -47,6 +52,9 @@ export class Input {
       if (JUMP_KEYS.has(e.code)) {
         e.preventDefault();
         if (!e.repeat) { this.keys.add(e.code); this.edge = true; }
+      } else if (e.code === SLIDE_KEY) {
+        e.preventDefault();
+        if (!e.repeat) this.slideEdge = true;
       }
     });
     addEventListener('keyup', (e) => {
@@ -81,12 +89,20 @@ export class Input {
     this.pointers.clear();
     this.padJump = false;
     this.edge = false;
+    this.slideEdge = false;
     this.padPrimed = false;
   }
   /** Forget presses made before play (re)starts. */
-  clearEdge(): void { this.edge = false; }
+  clearEdge(): void { this.edge = false; this.slideEdge = false; }
   get held(): boolean { return this.keys.size > 0 || this.pointers.size > 0 || this.padJump; }
   takePress(): boolean { const e = this.edge; this.edge = false; return e; }
+  takeSlide(): boolean { const e = this.slideEdge; this.slideEdge = false; return e; }
+  /** The on-screen slide button. */
+  pressSlide(): void {
+    if (this.locked) return;
+    this.onGesture();
+    this.slideEdge = true;
+  }
 
   /** Once a frame: no event carries pad buttons. */
   pollPads(): void {
@@ -111,6 +127,7 @@ export class Input {
     const pushed = Math.hypot(x, y) > 0.5;
     const stick = pushed && Math.abs(y) > 0.4 ? Math.sign(y) : 0;
     const stickMoved = stick !== 0 && stick !== this.stickPrev;
+    const slid = SLIDE_BUTTONS.some(pressed) || (stickMoved && stick > 0);
     const anyPress = [...now].some(pressed);
     const confirm = pressed(0);
     const actions = { up: pressed(12) || (stickMoved && stick < 0), down: pressed(13) || (stickMoved && stick > 0), back: pressed(1), pause: pressed(9) };
@@ -121,7 +138,9 @@ export class Input {
     if (anyPress) this.onGesture();
     if (anyPress || pushed) this.setDevice('pad');
     if (actions.up) this.onMenu('up');
-    if (actions.down) this.onMenu('down');
+    // A menu takes the direction; in play it slides.
+    const inMenu = actions.down && this.onMenu('down');
+    if (slid && !inMenu) this.slideEdge = true;
     if (actions.back) this.onMenu('back');
     if (actions.pause) this.onPause();
     else if (confirm && !this.onMenu('confirm')) { this.padJump = true; this.edge = true; }

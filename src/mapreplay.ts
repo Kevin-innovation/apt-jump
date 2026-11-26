@@ -1,7 +1,7 @@
 import { Game } from './game';
 import { buildCourse, type GameMap } from './maps';
 import { STEP } from './physics';
-import { readReplay } from './replay';
+import { inputOf, readReplay } from './replay';
 
 /** A run's time on a made map: the game time played, pauses excluded. */
 export const timeOf = (steps: number) => Math.round(steps * STEP * 1000);
@@ -13,7 +13,7 @@ export function verifyMapReplay(map: GameMap, text: string): { ok: true; steps: 
   if (!read.ok) return { ok: false };
   const g = new Game(buildCourse(map));
   for (const [code, count] of read.runs) {
-    const j = { pressed: (code & 1) !== 0, held: (code & 2) !== 0 };
+    const j = inputOf(code);
     for (let i = 0; i < count; i++) {
       // Input after the end isn't something the page records.
       if (g.over) return { ok: false };

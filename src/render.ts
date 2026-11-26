@@ -1,8 +1,8 @@
 import { START_X, type Game, type GameEvent } from './game';
-import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawScaffold, drawTank, drawWarning, powerColor } from './art';
+import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawRoute, drawScaffold, drawTank, drawWarning, powerColor } from './art';
 import { MAGNET_RANGE, POWER_NAMES } from './items';
 import { missionText } from './missions';
-import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, timeRate } from './physics';
+import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, SLIDE_H, timeRate } from './physics';
 import { districtAt, type District, type DistrictKind } from './progression';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
@@ -25,7 +25,7 @@ const KINDS: readonly DistrictKind[] = ['residential', 'construction', 'neon', '
 
 const FONT = '11px Galmuri11, "Malgun Gothic", sans-serif';
 const HEAD = 54;
-export const RISK_NAMES = { tank: '위험한 길: 물탱크', line: '위험한 길: 빨랫줄', far: '먼 옥상 점프' } as const;
+export const RISK_NAMES = { tank: '위험한 길: 물탱크', line: '위험한 길: 빨랫줄', far: '먼 옥상 점프', inside: '창문 돌파' } as const;
 const hex = (h: string): RGB => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
 const mix = (a: RGB, b: RGB, t: number) => `rgb(${a.map((v, i) => Math.round(v + (b[i]! - v) * t)).join()})`;
 
@@ -91,6 +91,8 @@ export class Renderer {
   private trail: { x: number; y: number }[] = [];
   /** Reused every frame so drawing the city does not allocate a fresh list. */
   private seen: Roof[] = [];
+  /** Passages whose glass has been gone through. */
+  private broken = new Set<number>();
 
   constructor(private el: HTMLCanvasElement) {
     this.g = el.getContext('2d', { alpha: false })!;
@@ -129,6 +131,7 @@ export class Renderer {
     this.particles = [];
     this.popups = [];
     this.trail = [];
+    this.broken.clear();
     this.dropScenery();
     this.camY = -this.H * 0.64;
     this.shake = 0;
@@ -587,8 +590,14 @@ export class Renderer {
       case 'stomp':
         this.squash = 0.15;
         this.shake = Math.max(this.shake, 2.5);
-        burst(18, e.x, e.y + 4, e.target === 'ac' ? ['#f4f1f8', '#bdb6d2', '#5a5480'] : e.target === 'drone' ? ['#e8465f', '#ffe14a', '#dfe9ff'] : ['#c9d0ea', '#9aa3c7', '#fff'], 130, 50);
+        burst(18, e.x, e.y + 4, e.target === 'ac' ? ['#f4f1f8', '#bdb6d2', '#5a5480'] : e.target === 'box' ? ['#e8b370', '#c98a4b', '#8a5530'] : e.target === 'drone' ? ['#e8465f', '#ffe14a', '#dfe9ff'] : ['#c9d0ea', '#9aa3c7', '#fff'], 130, 50);
         break;
+      case 'slide': burst(6, p.x, p.y, ['#e9dcd0', '#c9b8c0'], 60, 4); break;
+      case 'dive': burst(8, p.x + 5, p.y - 10, ['#ffffff', '#ffd85a'], 60, -60, 60); break;
+      case 'smash': this.shake = Math.max(this.shake, 2); burst(16, e.x, e.y + 4, ['#e8b370', '#c98a4b', '#8a5530'], 140, 50); break;
+      case 'slideBonus': pop(e.x - 8, e.y - 14, `${e.what === 'smash' ? '돌파' : '슬라이드'} +${e.points}`, '#7dfff0'); break;
+      case 'breakin': this.broken.add(e.id); this.shake = Math.max(this.shake, 3); burst(26, e.x, e.y + 2, ['#bff6ff', '#7fd8f0', '#ffffff'], 150, 30); break;
+      case 'escape': pop(e.x, e.y - 20, `통로 탈출 +${e.points}`, '#9be36b'); break;
       case 'stompBonus': pop(e.x - 8, e.y - 18, `밟기 +${e.points}`, '#ffe14a'); break;
       case 'power': burst(20, e.x, e.y, [powerColor(e.kind), '#fff'], 130); pop(e.x - 10, e.y - 12, `${POWER_NAMES[e.kind]}! +${e.points}`, powerColor(e.kind)); break;
       case 'dash': pop(e.x, e.y - 18, `질주 착지 +${e.points}`, '#ffd85a'); break;
@@ -658,7 +667,15 @@ export class Renderer {
     }
     for (const r of seen) {
       const x = r.x - cx;
-      if (r.road) drawRoadSign(g, r, x, Math.round(r.y - cy), this.t);
+      if (r.road) {
+        const d = r.road;
+        drawRoadSign(g, r, x, Math.round(r.y - cy), this.t);
+        // A car still out of view, on a street the runner is on or about to be.
+        if (p.x > d.x - 220 && p.x < d.rampStart && roadCars(d, p.time).some((c) => c.x - cx > this.W && c.x - p.x < this.W + p.vx * 1.6))
+          drawWarning(g, this.W - 14, Math.max(60, Math.min(this.H - 12, Math.round(d.y - cy - 8))), this.t);
+      }
+      const w = r.route;
+      if (w) drawRoute(g, Math.round(w.x - cx), Math.round(r.y - cy), w.rampStart - w.x, w.rampEnd - w.rampStart, w.y - r.y, w.hatch, this.broken.has(w.id) || p.inside === r.id, this.t);
       for (const l of r.lines) {
         // Rope between the two roofs, with the quilt that can be stood on.
         const on = p.ground?.id === l.id ? 2 : 0;
@@ -673,7 +690,9 @@ export class Renderer {
       for (const o of r.obstacles) {
         if (p.gone.includes(o.id)) continue;
         if (o.kind === 'ac') drawAc(g, Math.round(o.x - cx), Math.round(o.y - cy), this.t);
-        else drawTank(g, Math.round(o.x - cx), Math.round(o.y - cy));
+        else if (o.kind === 'tank') drawTank(g, Math.round(o.x - cx), Math.round(o.y - cy));
+        else if (o.kind === 'box') drawBox(g, Math.round(o.x - cx), Math.round(o.y - cy));
+        else drawBar(g, Math.round(o.x - cx), Math.round(o.y - cy), o.w, o.h, this.t);
       }
       for (const c of r.coins) if (!c.taken) {
         if (c.kind === 'diamond') { drawDiamond(g, Math.round(c.x - cx - 5), Math.round(c.y - cy - 4 + Math.sin(this.t * 3) * 2), this.t); continue; }
@@ -722,7 +741,10 @@ export class Renderer {
     else if (moving) s = this.sprites.run[Math.floor(p.x / 13) % 4]!;
     if (p.stumble > 0 && Math.floor(this.t * 20) % 2) g.globalAlpha = 0.45;
     if (canAirJump(p) && !p.ground && this.quality !== 'low') { g.fillStyle = '#8ff4ff'; g.fillRect(Math.round(p.x - cx) + 1, Math.round(p.y - cy) + 1, 2, 1); g.fillRect(Math.round(p.x - cx) + 7, Math.round(p.y - cy) + 1, 2, 1); }
-    const w = Math.round(14 * (1 + this.squash * 1.5)), h = Math.round(16 * (1 - this.squash * 1.5));
+    const low = p.slide > 0;
+    // Blinks while cars can't hurt yet.
+    if (p.grace > 0 && Math.floor(this.t * 14) % 2) g.globalAlpha = 0.55;
+    const w = low ? 18 : Math.round(14 * (1 + this.squash * 1.5)), h = low ? SLIDE_H + 1 : Math.round(16 * (1 - this.squash * 1.5));
     const px = Math.round(p.x - cx - 2 - (w - 14) / 2), py = Math.round(p.y - cy - h + 1);
     if (p.ground) { g.fillStyle = 'rgba(10,6,30,.35)'; g.fillRect(px + 1, Math.round(p.y - cy), 12, 1); }
     g.drawImage(s, px, py, w, h);
@@ -733,7 +755,8 @@ export class Renderer {
     }
     // Scarf tail
     g.fillStyle = '#ff4d5e';
-    for (let i = 0; i < 5; i++) {
+    if (low) { g.fillRect(px - 8, py + 3, 9, 2); g.fillStyle = 'rgba(255,255,255,.4)'; g.fillRect(px - 14, py + h - 2, 8, 1); }
+    else for (let i = 0; i < 5; i++) {
       const yy = Math.sin(this.t * 14 - i) * (i * 0.4) - Math.max(-3, Math.min(3, p.vy / 120)) * (i / 4);
       g.fillRect(px + 2 - i * 2, Math.round(py + 7 + yy), 2, i < 3 ? 2 : 1);
     }

@@ -88,6 +88,6 @@ it('keeps the ranking and the account on separate screens, each with only its ow
   for (const id of ['rank-list', 'rank-mine', 'rank-reset']) expect([inside('ranking', id), inside('account', id)]).toEqual([true, false]);
   for (const id of ['auth-form', 'nick-form', 'rank-logout', 'admin-open']) expect([inside('account', id), inside('ranking', id)]).toEqual([true, false]);
   expect(el('ranking').querySelectorAll('input, form')).toHaveLength(0);
-  // The title keeps the same eight buttons, signed in or out.
-  expect(el('title').querySelectorAll('nav button')).toHaveLength(8);
+  // The title keeps the same nine buttons, signed in or out.
+  expect(el('title').querySelectorAll('nav button')).toHaveLength(9);
 });

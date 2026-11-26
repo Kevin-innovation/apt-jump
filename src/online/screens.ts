@@ -177,6 +177,11 @@ export class OnlineScreens {
           s.textContent = t;
           row.append(s);
         }
+        if (r.title) {
+          const worn = document.createElement('small');
+          worn.textContent = worn.title = r.title;
+          row.children[1]!.prepend(worn);
+        }
         return row;
       }));
       if (!b.top.length) list.append(note('이번 주 기록이 아직 없습니다. 첫 주자가 되어 보세요!'));

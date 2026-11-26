@@ -88,6 +88,17 @@ describe('ranked runs', () => {
     expect(board.mine).toMatchObject({ rank: 1, score: run.score });
     expect(await t.run((ctx) => ctx.db.query('scores').collect())).toHaveLength(2);
   });
+  it('counts a verified run toward achievements once, best or not', async () => {
+    const { t, a } = await setup();
+    const { runId, seed } = await start(a), run = play(seed, 5);
+    vi.setSystemTime(NOW + run.ms + 3000);
+    await a.as.action(api.ranking.finish, { runId, replay: run.text });
+    // A second settle of the same run changes nothing.
+    const stats = { score: 999999, distance: 1, slides: 1, stomps: 1, maxCombo: 1, perfects: 1 };
+    expect(await t.mutation(internal.ranking.settle, { runId, result: { score: 999999, distance: 1, stats } })).toEqual({ best: false });
+    const rows = await t.run((ctx) => ctx.db.query('achievementProgress').collect());
+    expect(rows.map((r) => [r.runs, r.maxScore])).toEqual([[1, run.score]]);
+  });
   it('takes its release only from the canonical production manifest, never from player arguments', async () => {
     const { t } = await setup();
     const id = `abcdef123456-${NOW.toString(36)}`;
@@ -107,7 +118,7 @@ describe('ranked runs', () => {
     const one = play(first.seed, 10);
     vi.setSystemTime(NOW + one.ms + 1000);
     expect(await a.as.action(api.ranking.finish, { runId: first.runId, replay: one.text })).toEqual({ score: one.score, best: true });
-    expect((await b.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', score: one.score, distance: expect.any(Number), mine: false }]);
+    expect((await b.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([{ rank: 1, nickname: '에이', title: null, score: one.score, distance: expect.any(Number), mine: false }]);
     // Syncing again changes nothing; a better run replaces the record on the same board.
     await a.as.action(api.ranking.syncRelease, {});
     const second = await start(a);
@@ -116,7 +127,7 @@ describe('ranked runs', () => {
     vi.setSystemTime(NOW + one.ms + two.ms + 2000);
     expect(await a.as.action(api.ranking.finish, { runId: second.runId, replay: two.text })).toEqual({ score: two.score, best: true });
     const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
-    expect(board.top).toEqual([{ rank: 1, nickname: '에이', score: two.score, distance: expect.any(Number), mine: true }]);
+    expect(board.top).toEqual([{ rank: 1, nickname: '에이', title: null, score: two.score, distance: expect.any(Number), mine: true }]);
     expect(board.mine).toMatchObject({ rank: 1, score: two.score });
   });
   it('score what the replay really did', async () => {
@@ -126,7 +137,7 @@ describe('ranked runs', () => {
     vi.setSystemTime(NOW + run.ms + 1000);
     expect(await a.as.action(api.ranking.finish, { runId, replay: run.text })).toEqual({ score: run.score, best: true });
     const board = await a.as.query(api.ranking.board, { week: '2026-11-23' });
-    expect(board.top).toEqual([{ rank: 1, nickname: '에이', score: run.score, distance: expect.any(Number), mine: true }]);
+    expect(board.top).toEqual([{ rank: 1, nickname: '에이', title: null, score: run.score, distance: expect.any(Number), mine: true }]);
     expect(board.mine).toMatchObject({ rank: 1, score: run.score });
   });
   it('count once, only for their player', async () => {

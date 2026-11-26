@@ -7,16 +7,16 @@ import type { Device, MenuAction } from './input';
 import type { SaveFile } from './storage';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
-export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'maptimes' | 'items' | 'welcome';
+export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'maptimes' | 'items' | 'welcome' | 'achievements';
 export type Act = 'start' | 'resume' | 'restart' | 'home' | 'settings' | 'credits' | 'back' | 'mute' | 'music' | 'sfx' | 'shake'
-  | 'maps' | 'ranking' | 'account' | 'admin' | 'logout' | 'items' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
-const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome'];
+  | 'maps' | 'ranking' | 'achievements' | 'account' | 'admin' | 'logout' | 'items' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-export' | 'ed-test';
+const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome', 'achievements'];
 const GOAL_NAMES = { coins: '동전', perfects: '퍼펙트', stomps: '밟기', risks: '위험' } as const;
 const VOLUME = ['끔', '작게', '보통', '크게'];
 const KEYS: Record<Device, string> = {
-  key: '점프 Space · ↑ · 클릭　　일시정지 P　　음소거 M',
-  touch: '화면을 눌러 점프, 오래 누르면 더 높이',
-  pad: '점프 아래 버튼　　일시정지 스타트　　뒤로 오른쪽 버튼',
+  key: '점프 Space · ↑ · 클릭　　슬라이드 ↓　　일시정지 P　　음소거 M',
+  touch: '화면을 눌러 점프 · ↓ 버튼으로 슬라이드',
+  pad: '점프 아래 버튼　　슬라이드 ↓ · 왼쪽 버튼　　일시정지 스타트',
 };
 const HINTS: Record<Device, string> = {
   key: 'Space를 짧게 / 길게 눌러 점프 높이를 조절하세요',
@@ -138,7 +138,7 @@ export class UI {
       if (this.screen === 'settings' || this.screen === 'credits' || this.screen === 'items') this.onAct('back');
       else if (this.screen === 'pause') this.onAct('resume');
       else if (this.screen === 'welcome') this.onAct('guest');
-      else if (this.screen === 'result' || this.screen === 'maps' || this.screen === 'ranking' || this.screen === 'account') this.onAct('home');
+      else if (this.screen === 'result' || this.screen === 'maps' || this.screen === 'ranking' || this.screen === 'achievements' || this.screen === 'account') this.onAct('home');
       else if (this.screen === 'admin') this.onAct('account');
       else if (this.screen === 'maptimes') this.onAct('maps');
       else if (this.screen === 'editor') this.onAct('ed-back');
@@ -152,6 +152,7 @@ export class UI {
   private deviceWords(): void {
     document.querySelectorAll('[data-keys]').forEach((k) => { k.textContent = KEYS[this.device]; });
     this.text('hint', HINTS[this.device]);
+    this.hidden('btn-slide', this.device !== 'touch');
   }
 
   refresh(): void {
@@ -194,6 +195,9 @@ export class UI {
       else { const t = `x${left}`; if (chip.n.textContent !== t) chip.n.textContent = t; }
     }
     this.district(g);
+    // Told a few seconds ahead, however fast the run: the sign alone comes into view late at top speed.
+    const p = g.player;
+    this.hidden('route-note', p.inside !== 0 || !g.world.roofs.some((r) => r.route && r.route.x + r.route.hatch > p.x && r.route.x - p.x < p.vx * 2.5));
     const m = g.mission;
     this.hidden('mission', !m);
     if (m) this.text('mission-text', `미션 ${missionText(m)} (${Math.min(m.goal, g.tally[m.what])}/${m.goal}) +${m.reward}`);
@@ -243,7 +247,7 @@ export class UI {
     this.text('r-coins', String(g.coins));
     this.text('r-combo', String(g.maxCombo));
     this.text('r-perfect', String(g.perfects));
-    this.text('r-stomp', String(g.stomps));
+    this.text('r-stomp', `${g.stomps} / ${g.slides}`);
     this.text('r-diamond', String(g.diamonds));
     this.text('r-risk', String(g.risks));
     this.text('r-power', String(g.powers));

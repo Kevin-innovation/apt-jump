@@ -1,19 +1,25 @@
-import { baseSpeed, ease, jumpHeightAt, jumpReach, jumpTime, PX_PER_M, roofEnd } from './physics';
+import { baseSpeed, CEILING, ease, jumpHeightAt, jumpReach, jumpTime, PX_PER_M, roofEnd } from './physics';
 import { districtAt, type DistrictKind } from './progression';
 import { POWER_KINDS, type Power, type PowerKind } from './items';
 import { Rng } from './rng';
 
-export interface Obstacle { id: number; kind: 'ac' | 'tank'; x: number; y: number; w: number; h: number }
+/** `bar` hangs overhead and is slid under; a `box` breaks when slid into or landed on. */
+export interface Obstacle { id: number; kind: 'ac' | 'tank' | 'box' | 'bar'; x: number; y: number; w: number; h: number }
 export interface Line { id: number; x: number; w: number; y: number; style: number }
 export type CoinKind = 'coin' | 'gold' | 'diamond';
 export interface Coin { x: number; y: number; kind: CoinKind; taken: boolean }
 /** x is where the runner meets it; y the middle of its movement (top of its box). */
-export interface Enemy { id: number; kind: 'drone' | 'pigeon'; x: number; y: number; amp: number; phase: number }
+export interface Enemy { id: number; kind: 'drone' | 'pigeon'; x: number; y: number; amp: number; phase: number; over?: boolean }
+/**
+ * A passage inside a marked building: a slide on the glass at `x` (`hatch` wide) breaks in, `y` is its floor, and a
+ * ramp leads back up to the same roof.
+ */
+export interface Route { id: number; x: number; hatch: number; y: number; rampStart: number; rampEnd: number }
 /** A street under a run of scaffolds, with a ramp back up to the next building. */
 export interface Road { id: number; x: number; y: number; rampStart: number; rampEnd: number; rampY: number; traffic?: boolean }
 export interface Roof {
   id: number; kind: 'building' | 'scaffold'; x: number; w: number; y: number; style: number; seed: number; number: number;
-  obstacles: Obstacle[]; lines: Line[]; coins: Coin[]; powers: Power[]; enemies: Enemy[]; road: Road | null;
+  obstacles: Obstacle[]; lines: Line[]; coins: Coin[]; powers: Power[]; enemies: Enemy[]; road: Road | null; route?: Route;
   /** Gap to the next roof and its height change. */
   gap: number; nextDy: number;
 }
@@ -40,7 +46,16 @@ export const ROAD_DEPTH = 120;
 export const RAMP_RUN = 1.7;
 /** Out of reach of a single jump from the roof, within reach of a double one. */
 export const DIAMOND_HEIGHT = 120;
-export const OBSTACLE_SIZE = { ac: { w: 16, h: 11 }, tank: { w: 36, h: 31 } } as const;
+export const OBSTACLE_SIZE = { ac: { w: 16, h: 11 }, tank: { w: 36, h: 31 }, box: { w: 14, h: 12 }, bar: { w: 24, h: 150 } } as const;
+/** Room under something overhead: more than a sliding body, less than a standing one. */
+export const BAR_GAP = 10;
+/** Crates and overhead things start here (about 35 m), marked buildings a little later. */
+export const SLIDE_START = 620;
+/** Seconds of running between two things to slide at. */
+export const SLIDE_SPACING = 1.15;
+export const ROUTE_START = 1500;
+export const ROUTE_DEPTH = 48;
+export const HATCH_W = 44;
 
 export function difficulty(x: number): number { return ease(x, 2600); }
 export function enemyChance(x: number): number {
@@ -91,6 +106,7 @@ export class World implements City {
   private sinceRoad = 0;
   private sinceDiamond = 0;
   private sincePower = 0;
+  private sinceRoute = 0;
   /** Item kinds still to deal: each comes round once before any comes again. */
   private bag: PowerKind[] = [];
   /** Scaffolds still to build over the current road, and the roof that owns it. */
@@ -153,8 +169,13 @@ export class World implements City {
     const share = ratio + z.profile.gap + z.lap + (z.rest ? -0.08 : z.surge ? 0.04 : 0);
     r.nextDy = dy;
     r.gap = Math.max(overRoad ? 70 : 26, Math.min(Math.floor(reach * MAX_GAP_RATIO), Math.round(reach * share)));
+    // Now and then a drone hovers low in the middle of a modest gap, to be stomped across.
+    const hover = !overRoad && !z.rest && edge >= ENEMY_START && r.gap >= 44 && r.gap <= reach * 0.72 && this.rng.chance(0.3 * ease(edge - ENEMY_START, 6000));
+    if (hover) r.enemies.push({
+      id: this.nextId++, kind: 'drone', over: true, x: Math.round(edge + r.gap / 2 - 8), y: Math.min(r.y, r.y + dy) - 22, amp: 3, phase: this.rng.next(),
+    });
 
-    if (!overRoad && r.gap >= 56 && this.rng.chance(0.2 + 0.2 * d + z.profile.line)) {
+    if (!overRoad && !hover && r.gap >= 56 && this.rng.chance(0.2 + 0.2 * d + z.profile.line)) {
       const w = Math.max(28, Math.round(r.gap * 0.42));
       const y = r.y - 26 + Math.round(Math.min(0, dy) / 2);
       const x = Math.round(edge + r.gap * 0.28);
@@ -179,6 +200,7 @@ export class World implements City {
     const more = z.profile.busy + z.lap + (z.rest ? -0.3 : z.surge ? 0.08 : 0);
     const chance = (base: number) => Math.max(0, Math.min(0.95, base + more));
     let placed = false;
+    let slid = -Infinity;
     while (x < end - 40 && this.rng.chance(chance(placed ? 0.5 + 0.2 * d : 0.6 + 0.35 * d))) {
       const room = Math.min(end - 40, x + 50);
       // None at all before ENEMY_START, whatever the district.
@@ -192,11 +214,19 @@ export class World implements City {
         });
         x = ex + Math.round(speed * (0.85 - 0.22 * d));
       } else {
-        const kind = this.rng.chance(z.profile.tank) ? 'tank' : 'ac';
+        let kind: Obstacle['kind'] = x >= SLIDE_START && this.rng.chance(0.42) ? (this.rng.chance(0.55) ? 'bar' : 'box') : this.rng.chance(z.profile.tank) ? 'tank' : 'ac';
+        // Something overhead needs a longer look after whatever had to be jumped, and a second slide has to wait for
+        // the first and its rest to be over. Where that doesn't fit, something to jump stands instead.
+        let from = kind === 'bar' && placed ? x + Math.round(speed * 0.3) : x;
+        if (kind === 'bar' || kind === 'box') {
+          if (from < slid + Math.round(speed * SLIDE_SPACING) || from > end - OBSTACLE_SIZE[kind].w) { kind = 'ac'; from = x; }
+          else slid = from + 50;
+        }
         const { w, h } = OBSTACLE_SIZE[kind];
-        const ox = Math.round(this.rng.range(x, Math.max(x, Math.min(room, end - w))));
-        r.obstacles.push({ id: this.nextId++, kind, x: ox, y: r.y - h, w, h });
-        if (kind === 'tank') for (let i = 0; i < 2; i++) this.coin(r, ox + 10 + i * 16, r.y - h - 12, 'gold');
+        const ox = Math.round(this.rng.range(from, Math.max(from, Math.min(from + 50, end - w))));
+        r.obstacles.push({ id: this.nextId++, kind, x: ox, y: kind === 'bar' ? r.y - BAR_GAP - h : r.y - h, w, h });
+        if (kind === 'bar') for (let i = 0; i < 2; i++) this.coin(r, ox + 4 + i * 16, r.y - 4);
+        else if (kind === 'tank') for (let i = 0; i < 2; i++) this.coin(r, ox + 10 + i * 16, r.y - h - 12, 'gold');
         else if (this.rng.chance(0.6)) for (let i = 0; i < 3; i++) this.coin(r, ox - 8 + i * 16, r.y - (i === 1 ? 34 : 27));
         x = ox + w + Math.round(speed * (0.8 - 0.2 * d));
       }
@@ -213,6 +243,32 @@ export class World implements City {
         for (let i = 0; i < n; i++) this.coin(r, start + i * 14, r.y - 10);
       }
     }
+  }
+
+  /**
+   * A marked building with two ways through: its clear roof, or the passage under it, which pays more and has things
+   * in it to slide into and under.
+   */
+  private routeBuilding(x: number, y: number): Roof {
+    const speed = baseSpeed(x);
+    const lead = landingZone(x) + 70;
+    const run = Math.round(speed * (0.6 + SLIDE_SPACING * 2 + 0.5));
+    const ramp = Math.round(ROUTE_DEPTH * RAMP_RUN);
+    const w = lead + HATCH_W + run + ramp + runupZone(x + lead + run + 400) + 40;
+    const r = this.blank(x, w, y);
+    const start = x + lead, floor = y + ROUTE_DEPTH;
+    r.route = { id: this.nextId++, x: start, hatch: HATCH_W, y: floor, rampStart: start + HATCH_W + run, rampEnd: start + HATCH_W + run + ramp };
+    // Spaced by the time it takes: down through the glass, a crate, a duct, a crate.
+    (['box', 'bar', 'box'] as const).forEach((kind, i) => {
+      const size = OBSTACLE_SIZE[kind], ox = Math.round(start + HATCH_W + speed * (0.6 + SLIDE_SPACING * i));
+      const top = y + CEILING;
+      r.obstacles.push(kind === 'bar' ? { id: this.nextId++, kind, x: ox, y: top, w: size.w, h: floor - BAR_GAP - top }
+        : { id: this.nextId++, kind, x: ox, y: floor - size.h, ...size });
+      for (let k = 0; k < 2; k++) this.coin(r, ox + 36 + k * 16, floor - 8, 'gold');
+    });
+    // The roof stays an easy run.
+    for (let i = 0; i < 5; i++) this.coin(r, start + 70 + i * 18, y - 10);
+    return r;
   }
 
   /** Decide whether a road starts after r, before its gap is planned. */
@@ -255,6 +311,17 @@ export class World implements City {
       return;
     }
     const z = zoneAt(x);
+    this.sinceRoute++;
+    if (x >= ROUTE_START && !z.rest && this.sinceRoute >= 8 && (this.sinceRoute >= 13 || this.rng.chance(0.25))) {
+      this.sinceRoute = 0;
+      this.sincePower++; // as long as two roofs
+      const marked = this.routeBuilding(x, y);
+      this.closeRoad(marked);
+      this.maybePower(marked);
+      this.planGap(marked);
+      this.roofs.push(marked);
+      return;
+    }
     const w = Math.round(speed * this.rng.range(1.2 - 0.2 * d, 2.3 - 0.7 * d) * z.profile.width * (z.rest ? 1.2 : 1));
     const wide = this.rng.chance(0.6 + 0.3 * d) ? landingZone(x) + runupZone(x + 600) + this.rng.int(60, 200) : 0;
     const r = this.blank(x, Math.max(w, wide), y);
