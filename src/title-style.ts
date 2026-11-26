@@ -1,4 +1,4 @@
-import { TITLES, type Title } from './achievements';
+import { ACHIEVEMENTS, TITLES, type Title } from './achievements';
 import './title-style.css';
 
 /** How a title looks: a colour theme from what earns it, and how hard it is to earn. Looks only. */
@@ -40,3 +40,11 @@ export function titleClasses(idOrName: string): string[] {
   return look ? ['title-fx', `title-theme-${look.theme}`, `title-rank-${look.rank}`] : [];
 }
 export function titleLook(id: string): TitleLook | null { return BY_ID.get(id) ?? null; }
+
+/** An achievement's rarity: how far up its own stat's ladder it stands, from 일반 at the foot to 신화 at the top. */
+const ACHIEVEMENT_RANK = new Map<string, TitleLook['rank']>();
+for (const stat of new Set(ACHIEVEMENTS.map((a) => a.stat))) {
+  const ladder = ACHIEVEMENTS.filter((a) => a.stat === stat).sort((a, b) => a.goal - b.goal);
+  ladder.forEach((a, i) => ACHIEVEMENT_RANK.set(a.id, (1 + Math.floor((i * RARITY.length) / ladder.length)) as TitleLook['rank']));
+}
+export function achievementRank(id: string): TitleLook['rank'] { return ACHIEVEMENT_RANK.get(id) ?? 1; }

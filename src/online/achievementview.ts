@@ -1,6 +1,6 @@
 import './achievementview.css';
 import { ACHIEVEMENTS, TITLES, type AchievementStat } from '../achievements';
-import { RARITY, titleClasses, titleLook } from '../title-style';
+import { achievementRank, RARITY, titleClasses, titleLook } from '../title-style';
 
 export interface AchievementCatalog {
   participants: number;
@@ -352,7 +352,7 @@ export class AchievementView {
   private titleCard(title: CatalogTitle, data: AchievementCatalog): HTMLElement {
     const equipped = data.equipped === title.id;
     const look = titleLook(title.id);
-    const card = el('article', `achievement-title-card${equipped ? ' is-equipped' : title.unlocked ? ' is-unlocked' : ''}${look ? ` is-rank-${look.rank}` : ''}`);
+    const card = el('article', `achievement-title-card rar r${look?.rank ?? 1}${equipped ? ' is-equipped' : title.unlocked ? ' is-unlocked' : ''}${look ? ` is-rank-${look.rank}` : ''}`);
     const head = el('div', 'achievement-title-head');
     head.append(
       el('span', `achievement-title-rarity${look ? ` rarity-${look.rank}` : ''}`, look ? `${'◆'.repeat(look.rank)} ${RARITY[look.rank - 1]}` : ''),
@@ -411,12 +411,13 @@ export class AchievementView {
   }
 
   private achievementCard(a: CatalogAchievement, participants: number): HTMLElement {
-    const card = el('article', `achievement-card${a.unlocked ? ' is-unlocked' : ''}`);
+    const rank = achievementRank(a.id);
+    const card = el('article', `achievement-card rar r${rank}${a.unlocked ? ' is-unlocked' : ''}`);
     const head = el('div', 'achievement-card-head');
     head.append(
+      el('span', `achievement-card-rarity rarity-${rank}`, `${'◆'.repeat(rank)} ${RARITY[rank - 1]}`),
+      el('span', 'achievement-card-badge', a.unlocked ? '✔ 획득 완료' : `진행 중 ${num(a.progress)}/${num(a.goal)}`),
       el('span', 'achievement-card-name', a.name),
-      el('span', 'achievement-card-badge', a.unlocked ? '획득 완료' : '진행 중'),
-      el('span', 'achievement-card-progress', `${num(a.progress)}/${num(a.goal)}`),
     );
     card.append(head, el('p', 'achievement-card-description', a.description));
 

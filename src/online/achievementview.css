@@ -105,10 +105,8 @@
 .achievement-view .is-equipped .achievement-title-state { color: #ffcf8a; }
 .achievement-view .is-equipped .achievement-title-state::before { content: '✔ '; }
 .achievement-view .achievement-actions { display: grid; grid-template-columns: 1fr 1fr; gap: 6px; }
-.achievement-view .achievement-title-card:not(.is-unlocked):not(.is-equipped) .achievement-title-plaque { opacity: .7; }
-/* Not yet earned: the plaque still shows, a little dimmed and still. */
-.achievement-view .achievement-title-card:not(.is-unlocked):not(.is-equipped) .achievement-title-plaque::after,
-.achievement-view .achievement-title-card:not(.is-unlocked):not(.is-equipped) .achievement-title-plaque::before { animation: none; }
+
+/* Not yet earned: the plaque keeps its frame and its light, only greyed a little (see .rar below). */
 /* Rarity names in the colours players know from other games. */
 .achievement-view .achievement-title-rarity.rarity-1 { color: #c9c2d8; }
 .achievement-view .achievement-title-rarity.rarity-2 { color: #8fe07a; }
@@ -141,3 +139,88 @@
 .achievement-view .achievement-title-card { padding: 5px 10px; }
 .achievement-view .achievement-title-card .achievement-actions button { min-height: 32px; }
 .achievement-view .achievement-title-plaque { flex-basis: 42px; }
+
+/*
+ * Rarity frames, shared by achievement and title cards: 일반 plain, 고급 a tinted edge, 희귀 rivets, 영웅 a double
+ * line and a glow, 전설 a frame cycling through warm colours with a band of light, 신화 gold and night with
+ * twinkling stars. What isn't earned yet keeps all of it, greyed; earning it brings the colour back.
+ * Light and stars move by transform and opacity only.
+ */
+.achievement-view .rar { --rc: #c9c2d8; position: relative; isolation: isolate; overflow: hidden;
+  border-color: color-mix(in srgb, var(--rc) 50%, #1a1230);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--rc) 14%, #1a1230) 0%, #1a1230f2 60%); }
+.achievement-view .rar.r2 { --rc: #8fe07a; } .achievement-view .rar.r3 { --rc: #7fb8ff; } .achievement-view .rar.r4 { --rc: #d39bff; }
+.achievement-view .rar.r5 { --rc: #ffb347; } .achievement-view .rar.r6 { --rc: #ffe066; }
+.achievement-view .rar::before, .achievement-view .rar::after { content: ''; position: absolute; z-index: -1; pointer-events: none; }
+/* 희귀 and up: a pixel rivet in each corner. */
+.achievement-view .rar.r3::before, .achievement-view .rar.r4::before {
+  inset: 0; --p: linear-gradient(var(--rc), var(--rc));
+  background: var(--p) left 3px top 3px / 3px 3px no-repeat, var(--p) right 3px top 3px / 3px 3px no-repeat,
+    var(--p) left 3px bottom 3px / 3px 3px no-repeat, var(--p) right 3px bottom 3px / 3px 3px no-repeat;
+}
+/* 영웅: a double line inside and a soft glow. */
+.achievement-view .rar.r4 { border-color: var(--rc); box-shadow: inset 0 0 0 2px #140c2e, inset 0 0 0 3px color-mix(in srgb, var(--rc) 55%, transparent), 0 0 10px color-mix(in srgb, var(--rc) 30%, transparent); }
+/* 전설 and 신화: a band of light that crosses now and then. */
+.achievement-view .rar.r4::after, .achievement-view .rar.r5::after, .achievement-view .rar.r6::after {
+  top: -10%; bottom: -10%; left: 0; width: 38%; transform: translateX(-140%) skewX(-18deg);
+  background: linear-gradient(90deg, transparent, color-mix(in srgb, var(--rc) 35%, #ffffff55), transparent);
+}
+/* 전설: a warm frame with a stronger glow. */
+.achievement-view .rar.r5 { border-color: var(--rc); box-shadow: inset 0 0 0 2px #140c2e, 0 0 14px color-mix(in srgb, var(--rc) 45%, transparent);
+  background: linear-gradient(165deg, #4a2a14 0%, #1a1230f2 65%); }
+/* 신화: night, gold and stars. */
+.achievement-view .rar.r6 { border-color: var(--rc); box-shadow: inset 0 0 0 2px #140c2e, inset 0 0 0 3px #ffcf4a88, 0 0 18px #ffcf4a55, 0 0 30px #ff9be633;
+  background: radial-gradient(circle at 80% 10%, #3d1450 0%, transparent 55%), linear-gradient(165deg, #140a26 0%, #0e1a30 100%); }
+.achievement-view .rar.r5::before, .achievement-view .rar.r6::before {
+  inset: 0; --s: linear-gradient(#fff6c8, #fff6c8);
+  background: var(--s) 8% 30% / 2px 2px no-repeat, var(--s) 22% 78% / 1px 1px no-repeat, var(--s) 41% 18% / 2px 2px no-repeat,
+    var(--s) 63% 70% / 1px 1px no-repeat, var(--s) 77% 26% / 2px 2px no-repeat, var(--s) 91% 64% / 2px 2px no-repeat,
+    var(--s) 55% 45% / 1px 1px no-repeat;
+}
+.achievement-view .rar.r5::before { --s: linear-gradient(#ffd9a0, #ffd9a0); opacity: .7; }
+.achievement-view .rar.r6 .achievement-card-name, .achievement-view .rar.r6 .achievement-card-badge { color: #ffe9a0; text-shadow: 0 0 6px #ffcf4a99; }
+/*
+ * Earned or not must be plain at a glance. Not yet: the whole card dark and grey. Earned: filled with its rarity's
+ * colour, a full-colour frame and glow, and its state as a solid label.
+ */
+.achievement-view .rar:not(.is-unlocked):not(.is-equipped) { filter: saturate(.25) brightness(.62); border-style: solid; }
+.achievement-view .rar.is-unlocked, .achievement-view .rar.is-equipped {
+  border-color: var(--rc);
+  background: linear-gradient(165deg, color-mix(in srgb, var(--rc) 34%, #1a1230) 0%, color-mix(in srgb, var(--rc) 12%, #1a1230) 75%);
+  box-shadow: inset 0 0 0 1px #140c2e, 0 0 10px color-mix(in srgb, var(--rc) 40%, transparent);
+}
+.achievement-view .rar.is-unlocked.r4 { box-shadow: inset 0 0 0 2px #140c2e, inset 0 0 0 3px color-mix(in srgb, var(--rc) 70%, transparent), 0 0 14px color-mix(in srgb, var(--rc) 50%, transparent); }
+.achievement-view .rar.is-unlocked.r5, .achievement-view .rar.is-unlocked.r6 { box-shadow: inset 0 0 0 2px #140c2e, 0 0 22px color-mix(in srgb, var(--rc) 65%, transparent); }
+.achievement-view .rar.is-unlocked.r6 { background: radial-gradient(circle at 80% 10%, #5a1c6e 0%, transparent 55%), linear-gradient(165deg, #3a2410 0%, #1a1440 100%); }
+/* The state as a solid label in the rarity's colour: 획득 완료, 장착 가능, 장착됨. */
+.achievement-view .rar.is-unlocked .achievement-card-badge, .achievement-view .rar.is-unlocked .achievement-title-state, .achievement-view .rar.is-equipped .achievement-title-state {
+  padding: 0 6px; color: #1a1230; background: var(--rc); box-shadow: 0 0 0 1px #140c2e; text-shadow: none;
+}
+.achievement-view .rar.is-equipped .achievement-title-state { background: #ffcf8a; }
+/* The rarity on an achievement card, and its meter in the rarity's colour. */
+.achievement-view .achievement-card-rarity { font-size: 12px; white-space: nowrap; }
+.achievement-view .achievement-card-rarity.rarity-1 { color: #c9c2d8; } .achievement-view .achievement-card-rarity.rarity-2 { color: #8fe07a; }
+.achievement-view .achievement-card-rarity.rarity-3 { color: #7fb8ff; } .achievement-view .achievement-card-rarity.rarity-4 { color: #d39bff; }
+.achievement-view .achievement-card-rarity.rarity-5 { color: #ffb347; } .achievement-view .achievement-card-rarity.rarity-6 { color: #ffe066; text-shadow: 0 0 6px #ffcf4a99; }
+.achievement-view .achievement-card-name { font-size: 15px; }
+.achievement-view .rar .achievement-meter { border-color: color-mix(in srgb, var(--rc) 55%, #1a1230); }
+.achievement-view .rar .achievement-meter-fill { background: var(--rc); }
+@media (prefers-reduced-motion: no-preference) {
+  .achievement-view .rar.r4::after { animation: rar-shine 5.5s ease-in-out infinite; }
+  .achievement-view .rar.r5::after { animation: rar-shine 4s ease-in-out infinite; }
+  .achievement-view .rar.r6::after { animation: rar-shine 3s ease-in-out infinite; }
+  .achievement-view .rar.r5::before { animation: rar-twinkle 1.8s steps(3, end) infinite; }
+  .achievement-view .rar.r6::before { animation: rar-twinkle 1.2s steps(3, end) infinite; }
+  .achievement-view .rar.r5 { animation: rar-legend 2.4s steps(1, end) infinite; }
+  .achievement-view .rar.r6 { animation: rar-myth 1.8s steps(1, end) infinite; }
+  /* Cards on one page don't all flash at once. */
+  .achievement-view .rar:nth-child(3n + 2)::after, .achievement-view .rar:nth-child(3n + 2)::before { animation-delay: -1.3s; }
+  .achievement-view .rar:nth-child(3n)::after, .achievement-view .rar:nth-child(3n)::before { animation-delay: -2.1s; }
+}
+@keyframes rar-shine { 0%, 55% { transform: translateX(-140%) skewX(-18deg); } 90%, 100% { transform: translateX(320%) skewX(-18deg); } }
+@keyframes rar-twinkle { 0%, 100% { opacity: .25; } 50% { opacity: 1; } }
+/* A pixel frame cycling through its colours, in steps like old palette cycling. */
+@keyframes rar-legend { 0% { border-color: #ffb347; } 33% { border-color: #ff7d63; } 66% { border-color: #ffd85a; } }
+@keyframes rar-myth { 0% { border-color: #ffe066; } 25% { border-color: #ff9be6; } 50% { border-color: #9ff5ff; } 75% { border-color: #fff6c8; } }
+/* The worn title stays marked whatever its rarity: a gold line inside its frame. */
+.achievement-view .achievement-title-card.rar.is-equipped { box-shadow: inset 0 0 0 2px #ffcf8a, 0 0 14px #ffcf8a77; }
