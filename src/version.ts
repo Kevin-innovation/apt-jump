@@ -7,7 +7,7 @@ export interface PatchNote { version: string; date: string; title: string; notes
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
     version: '2.7.1', date: '2026-11-27', title: '코스튬 가격 조정',
-    notes: ['코스튬 가격 상향: 야광 러너 2,000 · 소방관 4,000 · 닌자 7,000 · 산타 배달부 10,000 · 우주 비행사 15,000 · 고양이 후드 22,000 · 황금 러너 50,000'],
+    notes: ['코스튬 가격 상향: 야광 러너 3,000 · 소방관 5,000 · 닌자 10,000 · 산타 배달부 20,000 · 우주 비행사 35,000 · 고양이 후드 60,000 · 황금 러너 100,000 (환영 코인 300은 그대로)'],
   },
   {
     version: '2.7.0', date: '2026-11-27', title: '결과 화면 순위 · 픽셀 배지 · 주간 자동 새로고침',
