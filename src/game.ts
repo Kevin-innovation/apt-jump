@@ -136,7 +136,7 @@ export class Game {
   /** The mission under way: endless runs only. */
   get mission(): Mission | null { return this.world.goalX === null ? missionAt(this.missionsDone, this.missionStart) : null; }
   /** What this lap does to the city: endless runs only. */
-  get lapEvent(): LapEvent { const d = this.district; return d ? eventOfLap(d.lap) : 'none'; }
+  get lapEvent(): LapEvent { const d = this.district; return d ? eventOfLap(d.lap, this.world.plan) : 'none'; }
   get tally(): Tally {
     return {
       coins: this.coins, powers: this.powers, perfects: this.perfects, stomps: this.stomps, risks: this.risks,
@@ -144,7 +144,7 @@ export class Game {
     };
   }
   /** The district under the runner: endless runs only. */
-  get district(): District | null { return this.world.goalX === null ? districtAt(this.distance) : null; }
+  get district(): District | null { return this.world.goalX === null ? districtAt(this.distance, this.world.plan) : null; }
   get districtGoal(): DistrictGoal | null {
     const district = this.district;
     if (!district) return null;
@@ -172,7 +172,7 @@ export class Game {
       if (district.lap > lapBefore) {
         const points = LAP_BONUS * lapBefore;
         this.bonus += points;
-        this.events.push({ type: 'lap', lap: district.lap, event: eventOfLap(district.lap), points });
+        this.events.push({ type: 'lap', lap: district.lap, event: eventOfLap(district.lap, this.world.plan), points });
         this.startFever();
       }
       return;

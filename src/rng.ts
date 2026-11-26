@@ -1,3 +1,12 @@
+/** A seed derived from another and a number, the same on every engine. */
+export function mixSeed(seed: number, k: number): number {
+  if (k === 0) return seed >>> 0;
+  let h = (seed ^ Math.imul(k, 0x9e3779b1)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
 /** mulberry32: small deterministic generator so a seed always gives the same city. */
 export class Rng {
   private s: number;

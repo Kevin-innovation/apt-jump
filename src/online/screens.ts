@@ -342,7 +342,8 @@ export class OnlineScreens {
     }
     // Who made it, and apart from that, who holds its record: never read as one person.
     const holder = m.bestBy ? ` ${m.bestBy}${(m.bestTied ?? 1) > 1 ? ` 외 ${(m.bestTied ?? 1) - 1}명` : ''}` : '';
-    return mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}${m.best === null ? '' : ` · 최단 ${timeText(m.best)}${holder}`}`, buttons);
+    // Two short lines, never cut: who made it, then the record and who holds it.
+    return mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}\n${m.best === null ? '아직 완주 기록 없음' : `최단 ${timeText(m.best)} ·${holder}`}`, buttons);
   }
 
   /** Brings the share button of each of the player's own maps to life when signed in. */

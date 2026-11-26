@@ -669,7 +669,7 @@ export class Renderer {
       seen.push(r);
       if (x > this.W || x + r.w < 0) continue;
       if (r.kind === 'scaffold') drawScaffold(g, x, Math.round(r.y - cy), r.w, ROAD_DEPTH + 60);
-      else this.drawPair(this.roofArt(r, district ? districtAt(Math.max(0, (r.x - START_X) / PX_PER_M)) : null), x, r.y - HEAD - cy, n);
+      else this.drawPair(this.roofArt(r, district ? districtAt(Math.max(0, (r.x - START_X) / PX_PER_M), game.world.plan) : null), x, r.y - HEAD - cy, n);
     }
     for (const r of seen) if (r.road) drawRoad(g, r.road, cx, cy, this.H, n);
     for (const r of seen) if (r.road) for (const car of roadCars(r.road, p.time)) {

@@ -69,6 +69,14 @@ let starting = 0;
 let awayAtStart = false;
 const firstVisit = new FirstVisit();
 let booted = false;
+/**
+ * The loading cover stays until the title can be shown as it will stay: fonts ready and the account known, so no
+ * button changes under the player's eyes. It never waits longer than COVER_WAIT.
+ */
+const COVER_WAIT = 3500;
+let coverExpired = false;
+function uncover(): void { if (booted) document.getElementById('boot')!.hidden = true; }
+setTimeout(() => { coverExpired = true; uncover(); }, COVER_WAIT);
 let updating = false;
 
 function syncEntry(): void {
@@ -106,7 +114,8 @@ function guardAdmin(signedIn: boolean): void {
 function setPhase(p: Phase): void { phase = p; phaseAt = performance.now(); }
 
 function startDemo(): void {
-  game = new Game(DEMO_SEED);
+  // A different city behind the title each time.
+  game = new Game(Math.floor(Math.random() * 2 ** 31));
   demo = new Bot();
   acc = 0;
   view.reset();
@@ -580,8 +589,11 @@ if (url) {
   onlineUi.refresh();
   import('./online/island').then((m) => {
     const online = m.connect(url);
-    onlineUi.attach(online); online.onAccount(() => { syncEntry(); syncAchievements(); }); syncEntry(); syncAchievements();
-  }, () => { onlineUi.connecting = false; onlineUi.refresh(); });
+    onlineUi.attach(online);
+    online.onAccount(() => { syncEntry(); syncAchievements(); if (online.account().status !== 'loading') uncover(); });
+    syncEntry(); syncAchievements();
+    if (online.account().status !== 'loading') uncover();
+  }, () => { onlineUi.connecting = false; onlineUi.refresh(); uncover(); });
 }
 
 function offerUpdate(version: string): void {
@@ -622,4 +634,9 @@ if (!testing && import.meta.env.PROD) watchReleases(__RELEASE_ID__, offerUpdate)
 // Building numbers are painted once, so wait briefly for the font.
 Promise.race([document.fonts.load('11px Galmuri11', '동점'), new Promise((r) => setTimeout(r, 1500))])
   .catch(() => {})
-  .finally(() => { title(); booted = true; syncEntry(); requestAnimationFrame(frame); });
+  .finally(() => {
+    title(); booted = true; syncEntry(); requestAnimationFrame(frame);
+    // Without an online service, or once its account is known, there is nothing left to change.
+    const known = onlineUi.online && onlineUi.online.account().status !== 'loading';
+    if (!url || known || coverExpired) uncover();
+  });

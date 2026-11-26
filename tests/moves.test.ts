@@ -181,8 +181,9 @@ describe('enemies', () => {
     const all = enemies(60, 40000);
     expect(Math.min(...all.map((a) => a.e.x))).toBeGreaterThan(ENEMY_START);
     const count = (a: number, b: number) => all.filter(({ e }) => e.x >= a && e.x < b).length;
-    // Encounters per second matter: at late speeds, each kilometre is crossed much sooner.
-    expect(count(30000, 34000) * baseSpeed(32000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) * baseSpeed(ENEMY_START + 2000) * 1.5);
+    // Encounters per second matter: at late speeds, each kilometre is crossed much sooner. Measured over a long
+    // stretch, since which districts come where differs from city to city.
+    expect(count(26000, 40000) / 14000 * baseSpeed(33000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) / 4000 * baseSpeed(ENEMY_START + 2000) * 1.3);
     expect(all.some(({ e }) => e.kind === 'drone')).toBe(true);
     expect(all.some(({ e }) => e.kind === 'pigeon')).toBe(true);
   });

@@ -1,7 +1,7 @@
 import { baseSpeed, CEILING, ease, jumpHeightAt, jumpReach, jumpTime, PX_PER_M, roofEnd } from './physics';
-import { districtAt, lapEvent, type DistrictKind, type LapEvent } from './progression';
+import { cityPlan, districtAt, lapEvent, type CityPlan, type DistrictKind, type LapEvent } from './progression';
 import { POWER_KINDS, type Power, type PowerKind } from './items';
-import { Rng } from './rng';
+import { mixSeed, Rng } from './rng';
 
 /** `bar` hangs overhead and is slid under; a `box` breaks when slid into or landed on. */
 export interface Obstacle { id: number; kind: 'ac' | 'tank' | 'box' | 'bar'; x: number; y: number; w: number; h: number }
@@ -36,6 +36,8 @@ export interface City {
   ensure(from: number, to: number): void;
   /** Crossing this ends the run in success; null for an endless city. */
   goalX: number | null;
+  /** The order of districts and lap events of an endless city. */
+  plan?: CityPlan;
 }
 
 /** Clear roof after an edge, for touching down. */
@@ -76,13 +78,7 @@ export const SEGMENT = 4000;
 /** Where a seed comes from: a stretch's number gives its seed, or null when it isn't known yet. */
 export type SeedSource = (segment: number) => number | null;
 /** The seeds of an unranked city, all from one: the first is that seed itself. */
-export function segmentSeed(seed: number, k: number): number {
-  if (k === 0) return seed >>> 0;
-  let h = (seed ^ Math.imul(k, 0x9e3779b1)) >>> 0;
-  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
-  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
-  return (h ^ (h >>> 16)) >>> 0;
-}
+export function segmentSeed(seed: number, k: number): number { return mixSeed(seed, k); }
 export function enemyChance(x: number): number {
   return x < ENEMY_START ? 0 : 0.22 + 0.65 * ease(x - ENEMY_START, 2500);
 }
@@ -115,12 +111,12 @@ export const PROFILES: Record<DistrictKind, Profile> = {
  * The district a point lies in, and where in its rhythm: pressure builds through the second half and lets up just
  * before the next one. From the second lap everything presses a little harder, up to a limit.
  */
-function zoneAt(x: number) {
-  const d = districtAt(Math.max(0, (x - 60) / PX_PER_M));
+function zoneAt(x: number, plan: CityPlan) {
+  const d = districtAt(Math.max(0, (x - 60) / PX_PER_M), plan);
   const rest = d.progress >= 0.85;
   const surge = !rest && d.progress >= 0.5;
   // Each lap presses harder, up to the fifth.
-  return { profile: PROFILES[d.kind], kind: d.kind, rest, surge, lap: Math.min(0.12, (d.lap - 1) * 0.03), event: lapEvent(d.lap) as LapEvent };
+  return { profile: PROFILES[d.kind], kind: d.kind, rest, surge, lap: Math.min(0.12, (d.lap - 1) * 0.03), event: lapEvent(d.lap, plan) as LapEvent };
 }
 
 /** Deterministic city: each gap is sized from what an unboosted, fully held single jump can cross. */
@@ -132,6 +128,8 @@ export class World implements City {
   private seeds: SeedSource;
   /** A stretch was built without its seed: the run can't be checked against the server's city. */
   fallback = false;
+  /** Which district comes when and what each lap brings, from the first seed. */
+  readonly plan: CityPlan;
   private nextId = 1;
   private sinceRoad = 0;
   private sinceDiamond = 0;
@@ -148,6 +146,7 @@ export class World implements City {
     this.seeds = typeof seed === 'number' ? (k) => segmentSeed(seed, k) : seed;
     if (s0 === null) this.fallback = true;
     this.rng = new Rng(s0 ?? 0);
+    this.plan = cityPlan(s0 ?? 0);
     const first = this.blank(-200, START_ROOF + 200, 0);
     this.roofs.push(first);
     for (let i = 0; i < 6; i++) this.coin(first, 200 + i * 16, -10);
@@ -189,7 +188,7 @@ export class World implements City {
     const edge = r.x + r.w;
     const d = difficulty(edge);
     const overRoad = this.scaffolds > 0 || this.roadOwner !== null;
-    const z = zoneAt(edge);
+    const z = zoneAt(edge, this.plan);
     let dy = Math.round(this.rng.range(-MAX_RISE, MAX_DROP) * (0.45 + 0.55 * d) * z.profile.rise * (z.rest ? 0.5 : 1));
     dy = Math.max(-MAX_RISE, Math.min(MAX_DROP, dy));
     if (overRoad) dy = Math.round(this.rng.range(-18, 18)); // keep scaffolds clear of the street
@@ -234,7 +233,7 @@ export class World implements City {
     const end = r.x + r.w - runupZone(r.x + r.w);
     const speed = baseSpeed(r.x);
     const d = difficulty(r.x);
-    const z = zoneAt(r.x);
+    const z = zoneAt(r.x, this.plan);
     const more = z.profile.busy + z.lap + (z.rest ? -0.3 : z.surge ? 0.08 : 0);
     const chance = (base: number) => Math.max(0, Math.min(0.95, base + more));
     let placed = false;
@@ -319,7 +318,7 @@ export class World implements City {
   /** Decide whether a road starts after r, before its gap is planned. */
   private maybeRoad(r: Roof): void {
     this.sinceRoad++;
-    const z = zoneAt(r.x);
+    const z = zoneAt(r.x, this.plan);
     // No new street in a district's breather.
     if (r.x < ROAD_START || z.rest || (this.sinceRoad < z.profile.roadEvery && !this.rng.chance(z.profile.roadChance))) return;
     this.sinceRoad = 0;
@@ -366,7 +365,7 @@ export class World implements City {
       this.roofs.push(r);
       return;
     }
-    const z = zoneAt(x);
+    const z = zoneAt(x, this.plan);
     this.sinceRoute++;
     if (x >= ROUTE_START && !z.rest && this.sinceRoute >= 8 && (this.sinceRoute >= 13 || this.rng.chance(0.25))) {
       this.sinceRoute = 0;

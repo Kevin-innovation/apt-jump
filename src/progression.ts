@@ -1,3 +1,5 @@
+import { mixSeed, Rng } from './rng';
+
 /** One district is 400 m of running; five districts make one 2 km lap. */
 export const DISTRICT_LENGTH = 400;
 export const LAP_LENGTH = DISTRICT_LENGTH * 5;
@@ -17,7 +19,38 @@ export const LAP_EVENT_TEXT: Record<LapEvent, string> = {
   rain: '물웅덩이에서 ↓ 물보라 가속',
   crumble: '금 간 옥상은 오래 서 있으면 무너져요',
 };
-export function lapEvent(lap: number): LapEvent { return lap < 2 ? 'none' : LAP_EVENTS[(lap - 2) % LAP_EVENTS.length]!; }
+
+/**
+ * The order of one endless city, from its seed: each lap visits all five districts in its own order (the first lap
+ * always opens on the gentle housing estate, and no district runs into itself across a lap's border), and the lap
+ * events come round in an order of their own.
+ */
+export interface CityPlan { order(lap: number): readonly number[]; events: readonly Exclude<LapEvent, 'none'>[] }
+const DISTRICT_COUNT = 5;
+const shuffle = <T>(list: T[], rng: Rng): T[] => {
+  for (let i = list.length - 1; i > 0; i--) { const j = rng.int(0, i); [list[i], list[j]] = [list[j]!, list[i]!]; }
+  return list;
+};
+export function cityPlan(seed: number): CityPlan {
+  const orders = new Map<number, number[]>();
+  const order = (lap: number): number[] => {
+    let o = orders.get(lap);
+    if (o) return o;
+    const rng = new Rng(mixSeed(seed, 1000 + lap));
+    if (lap === 1) o = [0, ...shuffle([1, 2, 3, 4], rng)];
+    else {
+      o = shuffle([0, 1, 2, 3, 4], rng);
+      if (o[0] === order(lap - 1)[DISTRICT_COUNT - 1]) [o[0], o[1]] = [o[1]!, o[0]!];
+    }
+    orders.set(lap, o);
+    return o;
+  };
+  return { order, events: shuffle([...LAP_EVENTS], new Rng(mixSeed(seed, 999))) };
+}
+/** The fixed order: districts as listed, events as listed. Made maps and old tests read it. */
+export const FIXED_PLAN: CityPlan = { order: () => [0, 1, 2, 3, 4], events: LAP_EVENTS };
+
+export function lapEvent(lap: number, plan: CityPlan = FIXED_PLAN): LapEvent { return lap < 2 ? 'none' : plan.events[(lap - 2) % plan.events.length]!; }
 export type DistrictGoalKind = 'coins' | 'perfects' | 'stomps' | 'risks';
 
 export interface DistrictGoal {
@@ -106,11 +139,11 @@ function lapGoal(g: DistrictGoal, lap: number): DistrictGoal {
   return lap === 1 ? g : goal(g.what, Math.round(g.goal * (1 + 0.5 * (lap - 1))), g.reward * lap);
 }
 
-/** Pure lookup: no randomness, no time, no mutable state. */
-export function districtAt(distance: number): District {
+/** Pure lookup on a city's plan: no time, no state of its own. */
+export function districtAt(distance: number, plan: CityPlan = FIXED_PLAN): District {
   const metres = Number.isFinite(distance) ? Math.max(0, distance) : 0;
   const index = Math.floor(metres / DISTRICT_LENGTH);
-  const data = DISTRICTS[index % DISTRICTS.length]!;
+  const data = DISTRICTS[plan.order(Math.floor(index / DISTRICTS.length) + 1)[index % DISTRICTS.length]!]!;
   const start = index * DISTRICT_LENGTH;
   return {
     index,

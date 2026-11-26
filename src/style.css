@@ -427,7 +427,7 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #maps .card { display: grid; grid-template-columns: minmax(0, 1fr) repeat(var(--slots, 4), 6.4em); align-items: center; gap: 8px; }
 #maps .card > div { min-width: 0; }
 #maps .card > div span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-#maps .card small { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+#maps .card small { white-space: pre-line; line-height: 1.45; }
 #maps .card > button { width: 100%; padding: 0 .3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #maps .card > .slot { min-height: 42px; }
 #maps button.more { min-height: 44px; background: #2c2052; border: 2px dashed #7a68b8; }
@@ -452,3 +452,16 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .ed-form .step b { min-width: 0; }
 .ed-form .step:first-child { grid-template-columns: 42px minmax(0, 1fr) 42px; padding: 0; }
 #ranking .rank { padding-block: .2em; }
+
+/* Until the title is ready as it will stay: a pixel spinner, nothing that changes afterwards. */
+#boot { position: fixed; inset: 0; z-index: 70; display: grid; place-content: center; justify-items: center; gap: 14px; background: #140c2e; color: #cfc4ee; font-size: 16px; }
+#boot p { margin: 0; }
+.boot-spin { position: relative; width: 28px; height: 28px; }
+.boot-spin i { position: absolute; width: 10px; height: 10px; background: #3a2c6a; box-shadow: 0 0 0 2px #0a0618; }
+.boot-spin i:nth-child(1) { left: 0; top: 0; } .boot-spin i:nth-child(2) { right: 0; top: 0; }
+.boot-spin i:nth-child(3) { right: 0; bottom: 0; } .boot-spin i:nth-child(4) { left: 0; bottom: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  .boot-spin i { animation: boot-step .8s steps(1, end) infinite; }
+  .boot-spin i:nth-child(2) { animation-delay: .2s; } .boot-spin i:nth-child(3) { animation-delay: .4s; } .boot-spin i:nth-child(4) { animation-delay: .6s; }
+}
+@keyframes boot-step { 0%, 25% { background: #ffd85a; } 26%, 100% { background: #3a2c6a; } }
