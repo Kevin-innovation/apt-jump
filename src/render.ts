@@ -656,12 +656,12 @@ export class Renderer {
         pop(p.x - 30, p.y - 62, FEVER_TITLES[e.level] ?? FEVER_TITLES[1]!, colors[0]!, true);
         break;
       }
-      case 'lap':
-        this.shake = Math.max(this.shake, 4);
-        burst(56, p.x + 5, p.y - 20, FEVER_COLORS, 200, 70);
-        pop(p.x - 46, p.y - 110, `${e.lap - 1}랩 클리어! +${e.gained.toLocaleString('ko-KR')}`, '#ffd85a', true);
-        pop(p.x - 40, p.y - 84, `기어 ${e.gear} · 점수 x${e.mult}${e.event === 'none' ? '' : ` · ${LAP_EVENT_NAMES[e.event]}`}`, '#7dfff0', true);
-        pop(p.x - 10, p.y - 62, `랩 보너스 +${e.points.toLocaleString('ko-KR')}`, '#ffd85a');
+      case 'lap': burst(40, p.x + 5, p.y - 20, FEVER_COLORS, 180, 60); pop(p.x - 40, p.y - 96, `${e.lap}랩${e.event === 'none' ? '' : ` · ${LAP_EVENT_NAMES[e.event]}`}!`, '#7dfff0', true); pop(p.x - 10, p.y - 70, `랩 보너스 +${e.points.toLocaleString('ko-KR')}`, '#ffd85a'); break;
+      case 'gear':
+        this.shake = Math.max(this.shake, e.up ? 4 : 2);
+        burst(e.up ? 56 : 30, p.x + 5, p.y - 20, FEVER_COLORS, 200, 70);
+        if (e.up) pop(p.x - 46, p.y - 120, `기어 ${e.gear}! 점수 x${e.mult}`, '#7dfff0', true);
+        if (e.gained > 0) pop(p.x - 30, p.y - (e.up ? 96 : 110), `구간 정산 +${e.gained.toLocaleString('ko-KR')}`, '#ffd85a', true);
         break;
       case 'golden': this.shake = Math.max(this.shake, 3); burst(40, p.x + 5, p.y - 20, [...FRAME_COLORS[0]!], 190, 60); pop(p.x - 36, p.y - 80, '골든 러시! 점수 x3', '#f5c440', true); break;
       case 'goldenEnd': if (e.points > 0) { burst(30, p.x + 5, p.y - 20, [...FRAME_COLORS[0]!], 160, 50); pop(p.x - 30, p.y - 136, `골든 러시 +${e.points.toLocaleString('ko-KR')}`, '#f5c440', true); } break;

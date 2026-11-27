@@ -279,7 +279,7 @@ export class World implements City {
   /** A golden rush roof: open, a row of coins, now and then a diamond up where a double jump reaches. */
   private goldenRoof(x: number, y: number, speed: number): Roof {
     const r = this.blank(x, Math.round(speed * this.rng.range(1.1, 1.6)), y);
-    for (let cx = x + 30; cx < x + r.w - 20; cx += 52) this.coin(r, cx, y - 10);
+    for (let cx = x + 30; cx < x + r.w - 20; cx += 72) this.coin(r, cx, y - 10);
     if (this.rng.chance(0.45)) this.coin(r, x + Math.round(r.w * 0.5), y - 118, 'diamond');
     return r;
   }

@@ -1,7 +1,7 @@
 import { BOOST_RATE, GLIDE_FALL, SLOW_RATE } from './items';
 import type { Enemy, Obstacle, Roof } from './world';
 import { roadCars } from './traffic';
-import { GEAR_MAX, LAP_LENGTH } from './progression';
+import { GEAR_MAX, gearOf } from './progression';
 
 // Units are virtual pixels and seconds. y grows downward; player.y is the feet.
 export const STEP = 1 / 120;
@@ -55,9 +55,9 @@ export const UPDRAFT = 2400;
 export const VENT_RISE = 260;
 
 /** half is the distance in pixels by which half the gain is reached. */
-/** lapGear: how much faster each lap of an endless run is (made maps have no laps). */
+/** lapGear: how much faster each gear of an endless run is (made maps have no gears). */
 export interface Pace { base: number; gain: number; half?: number; stageGain?: number; lapGear?: number }
-export const DEFAULT_PACE: Readonly<Pace> = { base: 140, gain: 180, half: 2400, stageGain: 22, lapGear: 0.07 };
+export const DEFAULT_PACE: Readonly<Pace> = { base: 140, gain: 180, half: 2400, stageGain: 22, lapGear: 0.04 };
 // The simulation uses only basic arithmetic (no exp or sin), so a replay gives the same run on every engine.
 /** Rises from 0 toward 1, halfway at `half`. */
 export function ease(x: number, half: number): number { const u = Math.max(0, x); return u / (u + half); }
@@ -66,11 +66,8 @@ export function wave(t: number): number {
   const s = t - Math.floor(t);
   return s < 0.5 ? 16 * s * (0.5 - s) : -16 * (s - 0.5) * (1 - s);
 }
-/** The lap's gear, from 1: endless runs only. */
-export function gearAt(pace: Pace, x: number): number {
-  if (!pace.lapGear) return 1;
-  return 1 + Math.min(Math.round(GEAR_MAX / pace.lapGear), Math.floor(Math.max(0, x - 60) / (LAP_LENGTH * PX_PER_M)));
-}
+/** The gear, from 1: endless runs only. */
+export function gearAt(pace: Pace, x: number): number { return pace.lapGear ? gearOf(Math.max(0, x - 60) / PX_PER_M) : 1; }
 /** How much faster the gear makes the pace. */
 export function gearFactor(pace: Pace, x: number): number { return 1 + Math.min(GEAR_MAX, (gearAt(pace, x) - 1) * (pace.lapGear ?? 0)); }
 export function paceSpeed(pace: Pace, x: number): number {

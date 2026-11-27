@@ -19,7 +19,7 @@ describe('generation', () => {
   it('keeps every gap crossable without boost, over 200 seeds', () => {
     let worst = 0, bad = 0, n = 0;
     for (let s = 1; s <= 200; s++) {
-      const roofs = gather(s, 100000); // Faster late stages make each roof wider; retain >20k gap samples.
+      const roofs = gather(s, 115000); // Faster late stages make each roof wider; retain >20k gap samples.
       for (let i = 0; i + 1 < roofs.length; i++) {
         const a = roofs[i]!, b = roofs[i + 1]!;
         const dy = b.y - a.y;
@@ -76,25 +76,26 @@ it('a planning player survives four minutes, up to near top speed, on 25 seeds',
   expect(died).toEqual([]);
 }, 60000);
 
-it('each lap shifts up a gear, pays more, and ends in a golden rush', async () => {
-  const { LAP_LENGTH, lapMultiplier } = await import('../src/progression');
-  const { PX_PER_M } = await import('../src/physics');
+it('gears come early and often, pay more, and end in a golden rush', async () => {
+  const { gearMultiplier, GEAR_AT } = await import('../src/progression');
   const g = new Game(3), b = new Bot();
-  const seen: { type: string; [k: string]: unknown }[] = [];
-  while (!g.dead && g.distance < LAP_LENGTH * 2 + 50) {
+  const gears: { gear: number; mult: number; gained: number; up: boolean }[] = [];
+  const golds: number[] = [];
+  const fevers: number[] = [];
+  while (!g.dead && g.distance < GEAR_AT[5] + 20) {
     g.step(b.next(g));
-    for (const e of g.drain()) if (['lap', 'golden', 'goldenEnd', 'fever'].includes(e.type)) seen.push(e as never);
+    for (const e of g.drain()) {
+      if (e.type === 'gear') gears.push(e);
+      if (e.type === 'goldenEnd') golds.push(e.points);
+      if (e.type === 'fever') fevers.push(e.level);
+    }
   }
-  const laps = seen.filter((e) => e.type === 'lap');
-  expect(laps.map((e) => [e.lap, e.gear, e.mult])).toEqual([[2, 2, lapMultiplier(2)], [3, 3, lapMultiplier(3)]]);
-  expect(laps.every((e) => (e.gained as number) > 0)).toBe(true);
-  // A rush starts before each lap's end and pays when it is over.
-  const golds = seen.filter((e) => e.type === 'goldenEnd');
-  expect(golds.length).toBeGreaterThanOrEqual(2);
-  expect(golds.every((e) => (e.points as number) > 0)).toBe(true);
-  expect(g.player.x).toBeGreaterThan(LAP_LENGTH * 2 * PX_PER_M);
-  // A chain goes up a stage at a time, from ×2.
-  const fevers = seen.filter((e) => e.type === 'fever').map((e) => e.level as number);
+  expect(gears.map((e) => [e.gear, e.mult, e.up])).toEqual([2, 3, 4, 5, 6].map((n) => [n, gearMultiplier(n), true]));
+  expect(gears.every((e) => e.gained > 0)).toBe(true);
+  // A golden rush before each change from the third gear on, paying when it is over.
+  expect(golds.length).toBe(4);
+  expect(golds.every((p) => p > 0)).toBe(true);
+  // A chain goes up a stage at a time, from ×2 (the second lap starts one, if nothing did before).
   expect(fevers[0]).toBe(1);
   fevers.forEach((l, i) => { if (i) expect(l <= fevers[i - 1]! + 1).toBe(true); });
 }, 60000);

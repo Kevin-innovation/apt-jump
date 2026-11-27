@@ -490,7 +490,8 @@ function onEvent(e: GameEvent): void {
     case 'comboSaved': audio.play('save'); input.rumble(90, 0.5); break;
     case 'saveGained': audio.play('save'); break;
     case 'comboCash': audio.play('mission'); break;
-    case 'lap': audio.play('lap'); input.rumble(120, 0.5); break;
+    case 'lap': audio.play('lap'); break;
+    case 'gear': audio.play(e.up ? 'up' : 'lap'); input.rumble(120, 0.5); break;
     case 'golden': audio.play('rush'); input.rumble(60, 0.3); break;
     case 'goldenEnd': if (e.points > 0) audio.play('fever'); break;
     case 'splash': audio.play('splash'); break;

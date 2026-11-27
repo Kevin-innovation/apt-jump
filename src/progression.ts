@@ -3,16 +3,27 @@ import { mixSeed, Rng } from './rng';
 /** One district is 400 m of running; five districts make one 2 km lap. */
 export const DISTRICT_LENGTH = 400;
 export const LAP_LENGTH = DISTRICT_LENGTH * 5;
-/** The last metres of every lap are a golden rush: open roofs, rows of gold, points ×3. */
-export const GOLDEN_LENGTH = 240;
+/**
+ * Gears, by distance and not by lap, so an ordinary run sees several: where each one starts, in metres. Past the
+ * last, a golden rush still comes every GEAR_LATER metres, without a new gear.
+ */
+export const GEAR_AT = [0, 300, 700, 1200, 1800, 2500, 3300, 4200, 5200, 6300] as const;
+export const MAX_GEAR = GEAR_AT.length;
+const GEAR_LATER = 1200;
+/** The kth gear change (0 is the start); past the list, the marks keep coming for the golden rush alone. */
+export function gearMark(k: number): number { return k < GEAR_AT.length ? GEAR_AT[k]! : GEAR_AT[GEAR_AT.length - 1]! + GEAR_LATER * (k - GEAR_AT.length + 1); }
+/** Marks passed at a distance: the gear, uncapped. */
+export function tierAt(m: number): number { let k = 1; while (gearMark(k) <= m) k++; return k; }
+export function gearOf(m: number): number { return Math.min(MAX_GEAR, tierAt(m)); }
+/** Points for everything grow with the gear: ×1, ×1.5, ×2 … up to ×5 in the ninth. */
+export function gearMultiplier(gear: number): number { return Math.min(5, 1 + 0.5 * (Math.max(1, gear) - 1)); }
+/** The last metres before every change from the third gear on are a golden rush: open roofs, rows of coins, ×3. */
+export const GOLDEN_LENGTH = 150;
 export const GOLDEN_MULT = 3;
-/** Whether a distance into an endless run lies in a lap's golden rush. */
-export function inGolden(m: number): boolean { return m > 0 && m % LAP_LENGTH >= LAP_LENGTH - GOLDEN_LENGTH; }
-/** Points for everything grow with the lap: ×1, ×1.5, ×2 … up to ×5 from the ninth. */
-export function lapMultiplier(lap: number): number { return Math.min(5, 1 + 0.5 * (Math.max(1, lap) - 1)); }
-/** Each lap puts the city in a higher gear: this much faster per lap, up to GEAR_MAX. */
-export const GEAR_STEP = 0.07;
-export const GEAR_MAX = 0.42;
+export function inGolden(m: number): boolean { const k = tierAt(m); return k >= 2 && gearMark(k) - m <= GOLDEN_LENGTH; }
+/** Each gear is this much faster, up to GEAR_MAX: gentle, since the pace already climbs over the first 2 km. */
+export const GEAR_STEP = 0.04;
+export const GEAR_MAX = 0.36;
 
 export type DistrictKind = 'residential' | 'construction' | 'neon' | 'riverside' | 'highrise';
 /**

@@ -5,7 +5,7 @@ import {
   STUMBLE_TIME, timeRate, type JumpInput, type Pace, type PhysEvent, type Player, type SurfaceKind,
 } from './physics';
 import {
-  DISTRICT_LENGTH, districtAt, GOLDEN_MULT, inGolden, LAP_LENGTH, lapEvent as eventOfLap, lapMultiplier, type District, type LapEvent,
+  DISTRICT_LENGTH, districtAt, gearMultiplier, GOLDEN_MULT, inGolden, LAP_LENGTH, MAX_GEAR, lapEvent as eventOfLap, tierAt, type District, type LapEvent,
 } from './progression';
 import { World, type City, type CoinKind, type SeedSource } from './world';
 
@@ -76,7 +76,8 @@ export type GameEvent =
   | { type: 'saveGained'; saves: number }
   | { type: 'comboCash'; combo: number; points: number }
   | { type: 'fever'; level: number }
-  | { type: 'lap'; lap: number; event: LapEvent; points: number; gained: number; gear: number; mult: number }
+  | { type: 'lap'; lap: number; event: LapEvent; points: number }
+  | { type: 'gear'; gear: number; mult: number; gained: number; up: boolean }
   | { type: 'golden' }
   | { type: 'goldenEnd'; points: number }
   | { type: 'splash'; points: number; x: number; y: number }
@@ -111,9 +112,10 @@ export class Game {
   /** Over a golden rush now, and the score when it began. */
   golden = false;
   private goldenFrom = 0;
-  /** The score when this lap began. */
-  private lapFrom = 0;
-  /** What the lap's multiplier adds to the distance points, beyond one a metre. */
+  /** The marks passed (the gear, uncapped) and the score at the last one. */
+  private tier = 1;
+  private tierFrom = 0;
+  /** What the gear's multiplier adds to the distance points, beyond one a metre. */
   private distExtra = 0;
   /** Each keeps a combo that would have ended. */
   comboSaves = 0;
@@ -152,12 +154,12 @@ export class Game {
   get over(): boolean { return this.dead || this.finished; }
   get distance(): number { return Math.max(0, (this.player.x - START_X) / PX_PER_M); }
   get score(): number { return Math.floor(this.distance + this.distExtra) + this.bonus; }
-  /** The lap's gear, from 1: endless runs only. */
+  /** The gear, from 1: endless runs only. */
   get gear(): number { return gearAt(this.player.pace, this.player.x); }
-  /** What the lap does to every point: endless runs only. */
-  get lapMult(): number { const d = this.district; return d ? lapMultiplier(d.lap) : 1; }
-  /** Everything a point is multiplied by besides the combo, the fever and items: the lap and a golden rush. */
-  get scoreMult(): number { return this.lapMult * (this.golden ? GOLDEN_MULT : 1); }
+  /** What the gear does to every point: endless runs only. */
+  get gearMult(): number { return this.world.goalX === null ? gearMultiplier(this.gear) : 1; }
+  /** Everything a point is multiplied by besides the combo, the fever and items: the gear and a golden rush. */
+  get scoreMult(): number { return this.gearMult * (this.golden ? GOLDEN_MULT : 1); }
   get mult(): number { return multiplier(this.combo); }
   /** The mission under way: endless runs only. */
   get mission(): Mission | null { return this.world.goalX === null ? missionAt(this.missionsDone, this.missionStart) : null; }
@@ -198,12 +200,7 @@ export class Game {
       if (district.lap > lapBefore) {
         const points = LAP_BONUS * lapBefore;
         this.bonus += points;
-        const gained = this.score - this.lapFrom;
-        this.lapFrom = this.score;
-        this.events.push({
-          type: 'lap', lap: district.lap, event: eventOfLap(district.lap, this.world.plan), points, gained,
-          gear: this.gear, mult: lapMultiplier(district.lap),
-        });
+        this.events.push({ type: 'lap', lap: district.lap, event: eventOfLap(district.lap, this.world.plan), points });
         this.startFever();
       }
       return;
@@ -354,6 +351,7 @@ export class Game {
     // Distance pays one point a metre, times the lap and a golden rush.
     if (p.x > x0) this.distExtra += ((p.x - x0) / PX_PER_M) * (this.scoreMult - 1);
     this.stepGolden();
+    this.stepGear();
     this.magnetTime = Math.max(0, this.magnetTime - STEP);
     this.doubleTime = Math.max(0, this.doubleTime - STEP);
     this.keepTime = Math.max(0, this.keepTime - STEP);
@@ -415,11 +413,23 @@ export class Game {
     this.world.ensure(p.x, p.x + 1400);
   }
 
+  /** Each mark passed: a new gear (until the last) and what the stretch since the last one paid. */
+  private stepGear(): void {
+    if (this.world.goalX !== null) return;
+    const tier = tierAt(this.distance);
+    if (tier <= this.tier) return;
+    const up = Math.min(MAX_GEAR, tier) > Math.min(MAX_GEAR, this.tier);
+    this.tier = tier;
+    const gained = this.score - this.tierFrom;
+    this.tierFrom = this.score;
+    this.events.push({ type: 'gear', gear: this.gear, mult: this.gearMult, gained, up });
+  }
+
   /** Over a golden roof or its gap: points ×3. Its start and end are told, the end with what it paid. */
   private stepGolden(): void {
     const x = this.player.x;
     const r = this.world.roofs.find((q) => x >= q.x && x < q.x + q.w + q.gap);
-    // In the endless city a rush ends at the lap's line, even halfway along a roof.
+    // In the endless city a rush ends at the gear's mark, even halfway along a roof.
     const golden = !!r?.golden && (this.world.goalX !== null || inGolden(this.distance));
     if (golden === this.golden) return;
     this.golden = golden;

@@ -6,6 +6,15 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.1.0', date: '2026-11-27', title: '기어는 거리마다, 더 자주',
+    notes: [
+      '기어가 2km 랩이 아니라 거리로 올라가요: 300m · 700m · 1.2km · 1.8km · 2.5km … (약 20초마다)',
+      '기어마다 속도 +4% (최대 +36%), 점수 x1 → x1.5 → x2 … 9기어 x5',
+      '골든 러시는 3기어부터 매 기어 직전 150m. 기어가 바뀔 때 그 구간에서 얻은 점수를 정산해요',
+      '랩(2km)은 날씨 이벤트와 랩 보너스 그대로',
+    ],
+  },
+  {
     version: '3.0.0', date: '2026-11-27', title: '갈수록 미쳐가는 질주',
     notes: [
       '기어: 2km 랩을 넘길 때마다 속도가 7%씩 올라요 (7기어까지). 자동차 간격도 속도에 맞춰 넓어져요',
