@@ -353,8 +353,10 @@ export class Editor {
       b.addEventListener('click', () => { this.showProblems(false); if (p.segment !== null) this.select(p.segment, true); });
       return b;
     }));
-    const issues = $('ed-issues');
-    issues.hidden = !this.problems.length;
+    const issues = $('ed-issues') as HTMLButtonElement;
+    // Its place stays taken, so the bar never wraps differently when problems come and go.
+    issues.style.visibility = this.problems.length ? 'visible' : 'hidden';
+    issues.disabled = !this.problems.length;
     issues.textContent = `⚠ 문제 ${this.problems.length}`;
     if (!this.problems.length) this.showProblems(false);
     // A problem the last change made shows for a moment by itself, instead of a list to scroll to.

@@ -558,7 +558,9 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .ed-form > * { min-width: 0; box-sizing: border-box; }
 .ed-form .step[data-icon] { grid-template-columns: 18px minmax(0, 1fr) 34px 2.6em 34px; gap: 4px; overflow: hidden; }
 .ed-form .step button { min-width: 0; padding: 0; }
-#ed-help { min-height: 1.4em; margin: 0; color: #cfc4ee; }
+/* Always two lines tall, whatever it says, so nothing below it moves. */
+#ed-help { flex: none; box-sizing: content-box; height: 2.8em; line-height: 1.4; margin: 0; color: #cfc4ee; overflow: hidden;
+  display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; line-clamp: 2; }
 #ed-issues { background: #5a1f3a; border-color: #ff7a7a; color: #ffd0d0; min-width: 6em; }
 #ed-issues[aria-expanded='true'] { background: #8a2c4c; }
 #ed-problems.ed-popover { position: fixed; z-index: 5; top: 58px; right: 8px; width: min(440px, calc(100% - 16px)); max-height: min(60vh, 340px);

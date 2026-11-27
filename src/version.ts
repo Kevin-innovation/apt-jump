@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.9.2', date: '2026-11-27', title: '맵 제작 화면 흔들림 수정',
+    notes: ['설명 줄이 한 줄 · 두 줄로 바뀌어도 아래 버튼이 움직이지 않게 고정', '⚠ 문제 버튼이 생기고 사라질 때 상단 줄이 바뀌지 않게 고정'],
+  },
+  {
     version: '2.9.1', date: '2026-11-27', title: '맵 제작 화면 정리',
     notes: ['구간 설정 칸이 어떤 화면 너비에서도 넘치지 않게 정리', '도구 이름 「머리 위 배관」을 「배관」으로 줄임'],
   },
