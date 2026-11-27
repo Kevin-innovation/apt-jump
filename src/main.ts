@@ -318,7 +318,7 @@ function act(a: Act): void {
     case 'ed-test':
       editor.flush();
       if (editor.valid) playMap(editor.map, null, 'editor');
-      else editor.message('아래 문제를 먼저 고쳐 주세요.');
+      else { editor.message('⚠ 문제를 먼저 고쳐 주세요. 목록에서 누르면 그 구간으로 가요.', true); editor.showProblems(); }
       break;
     case 'ed-back':
       editor.flush();

@@ -548,3 +548,23 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .daily-card.done { background: linear-gradient(165deg, #2a4a2a, #1f2a3a); border-color: #9be36b; }
 .daily-card.done .daily-progress { color: #9be36b; }
 @media (max-width: 640px) { .daily-list { grid-template-columns: 1fr; } .attend { grid-template-columns: 1fr; } }
+
+/* Editor: a picture on every control, warnings as a toast that goes away, problems as a list opened from ⚠. */
+.ed-form .form-pic { position: static; inset: auto; width: 18px; height: 18px; flex: none; image-rendering: pixelated; }
+.ed-form > button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; text-align: left; }
+.ed-form > button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ed-form > button[aria-pressed='true'] { background: #1f7f86; border-color: #7dfff0; }
+.ed-form .step[data-icon] { grid-template-columns: 18px minmax(3.6em, 1fr) 36px 2.8em 36px; gap: 6px; }
+#ed-help { min-height: 1.4em; margin: 0; color: #cfc4ee; }
+#ed-issues { background: #5a1f3a; border-color: #ff7a7a; color: #ffd0d0; min-width: 6em; }
+#ed-issues[aria-expanded='true'] { background: #8a2c4c; }
+#ed-problems.ed-popover { position: fixed; z-index: 5; top: 58px; right: 8px; width: min(440px, calc(100% - 16px)); max-height: min(60vh, 340px);
+  overflow: auto; padding: 8px; gap: 5px; background: #241a44; border: 2px solid #ff7a7a; box-shadow: 0 8px 0 rgba(0,0,0,.35); }
+#ed-problems.ed-popover[hidden] { display: none; }
+#ed-problems button { min-height: 38px; color: #fff6e0; cursor: pointer; }
+.ed-toast { position: fixed; z-index: 6; left: 50%; top: 64px; max-width: min(560px, calc(100% - 24px)); padding: .55em 1em; background: #1f7f86;
+  border: 2px solid #7dfff0; color: #fff6e0; box-shadow: 0 6px 0 rgba(0,0,0,.35); pointer-events: none; opacity: 0;
+  transform: translate(-50%, -8px); transition: opacity .18s ease, transform .18s ease; }
+.ed-toast.warn { background: #6a1f3c; border-color: #ff7a7a; }
+.ed-toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; cursor: pointer; }
+@media (prefers-reduced-motion: reduce) { .ed-toast { transition: none; } }

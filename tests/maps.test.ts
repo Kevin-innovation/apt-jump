@@ -169,3 +169,22 @@ describe('the shelf', () => {
     expect(a.put(PRACTICE, null)).not.toBeNull();
   });
 });
+
+describe('newer pieces in made maps', () => {
+  it('build a passage, rising air, a cracked roof, puddles and things to slide past', () => {
+    const m = change((m) => {
+      m.segments.splice(1, 0, { kind: 'building', w: 160, h: 0, gap: 10, road: false, items: [], route: true, vent: true });
+      m.segments.splice(2, 0, { kind: 'building', w: 120, h: 0, gap: 10, road: false, cracked: true,
+        items: [{ t: 'box', x: 20, y: 0 }, { t: 'bar', x: 70, y: 0 }, { t: 'puddle', x: 100, y: 0 }] });
+    });
+    expect(checkMap(m)).toEqual([]);
+    const roofs = buildCourse(m).city.roofs;
+    expect(roofs[1]!.route).toBeTruthy();
+    expect(roofs[1]!.vent).toBeTruthy();
+    expect(roofs[2]!.cracked).toBe(true);
+    expect(roofs[2]!.puddles).toHaveLength(1);
+    expect(roofs[2]!.obstacles.map((o) => o.kind)).toEqual(['box', 'bar']);
+    expect(parseMap(JSON.stringify(m)).map).toEqual(m);
+    expect(problems((m) => { m.segments[1]!.route = true; m.segments[1]!.w = 30; })).toMatch('실내 통로 건물은 길이');
+  });
+});

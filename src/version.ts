@@ -6,6 +6,16 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.9.0', date: '2026-11-27', title: '맵 제작 · 새 장치와 쉬운 설명',
+    notes: [
+      '맵 제작에 상자 · 머리 위 배관 · 물웅덩이 도구 추가 (↓ 슬라이드로 지나가요)',
+      '구간 설정에 실내 통로(유리 지붕 ↓ 진입) · 상승 기류 · 균열 옥상 추가',
+      '구간 설정 버튼마다 픽셀 아이콘, 가리키거나 누르면 아래에 설명 표시',
+      '경고는 잠깐 떴다 사라지는 알림으로, 문제 목록은 상단 ⚠ 버튼에서 열어요',
+      '건물 길이 최대 250칸 (실내 통로 건물용)',
+    ],
+  },
+  {
     version: '2.8.1', date: '2026-11-27', title: '방문 통계',
     notes: ['Vercel Web Analytics로 방문 · 판 시작 · 코스튬 구매 · 출석을 집계 (쿠키 없음, 개인 정보 수집 없음)'],
   },

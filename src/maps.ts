@@ -1,7 +1,7 @@
 import type { Course } from './game';
 import { POWER_KINDS, POWER_NAMES, type PowerKind } from './items';
 import { jumpReach, paceSpeed, type Pace } from './physics';
-import { OBSTACLE_SIZE, RAMP_RUN, ROAD_DEPTH, type City, type Roof } from './world';
+import { BAR_GAP, OBSTACLE_SIZE, passage, passageLength, RAMP_RUN, ROAD_DEPTH, SLIDE_SPACING, VENT_HEIGHT, type City, type Roof } from './world';
 
 /** Map files measure everything in units of 8 pixels. */
 export const UNIT = 8;
@@ -9,24 +9,35 @@ export const MAP_FORMAT = 'apt-jump-map';
 export const MAP_VERSION = 1;
 export const LIMITS = {
   bytes: 64 * 1024, title: 24, segments: 120, items: 600, length: 4000,
-  w: [10, 150], h: [-12, 12], gap: [0, 40], itemY: [1, 24], base: [90, 200], gain: [0, 140],
+  w: [10, 250], h: [-12, 12], gap: [0, 40], itemY: [1, 24], base: [90, 200], gain: [0, 140],
   firstW: 40, lastW: 20, spawnClear: 30, edgeClear: 8, hazardGap: 8,
 } as const;
-export const ITEM_TYPES = ['coin', 'gold', 'diamond', 'ac', 'tank', 'line', 'drone', 'pigeon', ...POWER_KINDS] as const;
+export const ITEM_TYPES = ['coin', 'gold', 'diamond', 'ac', 'tank', 'box', 'bar', 'puddle', 'line', 'drone', 'pigeon', ...POWER_KINDS] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 export const ITEM_NAMES: Record<ItemType, string> = {
-  coin: '동전', gold: '분홍 동전', diamond: '다이아', ac: '실외기', tank: '물탱크', line: '빨랫줄', drone: '드론', pigeon: '비둘기',
+  coin: '동전', gold: '분홍 동전', diamond: '다이아', ac: '실외기', tank: '물탱크', box: '상자', bar: '머리 위 배관', puddle: '물웅덩이',
+  line: '빨랫줄', drone: '드론', pigeon: '비둘기',
   ...POWER_NAMES,
 };
 export const isPower = (t: ItemType): t is PowerKind => (POWER_KINDS as readonly string[]).includes(t);
 /** Widths in units of things that can hurt. */
-const HAZARD_W: Partial<Record<ItemType, number>> = { ac: OBSTACLE_SIZE.ac.w / UNIT, tank: OBSTACLE_SIZE.tank.w / UNIT, drone: 2, pigeon: 2 };
+const HAZARD_W: Partial<Record<ItemType, number>> = {
+  ac: OBSTACLE_SIZE.ac.w / UNIT, tank: OBSTACLE_SIZE.tank.w / UNIT, box: OBSTACLE_SIZE.box.w / UNIT, bar: OBSTACLE_SIZE.bar.w / UNIT, drone: 2, pigeon: 2,
+};
+/** Things a slide gets past: two in a row need the time one slide and its rest take between them. */
+const slid = (t: ItemType) => t === 'box' || t === 'bar';
+/** A puddle's width in units. */
+export const PUDDLE_W = 5;
 export const LINE_W = 5;
 /** These stand on the roof; everything else has a height above it. */
-export const onFloor = (t: ItemType) => t === 'ac' || t === 'tank' || t === 'pigeon';
+export const onFloor = (t: ItemType) => t === 'ac' || t === 'tank' || t === 'pigeon' || t === 'box' || t === 'bar' || t === 'puddle';
 
 export interface MapItem { t: ItemType; x: number; y: number }
-export interface Segment { kind: 'building' | 'scaffold'; w: number; h: number; gap: number; road: boolean; items: MapItem[] }
+/**
+ * `route`: a marked building with a passage under its glass roof; `vent`: rising air in the gap after it;
+ * `cracked`: a roof that gives way under a runner who stays. All optional, so older maps read as they were.
+ */
+export interface Segment { kind: 'building' | 'scaffold'; w: number; h: number; gap: number; road: boolean; items: MapItem[]; route?: boolean; vent?: boolean; cracked?: boolean }
 export interface GameMap { format: typeof MAP_FORMAT; version: typeof MAP_VERSION; title: string; pace: Pace; segments: Segment[] }
 export interface MapProblem { segment: number | null; text: string }
 export type MapResult = { map: GameMap; problems: MapProblem[] } | { map: null; problems: MapProblem[] };
@@ -71,7 +82,9 @@ export function readMap(v: unknown): MapResult {
       if (!whole(it.x, [0, s.w + s.gap]) || !whole(it.y, onFloor(t) ? [0, 0] : LIMITS.itemY)) { bad(i, `${ITEM_NAMES[t]}의 위치가 범위를 벗어났습니다.`); continue; }
       list.push({ t, x: it.x, y: it.y });
     }
-    segments.push({ kind: s.kind, w: s.w, h: s.h, gap: s.gap, road: s.road, items: list });
+    for (const flag of ['route', 'vent', 'cracked'] as const) if (s[flag] !== undefined && typeof s[flag] !== 'boolean') bad(i, '구간 설정 값이 잘못되었습니다.');
+    segments.push({ kind: s.kind, w: s.w, h: s.h, gap: s.gap, road: s.road, items: list,
+      ...(s.route === true ? { route: true } : {}), ...(s.vent === true ? { vent: true } : {}), ...(s.cracked === true ? { cracked: true } : {}) });
     return undefined;
   });
   if (problems.length) return { map: null, problems };
@@ -128,6 +141,14 @@ export function checkMap(m: GameMap): MapProblem[] {
       if (reach <= 0 || s.gap * UNIT > reach * 0.9) bad(i, reach <= 0 ? '다음 구간이 너무 높습니다.' : `간격이 너무 넓습니다(최대 ${Math.floor((reach * 0.9) / UNIT)}).`);
     }
 
+    if ((s.route || s.cracked) && s.kind !== 'building') bad(i, `${s.route ? '실내 통로' : '균열 옥상'}는 건물에만 둘 수 있습니다.`);
+    if (s.route) {
+      if (i === 0 || i === segs.length - 1) bad(i, '시작과 도착 건물에는 실내 통로를 둘 수 없습니다.');
+      const speed = paceSpeed(m.pace, starts[i]! * UNIT), need = Math.ceil((routeLead(speed) + passageLength(speed)) / UNIT);
+      if (s.w < need) bad(i, `실내 통로 건물은 길이 ${need} 이상이어야 합니다.`);
+      if (s.items.some((it) => HAZARD_W[it.t] !== undefined)) bad(i, '실내 통로 건물 옥상에는 장애물을 둘 수 없습니다.');
+    }
+    if (s.vent && (!next || s.road || s.gap < 6)) bad(i, '상승 기류는 다음 구간이 있고 간격이 6 이상인 곳에만 둘 수 있습니다.');
     const seen = new Set<string>();
     const hazards: { x: number; w: number; t: ItemType }[] = [];
     for (const it of s.items) {
@@ -136,6 +157,7 @@ export function checkMap(m: GameMap): MapProblem[] {
       seen.add(key);
       const hw = HAZARD_W[it.t];
       if (it.t === 'line' && (it.x < s.w || it.x + LINE_W > s.w + s.gap)) bad(i, '빨랫줄은 간격 안에 두어야 합니다.');
+      if ((onFloor(it.t)) && it.x + (it.t === 'puddle' ? PUDDLE_W : HAZARD_W[it.t] ?? 1) > s.w) bad(i, `${ITEM_NAMES[it.t]}은(는) 옥상 위에 두어야 합니다.`);
       if (hw === undefined) continue;
       hazards.push({ x: it.x, w: hw, t: it.t });
       if (i === 0 && it.x < LIMITS.spawnClear) bad(i, `출발점 근처(${LIMITS.spawnClear} 이내)에는 장애물을 둘 수 없습니다.`);
@@ -146,10 +168,24 @@ export function checkMap(m: GameMap): MapProblem[] {
     for (let k = 1; k < hazards.length; k++) {
       const a = hazards[k - 1]!, b = hazards[k]!;
       if (b.x - (a.x + a.w) < LIMITS.hazardGap) bad(i, `${ITEM_NAMES[a.t]}와(과) ${ITEM_NAMES[b.t]} 사이를 ${LIMITS.hazardGap} 이상 띄우세요.`);
+      // Something overhead needs a longer look after whatever had to be jumped.
+      else if (b.t === 'bar' && !slid(a.t)) {
+        const need = Math.ceil((paceSpeed(m.pace, (starts[i]! + a.x) * UNIT) * 0.3) / UNIT);
+        if (b.x - (a.x + a.w) < need) bad(i, `뛰어넘은 뒤 머리 위 배관까지는 ${need} 이상 띄우세요.`);
+      }
+    }
+    // Two things to slide past in a row: one slide and its rest have to fit between them.
+    const slides = hazards.filter((h) => slid(h.t));
+    for (let k = 1; k < slides.length; k++) {
+      const a = slides[k - 1]!, b = slides[k]!, need = Math.ceil((paceSpeed(m.pace, (starts[i]! + a.x) * UNIT) * SLIDE_SPACING + 50) / UNIT);
+      if (b.x - a.x < need) bad(i, `슬라이드로 지나는 물체끼리는 ${need} 이상 띄우세요.`);
     }
   });
   return out;
 }
+
+/** Clear roof before a passage's glass: a landing first, as in the endless city. */
+const routeLead = (speed: number) => Math.round(speed * 0.54) + 70;
 
 class FixedCity implements City {
   constructor(public roofs: Roof[], public readonly goalX: number) {}
@@ -171,12 +207,22 @@ export function buildCourse(m: GameMap): Course {
     };
     for (const it of s.items) {
       const ix = x + it.x * UNIT, iy = y - it.y * UNIT;
-      if (it.t === 'ac' || it.t === 'tank') { const z = OBSTACLE_SIZE[it.t]; r.obstacles.push({ id: id++, kind: it.t, x: ix, y: y - z.h, ...z }); }
+      if (it.t === 'ac' || it.t === 'tank' || it.t === 'box') { const z = OBSTACLE_SIZE[it.t]; r.obstacles.push({ id: id++, kind: it.t, x: ix, y: y - z.h, ...z }); }
+      else if (it.t === 'bar') { const z = OBSTACLE_SIZE.bar; r.obstacles.push({ id: id++, kind: 'bar', x: ix, y: y - BAR_GAP - z.h, ...z }); }
+      else if (it.t === 'puddle') (r.puddles ??= []).push({ id: id++, x: ix, w: PUDDLE_W * UNIT });
       else if (it.t === 'line') r.lines.push({ id: id++, x: ix, w: LINE_W * UNIT, y: iy, style: it.x % 4 });
       else if (it.t === 'drone') r.enemies.push({ id: id++, kind: 'drone', x: ix, y: iy, amp: 8, phase: (it.x % 8) / 8 });
       else if (it.t === 'pigeon') r.enemies.push({ id: id++, kind: 'pigeon', x: ix, y: y - 13, amp: 0, phase: 0 });
       else if (isPower(it.t)) r.powers.push({ id: id++, kind: it.t, x: ix, y: iy, taken: false });
       else r.coins.push({ x: ix, y: iy, kind: it.t, taken: false });
+    }
+    if (s.cracked) r.cracked = true;
+    if (s.vent && next) r.vent = { x: x + s.w * UNIT + 4, w: s.gap * UNIT - 8, top: Math.min(y, -next.h * UNIT) - VENT_HEIGHT };
+    if (s.route && s.kind === 'building') {
+      const speed = paceSpeed(m.pace, x), p = passage(x + routeLead(speed), y, speed, () => id++);
+      r.route = p.route;
+      r.obstacles.push(...p.obstacles);
+      r.coins.push(...p.coins);
     }
     return r;
   });

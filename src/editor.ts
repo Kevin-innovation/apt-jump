@@ -1,4 +1,4 @@
-import { drawAc, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawScaffold, drawTank } from './art';
+import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoute, drawScaffold, drawTank } from './art';
 import { POWER_KINDS, POWER_TEXT, type PowerKind } from './items';
 import {
   buildCourse, checkMap, cleanTitle, ITEM_NAMES, ITEM_TYPES, LIMITS, LINE_W, onFloor, segmentStarts, UNIT,
@@ -16,8 +16,42 @@ const HELP: Record<Tool, string> = {
   select: '구간을 눌러 선택, 끌어서 이동', erase: '지울 물체를 누르세요',
   coin: '놓을 자리를 누르세요', gold: '놓을 자리를 누르세요', diamond: '높이 120px(15칸)쯤이면 2단 점프로 닿습니다',
   ac: '옥상 위를 누르세요', tank: '옥상 위를 누르세요', line: '건물 사이 간격을 누르세요',
+  box: '옥상 위를 누르세요 · ↓ 슬라이드로 부수고 지나가요', bar: '옥상 위를 누르세요 · ↓ 슬라이드로 밑을 지나가요',
+  puddle: '옥상 위를 누르세요 · ↓ 슬라이드로 지나가면 물보라 가속',
   drone: '옥상 위 3~6칸 높이를 누르세요', pigeon: '옥상 위를 누르세요',
 };
+
+/** Pixel colours for the form's little icons. */
+const INK: Record<string, string> = { '#': '#fff6e0', o: '#1a1230', y: '#ffd85a', c: '#7dfff0', r: '#ff7a7a', g: '#57b86a', b: '#5fb7e6' };
+/** A 9×9 picture for each control of the form, keyed by its command (or a stepper's data-icon). */
+const FORM_ICONS: Record<string, string[]> = {
+  w: ['.........', '.........', '.c.....c.', 'cc.....cc', 'ccccccccc', 'cc.....cc', '.c.....c.', '.........', '.........'],
+  gap: ['##.....##', '##.....##', '##.....##', '##.c.c.##', '##ccccc##', '##.c.c.##', '##.....##', '##.....##', '##.....##'],
+  h: ['....c....', '...ccc...', '..c.c.c..', '....c....', '....c....', '....c....', '..c.c.c..', '...ccc...', '....c....'],
+  kind: ['ggggggggg', '#########', '#y#y#y#y#', '#########', '#y#y#y#y#', '#########', '#y#y#y#y#', '####o####', '####o####'],
+  road: ['.........', '..rrrr...', '.rcrrcr..', 'rrrrrrrrr', 'rorrrrorr', '.o....o..', '.........', 'y.y.y.y.y', '.........'],
+  route: ['cccc.cccc', '#...y...#', '#...y...#', '#.y.y.y.#', '#..yyy..#', '#...y...#', '#.......#', '#.##.##.#', '#########'],
+  vent: ['..c...c..', '.ccc.ccc.', 'c.c.c.c.c', '..c...c..', '.c...c...', '..c...c..', '...c...c.', '..c...c..', '#########'],
+  cracked: ['ggggggggg', '####r####', '###r#####', '####r#r##', '###r###r#', '##r######', '#########', '#.#.#.#.#', '#########'],
+  add: ['.........', '....y....', '....y....', '....y....', '.yyyyyyy.', '....y....', '....y....', '....y....', '.........'],
+  copy: ['#####....', '#...#....', '#..cccccc', '#..c....c', '####c....', '...c....c', '...c....c', '...cccccc', '.........'],
+  left: ['.........', '...c.....', '..cc.....', '.cccccccc', 'ccccccccc', '.cccccccc', '..cc.....', '...c.....', '.........'],
+  right: ['.........', '.....c...', '.....cc..', 'cccccccc.', 'ccccccccc', 'cccccccc.', '.....cc..', '.....c...', '.........'],
+  clear: ['.......y.', '......y..', '.....y...', '....y....', '...#.....', '..###....', '.#####...', '#######..', '.........'],
+  del: ['...rrr...', 'rrrrrrrrr', '.r#####r.', '.r#r#r#r.', '.r#r#r#r.', '.r#r#r#r.', '.r#r#r#r.', '.rrrrrrr.', '.........'],
+  base: ['.........', 'y...y....', '.y...y...', '..y...y..', '...y...y.', '..y...y..', '.y...y...', 'y...y....', '.........'],
+  gain: ['.........', '.......y.', '.......y.', '.....y.y.', '.....y.y.', '...y.y.y.', '...y.y.y.', '.y.y.y.y.', '#########'],
+};
+function pixels(rows: string[]): HTMLCanvasElement {
+  const c = document.createElement('canvas');
+  c.width = rows[0]!.length; c.height = rows.length;
+  c.className = 'form-pic';
+  c.setAttribute('aria-hidden', 'true');
+  const g = c.getContext('2d');
+  if (g) rows.forEach((r, y) => [...r].forEach((ch, x) => { const k = INK[ch]; if (k) { g.fillStyle = k; g.fillRect(x, y, 1, 1); } }));
+  return c;
+}
+const problemKey = (p: MapProblem) => `${p.segment}:${p.text}`;
 
 export class Editor {
   map!: GameMap;
@@ -36,11 +70,14 @@ export class Editor {
   private sprites: Sprites = makeSprites();
   private drag: { id: number; x: number; cam: number; moved: boolean } | null = null;
   private course!: ReturnType<typeof buildCourse>;
+  private toastTimer = 0;
+  private known = new Set<string>();
 
   /** The thing itself, as the game draws it, for a tool's button. */
   private icon(tool: Tool): HTMLCanvasElement {
     const sizes: Partial<Record<Tool, [number, number]>> = {
       coin: [9, 9], gold: [9, 9], diamond: [13, 11], ac: [18, 13], tank: [38, 33], line: [24, 22], drone: [26, 12], pigeon: [18, 15],
+      box: [16, 14], bar: [26, 20], puddle: [22, 6],
     };
     const [w, h] = sizes[tool] ?? (POWER_KINDS.includes(tool as PowerKind) ? [19, 19] : [11, 11]);
     const c = document.createElement('canvas');
@@ -60,6 +97,9 @@ export class Editor {
       case 'line': g.fillStyle = '#f5ead8'; g.fillRect(0, 1, w, 1); drawQuilt(g, 3, 2, 18, 0, 0); break;
       case 'drone': drawDrone(g, 5, 1, 0); break;
       case 'pigeon': drawPigeon(g, 3, 6, 0.1); break;
+      case 'box': drawBox(g, 1, 1); break;
+      case 'bar': drawBar(g, 1, 0, 24, 18, 0); break;
+      case 'puddle': g.fillStyle = '#2d5f8a'; g.fillRect(1, 2, 20, 3); g.fillStyle = '#5fb7e6'; g.fillRect(2, 2, 18, 1); g.fillStyle = '#bff6ff'; g.fillRect(6, 2, 3, 1); break;
       default: drawPower(g, tool as PowerKind, 9, 9, 0.5);
     }
     return c;
@@ -78,6 +118,22 @@ export class Editor {
       $('ed-tools').append(b);
     }
     document.querySelectorAll<HTMLButtonElement>('[data-ed]').forEach((b) => b.addEventListener('click', () => this.command(b.dataset.ed!)));
+    // A little picture for each control of the form; its label goes in a span, so it can change without losing it.
+    document.querySelectorAll<HTMLElement>('.ed-form > button[data-ed], .ed-form .step[data-icon]').forEach((el) => {
+      const rows = FORM_ICONS[el.dataset.icon ?? el.dataset.ed ?? ''];
+      if (!rows) return;
+      if (el.tagName === 'BUTTON') { const label = document.createElement('span'); label.textContent = el.textContent; el.replaceChildren(pixels(rows), label); }
+      else el.prepend(pixels(rows));
+    });
+    // What a control does, in the help line, while it is pointed at or focused (a tap on a phone focuses it).
+    const help = () => { $('ed-help').textContent = HELP[this.tool]; };
+    document.querySelectorAll<HTMLElement>('#editor [data-tip]').forEach((el) => {
+      const tip = () => { $('ed-help').textContent = `ⓘ ${el.dataset.tip}`; };
+      el.addEventListener('pointerenter', tip); el.addEventListener('focusin', tip);
+      el.addEventListener('pointerleave', help); el.addEventListener('focusout', help);
+    });
+    $('ed-issues').addEventListener('click', () => this.showProblems($('ed-problems').hidden === true));
+    $('ed-toast').addEventListener('click', () => this.message(''));
     const title = $('ed-title') as HTMLInputElement;
     title.maxLength = LIMITS.title;
     title.addEventListener('change', () => this.edit((m) => { m.title = cleanTitle(title.value) || '이름 없는 맵'; }));
@@ -119,11 +175,27 @@ export class Editor {
     this.redoStack = [];
     this.camX = -20;
     this.message('');
+    this.known = new Set(checkMap(this.map).map(problemKey));
     this.refresh();
+    this.showProblems(false);
   }
 
   get valid(): boolean { return this.problems.length === 0; }
-  message(text: string): void { $('ed-msg').textContent = text; }
+  /** A short note that shows for a moment over the editor and goes away by itself (or on a tap). */
+  message(text: string, warn = false): void {
+    const t = $('ed-toast');
+    clearTimeout(this.toastTimer);
+    if (text) t.textContent = text;
+    t.classList.toggle('warn', warn);
+    t.classList.toggle('show', !!text);
+    if (text) this.toastTimer = window.setTimeout(() => t.classList.remove('show'), 2800 + text.length * 40);
+  }
+  /** The list of problems, opened over the map from the ⚠ button; each one takes you to its segment. */
+  showProblems(open = true): void {
+    const list = $('ed-problems');
+    list.hidden = !open || !this.problems.length;
+    $('ed-issues').setAttribute('aria-expanded', String(!list.hidden));
+  }
   /** Commits a title still being typed, before saving or testing. */
   flush(): void { ($('ed-title') as HTMLInputElement).blur(); }
 
@@ -162,6 +234,12 @@ export class Editor {
       case 'gain': this.edit((m) => { m.pace.gain = clamp(m.pace.gain + by, LIMITS.gain); }); return;
       case 'kind': this.edit(() => { this.seg.kind = this.seg.kind === 'building' ? 'scaffold' : 'building'; if (this.seg.kind === 'scaffold') this.seg.road = false; }); return;
       case 'road': this.edit(() => { this.seg.road = !this.seg.road; }); return;
+      case 'route': case 'vent': case 'cracked': {
+        const key = c as 'route' | 'vent' | 'cracked';
+        this.edit(() => { if (this.seg[key]) delete this.seg[key]; else this.seg[key] = true; });
+        if (key === 'route' && this.seg.route) this.message('유리 지붕에서 ↓ 를 누르면 건물 안 통로로 들어가요. 상자·배관·상자는 자동으로 놓여요.');
+        return;
+      }
       case 'clear': this.edit(() => { this.seg.items = []; }); return;
       case 'add': case 'copy':
         if (segs.length >= LIMITS.segments) { this.message(`구간은 ${LIMITS.segments}개까지입니다.`); return; }
@@ -248,11 +326,23 @@ export class Editor {
     text('ed-w', String(s.w)); text('ed-gap', String(s.gap)); text('ed-h', String(s.h));
     text('ed-base', String(this.map.pace.base)); text('ed-gain', String(this.map.pace.gain));
     const kind = document.querySelector('[data-ed=kind]')!, road = document.querySelector<HTMLButtonElement>('[data-ed=road]')!;
-    kind.textContent = s.kind === 'building' ? '종류: 건물' : '종류: 발판';
-    road.textContent = s.road ? '뒤에 도로: 있음' : '뒤에 도로: 없음';
+    const label = (b: Element, v: string) => { (b.querySelector('span') ?? b).textContent = v; };
+    label(kind, s.kind === 'building' ? '종류: 건물' : '종류: 발판');
+    label(road, s.road ? '뒤에 도로: 있음' : '뒤에 도로: 없음');
+    road.setAttribute('aria-pressed', String(s.road));
     road.disabled = s.kind !== 'building';
+    const flag = (key: 'route' | 'vent' | 'cracked', name: string, off: boolean) => {
+      const b = document.querySelector<HTMLButtonElement>(`[data-ed=${key}]`)!;
+      label(b, `${name}: ${s[key] ? '있음' : '없음'}`);
+      b.setAttribute('aria-pressed', String(!!s[key]));
+      b.disabled = off && !s[key];
+    };
+    const last = this.selected === n - 1;
+    flag('route', '실내 통로', s.kind !== 'building' || this.selected === 0 || last);
+    flag('vent', '뒤에 상승 기류', last);
+    flag('cracked', '균열 옥상', s.kind !== 'building');
     document.querySelectorAll<HTMLElement>('[data-tool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === this.tool)));
-    text('ed-help', HELP[this.tool]);
+    if (!document.querySelector('#editor [data-tip]:hover, #editor [data-tip]:focus-within')) text('ed-help', HELP[this.tool]);
     (document.querySelector('[data-ed=undo]') as HTMLButtonElement).disabled = !this.undoStack.length;
     (document.querySelector('[data-ed=redo]') as HTMLButtonElement).disabled = !this.redoStack.length;
     const list = $('ed-problems');
@@ -260,10 +350,17 @@ export class Editor {
       const b = document.createElement('button');
       b.type = 'button';
       b.textContent = (p.segment === null ? '' : `구간 ${p.segment + 1}: `) + p.text;
-      b.addEventListener('click', () => { if (p.segment !== null) this.select(p.segment, true); });
+      b.addEventListener('click', () => { this.showProblems(false); if (p.segment !== null) this.select(p.segment, true); });
       return b;
     }));
-    list.hidden = !this.problems.length;
+    const issues = $('ed-issues');
+    issues.hidden = !this.problems.length;
+    issues.textContent = `⚠ 문제 ${this.problems.length}`;
+    if (!this.problems.length) this.showProblems(false);
+    // A problem the last change made shows for a moment by itself, instead of a list to scroll to.
+    const fresh = this.problems.find((p) => !this.known.has(problemKey(p)));
+    this.known = new Set(this.problems.map(problemKey));
+    if (fresh) this.message(`⚠ ${fresh.segment === null ? '' : `구간 ${fresh.segment + 1}: `}${fresh.text}`, true);
     const starts = segmentStarts(this.map);
     const scroll = $('ed-scroll') as HTMLInputElement;
     scroll.min = '-40';
@@ -319,7 +416,23 @@ export class Editor {
     for (const r of roofs) if (r.road) drawRoad(g, r.road, cx, cy, vh, 0);
     for (const r of roofs) {
       for (const l of r.lines) { g.fillStyle = '#f5ead8'; g.fillRect(r.x + r.w - cx, l.y - cy, r.gap, 1); drawQuilt(g, l.x - cx, l.y - cy, l.w, l.style, this.t); }
-      for (const o of r.obstacles) if (o.kind === 'ac') drawAc(g, o.x - cx, o.y - cy, this.t); else drawTank(g, o.x - cx, o.y - cy);
+      const w = r.route;
+      if (w) drawRoute(g, Math.round(w.x - cx), Math.round(r.y - cy), w.rampStart - w.x, w.rampEnd - w.rampStart, w.y - r.y, w.hatch, false, this.t);
+      for (const o of r.obstacles) {
+        if (o.kind === 'ac') drawAc(g, o.x - cx, o.y - cy, this.t);
+        else if (o.kind === 'tank') drawTank(g, o.x - cx, o.y - cy);
+        else if (o.kind === 'box') drawBox(g, o.x - cx, o.y - cy);
+        else drawBar(g, o.x - cx, o.y - cy, o.w, o.h, this.t);
+      }
+      for (const p of r.puddles ?? []) { g.fillStyle = '#2d5f8a'; g.fillRect(p.x - cx, r.y - cy - 1, p.w, 3); g.fillStyle = '#5fb7e6'; g.fillRect(p.x - cx + 2, r.y - cy - 1, p.w - 4, 1); }
+      // Rising air in the gap: streaks up to where it carries.
+      if (r.vent) {
+        g.fillStyle = 'rgba(220,245,255,.55)';
+        for (let k = 0; k < 5; k++) { const sx = r.vent.x - cx + ((k + 0.5) * r.vent.w) / 5; for (let yy = r.vent.top - cy; yy < r.y - cy + 80; yy += 14) g.fillRect(sx, yy + ((this.t * 40 + k * 5) % 14), 1, 6); }
+        g.fillStyle = '#bff6ff'; g.fillRect(r.vent.x - cx, r.vent.top - cy, r.vent.w, 1);
+      }
+      // Cracks across a roof that gives way.
+      if (r.cracked) { g.fillStyle = '#2a1c40'; for (let k = r.x + 18; k < r.x + r.w - 12; k += 34) { g.fillRect(k - cx, r.y - cy, 1, 3); g.fillRect(k - cx + 1, r.y - cy + 2, 2, 1); g.fillRect(k - cx - 2, r.y - cy + 3, 2, 1); } }
       for (const c of r.coins) {
         if (c.kind === 'diamond') drawDiamond(g, c.x - cx - 5, c.y - cy - 4, this.t);
         else g.drawImage(this.sprites[c.kind === 'gold' ? 'gold' : 'coin'][0]!, c.x - cx - 3, c.y - cy - 3);

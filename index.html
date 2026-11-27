@@ -242,6 +242,7 @@
       <input id="ed-title" type="text" aria-label="맵 이름" autocomplete="off" />
       <button type="button" data-ed="undo">되돌리기</button>
       <button type="button" data-ed="redo">다시</button>
+      <button type="button" id="ed-issues" hidden></button>
       <button type="button" data-act="ed-test">테스트</button>
       <button type="button" data-act="ed-save" class="primary">내 맵에 저장</button>
     </div>
@@ -249,23 +250,26 @@
     <input id="ed-scroll" type="range" min="-40" max="0" value="0" aria-label="맵 위치" />
     <div id="ed-tools" role="toolbar" aria-label="도구"></div>
     <p id="ed-help" class="keys"></p>
-    <p id="ed-msg" class="warn" role="status"></p>
-    <div id="ed-problems" hidden></div>
+    <div id="ed-problems" class="ed-popover" hidden></div>
+    <div id="ed-toast" class="ed-toast" role="status" aria-live="polite"></div>
     <div class="ed-form">
       <div class="step"><button type="button" data-ed="prev" aria-label="이전 구간">◀</button><b id="ed-seg"></b><button type="button" data-ed="next" aria-label="다음 구간">▶</button></div>
-      <div class="step"><span>길이</span><button type="button" data-ed="w:-2" aria-label="길이 줄이기">−</button><b id="ed-w">0</b><button type="button" data-ed="w:2" aria-label="길이 늘리기">+</button></div>
-      <div class="step"><span>간격</span><button type="button" data-ed="gap:-1" aria-label="간격 줄이기">−</button><b id="ed-gap">0</b><button type="button" data-ed="gap:1" aria-label="간격 늘리기">+</button></div>
-      <div class="step"><span>높이</span><button type="button" data-ed="h:-1" aria-label="높이 줄이기">−</button><b id="ed-h">0</b><button type="button" data-ed="h:1" aria-label="높이 늘리기">+</button></div>
-      <button type="button" data-ed="kind"></button>
-      <button type="button" data-ed="road"></button>
-      <button type="button" data-ed="add">뒤에 추가</button>
-      <button type="button" data-ed="copy">복제</button>
-      <button type="button" data-ed="left">앞으로 옮기기</button>
-      <button type="button" data-ed="right">뒤로 옮기기</button>
-      <button type="button" data-ed="clear">물체 비우기</button>
-      <button type="button" data-ed="del">구간 삭제</button>
-      <div class="step"><span>시작 속도</span><button type="button" data-ed="base:-5" aria-label="시작 속도 줄이기">−</button><b id="ed-base">0</b><button type="button" data-ed="base:5" aria-label="시작 속도 늘리기">+</button></div>
-      <div class="step"><span>가속</span><button type="button" data-ed="gain:-5" aria-label="가속 줄이기">−</button><b id="ed-gain">0</b><button type="button" data-ed="gain:5" aria-label="가속 늘리기">+</button></div>
+      <div class="step" data-icon="w" data-tip="구간(건물·발판)의 길이"><span>길이</span><button type="button" data-ed="w:-2" aria-label="길이 줄이기">−</button><b id="ed-w">0</b><button type="button" data-ed="w:2" aria-label="길이 늘리기">+</button></div>
+      <div class="step" data-icon="gap" data-tip="이 구간과 다음 구간 사이 빈 공간의 너비"><span>간격</span><button type="button" data-ed="gap:-1" aria-label="간격 줄이기">−</button><b id="ed-gap">0</b><button type="button" data-ed="gap:1" aria-label="간격 늘리기">+</button></div>
+      <div class="step" data-icon="h" data-tip="옥상 높이: 다음 구간보다 높으면 내려뛰고, 낮으면 올라뛰어요"><span>높이</span><button type="button" data-ed="h:-1" aria-label="높이 줄이기">−</button><b id="ed-h">0</b><button type="button" data-ed="h:1" aria-label="높이 늘리기">+</button></div>
+      <button type="button" data-ed="kind" data-tip="건물: 벽이 있는 옥상 · 발판: 아래가 뚫린 공사장 발판 (도로 위에 써요)"></button>
+      <button type="button" data-ed="road" data-tip="이 건물 뒤로 차가 다니는 도로를 깔아요 (다음 건물까지 발판으로 이어서)"></button>
+      <button type="button" data-ed="route" data-tip="유리 지붕에서 ↓ 슬라이드로 건물 안 통로로 들어가는 보너스 길 (길이가 충분해야 해요)"></button>
+      <button type="button" data-ed="vent" data-tip="이 구간 뒤 간격에 위로 띄워 주는 바람 (간격 6 이상)"></button>
+      <button type="button" data-ed="cracked" data-tip="1초 넘게 서 있으면 무너지는 옥상: 계속 뛰어야 해요"></button>
+      <button type="button" data-ed="add" data-tip="선택한 구간 뒤에 새 구간을 붙여요">뒤에 추가</button>
+      <button type="button" data-ed="copy" data-tip="선택한 구간을 물체까지 그대로 복사해 뒤에 붙여요">복제</button>
+      <button type="button" data-ed="left" data-tip="선택한 구간을 한 칸 앞으로">앞으로 옮기기</button>
+      <button type="button" data-ed="right" data-tip="선택한 구간을 한 칸 뒤로">뒤로 옮기기</button>
+      <button type="button" data-ed="clear" data-tip="선택한 구간의 물체를 모두 지워요">물체 비우기</button>
+      <button type="button" data-ed="del" data-tip="선택한 구간을 지워요">구간 삭제</button>
+      <div class="step" data-icon="base" data-tip="맵 전체의 처음 달리는 속도"><span>시작 속도</span><button type="button" data-ed="base:-5" aria-label="시작 속도 줄이기">−</button><b id="ed-base">0</b><button type="button" data-ed="base:5" aria-label="시작 속도 늘리기">+</button></div>
+      <div class="step" data-icon="gain" data-tip="맵을 달릴수록 빨라지는 정도"><span>가속</span><button type="button" data-ed="gain:-5" aria-label="가속 줄이기">−</button><b id="ed-gain">0</b><button type="button" data-ed="gain:5" aria-label="가속 늘리기">+</button></div>
     </div>
   </section>
 

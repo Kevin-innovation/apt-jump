@@ -119,6 +119,33 @@ function zoneAt(x: number, plan: CityPlan) {
   return { profile: PROFILES[d.kind], kind: d.kind, rest, surge, lap: Math.min(0.12, (d.lap - 1) * 0.03), event: lapEvent(d.lap, plan) as LapEvent };
 }
 
+/**
+ * A marked building's passage from its glass at `start`: the floor and the ramp back up, a crate, a duct and a
+ * crate inside, spaced by the time each slide takes, and gold for the way. Ids come from `id`, in that order.
+ * Shared by the endless city and made maps.
+ */
+export function passage(start: number, y: number, speed: number, id: () => number): { route: Route; obstacles: Obstacle[]; coins: Coin[] } {
+  const run = Math.round(speed * (0.6 + SLIDE_SPACING * 2 + 0.5));
+  const ramp = Math.round(ROUTE_DEPTH * RAMP_RUN);
+  const floor = y + ROUTE_DEPTH;
+  const route = { id: id(), x: start, hatch: HATCH_W, y: floor, rampStart: start + HATCH_W + run, rampEnd: start + HATCH_W + run + ramp };
+  const obstacles: Obstacle[] = [], coins: Coin[] = [];
+  (['box', 'bar', 'box'] as const).forEach((kind, i) => {
+    const size = OBSTACLE_SIZE[kind], ox = Math.round(start + HATCH_W + speed * (0.6 + SLIDE_SPACING * i));
+    const top = y + CEILING;
+    obstacles.push(kind === 'bar' ? { id: id(), kind, x: ox, y: top, w: size.w, h: floor - BAR_GAP - top }
+      : { id: id(), kind, x: ox, y: floor - size.h, ...size });
+    for (let k = 0; k < 2; k++) coins.push({ x: ox + 36 + k * 16, y: floor - 8, kind: 'gold', taken: false });
+  });
+  // The roof stays an easy run.
+  for (let i = 0; i < 5; i++) coins.push({ x: start + 70 + i * 18, y: y - 10, kind: 'coin', taken: false });
+  return { route, obstacles, coins };
+}
+/** Clear roof a passage needs from its glass on, at this speed: the way through and a run-up after it. */
+export function passageLength(speed: number): number {
+  return HATCH_W + Math.round(speed * (0.6 + SLIDE_SPACING * 2 + 0.5)) + Math.round(ROUTE_DEPTH * RAMP_RUN) + Math.round(speed * 0.66) + 40;
+}
+
 /** Deterministic city: each gap is sized from what an unboosted, fully held single jump can cross. */
 export class World implements City {
   roofs: Roof[] = [];
@@ -300,18 +327,10 @@ export class World implements City {
     const ramp = Math.round(ROUTE_DEPTH * RAMP_RUN);
     const w = lead + HATCH_W + run + ramp + runupZone(x + lead + run + 400) + 40;
     const r = this.blank(x, w, y);
-    const start = x + lead, floor = y + ROUTE_DEPTH;
-    r.route = { id: this.nextId++, x: start, hatch: HATCH_W, y: floor, rampStart: start + HATCH_W + run, rampEnd: start + HATCH_W + run + ramp };
-    // Spaced by the time it takes: down through the glass, a crate, a duct, a crate.
-    (['box', 'bar', 'box'] as const).forEach((kind, i) => {
-      const size = OBSTACLE_SIZE[kind], ox = Math.round(start + HATCH_W + speed * (0.6 + SLIDE_SPACING * i));
-      const top = y + CEILING;
-      r.obstacles.push(kind === 'bar' ? { id: this.nextId++, kind, x: ox, y: top, w: size.w, h: floor - BAR_GAP - top }
-        : { id: this.nextId++, kind, x: ox, y: floor - size.h, ...size });
-      for (let k = 0; k < 2; k++) this.coin(r, ox + 36 + k * 16, floor - 8, 'gold');
-    });
-    // The roof stays an easy run.
-    for (let i = 0; i < 5; i++) this.coin(r, start + 70 + i * 18, y - 10);
+    const p = passage(x + lead, y, speed, () => this.nextId++);
+    r.route = p.route;
+    r.obstacles.push(...p.obstacles);
+    r.coins.push(...p.coins);
     return r;
   }
 
