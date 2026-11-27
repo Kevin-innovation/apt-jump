@@ -1,10 +1,12 @@
 import { DASH_POINTS, MAGNET_RANGE, MAGNET_SPEED, MAX_AIR_BONUS, POWER_POINTS, POWER_TIME, RUSH_RANGE, type PowerKind } from './items';
 import { missionAt, type Mission, type Tally } from './missions';
 import {
-  BOOST_SPEED, DEFAULT_PACE, jumpReach, MAX_BOOST, newPlayer, paceSpeed, PH, PW, PX_PER_M, roofEnd, STEP, stepPlayer, STUMBLE_FACTOR,
+  BOOST_SPEED, DEFAULT_PACE, gearAt, gearFactor, jumpReach, MAX_BOOST, newPlayer, paceSpeed, PH, PW, PX_PER_M, roofEnd, STEP, stepPlayer, STUMBLE_FACTOR,
   STUMBLE_TIME, timeRate, type JumpInput, type Pace, type PhysEvent, type Player, type SurfaceKind,
 } from './physics';
-import { DISTRICT_LENGTH, districtAt, LAP_LENGTH, lapEvent as eventOfLap, type District, type LapEvent } from './progression';
+import {
+  DISTRICT_LENGTH, districtAt, GOLDEN_MULT, inGolden, LAP_LENGTH, lapEvent as eventOfLap, lapMultiplier, type District, type LapEvent,
+} from './progression';
 import { World, type City, type CoinKind, type SeedSource } from './world';
 
 export const COMBO_TIME = 4;
@@ -15,6 +17,13 @@ export const FEVER_COMBO = 20;
 /** Base points (before any multiplier) that fill the gauge, and the seconds a fever doubles everything. */
 export const FEVER_FILL = 1200;
 export const FEVER_TIME = 8;
+/**
+ * A fever chains: filling the gauge again before it ends goes up a stage, ×2 → ×3 → ×4, each with a fresh clock.
+ * During a fever the gauge fills this much faster, since the time is short.
+ */
+export const FEVER_MULTS = [1, 2, 3, 4] as const;
+export const FEVER_NAMES = ['', '피버', '하이퍼 피버', '울트라 피버'] as const;
+export const CHAIN_FILL = 3;
 /** Combo saves held at most, and how many diamonds earn one. */
 export const MAX_SAVES = 3;
 export const DIAMONDS_PER_SAVE = 3;
@@ -66,8 +75,10 @@ export type GameEvent =
   | { type: 'comboSaved'; combo: number }
   | { type: 'saveGained'; saves: number }
   | { type: 'comboCash'; combo: number; points: number }
-  | { type: 'fever' }
-  | { type: 'lap'; lap: number; event: LapEvent; points: number }
+  | { type: 'fever'; level: number }
+  | { type: 'lap'; lap: number; event: LapEvent; points: number; gained: number; gear: number; mult: number }
+  | { type: 'golden' }
+  | { type: 'goldenEnd'; points: number }
   | { type: 'splash'; points: number; x: number; y: number }
   | { type: 'crumble'; id: number; x: number; y: number }
   | { type: 'rush'; count: number };
@@ -95,6 +106,15 @@ export class Game {
   /** The fever gauge, 0 to 1, and the seconds left of a fever. */
   fever = 0;
   feverTime = 0;
+  /** The fever's stage while one is on: 1 ×2, 2 ×3, 3 ×4. */
+  feverLevel = 0;
+  /** Over a golden rush now, and the score when it began. */
+  golden = false;
+  private goldenFrom = 0;
+  /** The score when this lap began. */
+  private lapFrom = 0;
+  /** What the lap's multiplier adds to the distance points, beyond one a metre. */
+  private distExtra = 0;
   /** Each keeps a combo that would have ended. */
   comboSaves = 0;
   /** Cracked roofs that gave way, and puddles already splashed. */
@@ -131,7 +151,13 @@ export class Game {
 
   get over(): boolean { return this.dead || this.finished; }
   get distance(): number { return Math.max(0, (this.player.x - START_X) / PX_PER_M); }
-  get score(): number { return Math.floor(this.distance) + this.bonus; }
+  get score(): number { return Math.floor(this.distance + this.distExtra) + this.bonus; }
+  /** The lap's gear, from 1: endless runs only. */
+  get gear(): number { return gearAt(this.player.pace, this.player.x); }
+  /** What the lap does to every point: endless runs only. */
+  get lapMult(): number { const d = this.district; return d ? lapMultiplier(d.lap) : 1; }
+  /** Everything a point is multiplied by besides the combo, the fever and items: the lap and a golden rush. */
+  get scoreMult(): number { return this.lapMult * (this.golden ? GOLDEN_MULT : 1); }
   get mult(): number { return multiplier(this.combo); }
   /** The mission under way: endless runs only. */
   get mission(): Mission | null { return this.world.goalX === null ? missionAt(this.missionsDone, this.missionStart) : null; }
@@ -172,7 +198,12 @@ export class Game {
       if (district.lap > lapBefore) {
         const points = LAP_BONUS * lapBefore;
         this.bonus += points;
-        this.events.push({ type: 'lap', lap: district.lap, event: eventOfLap(district.lap, this.world.plan), points });
+        const gained = this.score - this.lapFrom;
+        this.lapFrom = this.score;
+        this.events.push({
+          type: 'lap', lap: district.lap, event: eventOfLap(district.lap, this.world.plan), points, gained,
+          gear: this.gear, mult: lapMultiplier(district.lap),
+        });
         this.startFever();
       }
       return;
@@ -223,22 +254,31 @@ export class Game {
     }
     if (this.combo > 0) this.events.push({ type: 'comboLost', combo: this.combo });
     this.combo = 0; this.comboTimer = 0; this.fever = 0;
+    // A chain falls back to its first stage; the fever itself runs on.
+    if (this.feverLevel > 1) this.feverLevel = 1;
   }
   private gainSave(): void {
     if (this.comboSaves >= MAX_SAVES) return;
     this.comboSaves++;
     this.events.push({ type: 'saveGained', saves: this.comboSaves });
   }
-  private startFever(): void {
+  /** Starts a fever, or with `up` takes a running one a stage higher; the clock starts over either way. */
+  private startFever(up = false): void {
     this.fever = 0;
+    this.feverLevel = this.feverTime > 0 ? Math.min(FEVER_MULTS.length - 1, this.feverLevel + (up ? 1 : 0)) : 1;
     this.feverTime = FEVER_TIME;
-    this.events.push({ type: 'fever' });
+    this.events.push({ type: 'fever', level: this.feverLevel });
   }
   private award(base: number): number {
-    const pts = base * this.mult * (this.doubleTime > 0 ? 2 : 1) * (this.feverTime > 0 ? 2 : 1);
+    const fever = this.feverTime > 0 ? FEVER_MULTS[this.feverLevel]! : 1;
+    const pts = Math.round(base * this.mult * (this.doubleTime > 0 ? 2 : 1) * fever * this.scoreMult);
     this.bonus += pts;
-    // With the multiplier full, points fill the fever gauge.
-    if (this.feverTime <= 0 && this.combo >= FEVER_COMBO && (this.fever += base / FEVER_FILL) >= 1) this.startFever();
+    // With the multiplier full, points fill the fever gauge; during a fever, faster, toward the next stage.
+    // A golden rush pays on its own: it doesn't fill the gauge, so a chain is earned on ordinary roofs.
+    if (!this.golden && this.combo >= FEVER_COMBO && (this.feverTime <= 0 || this.feverLevel < FEVER_MULTS.length - 1)) {
+      this.fever += (base / FEVER_FILL) * (this.feverTime > 0 ? CHAIN_FILL : 1);
+      if (this.fever >= 1) this.startFever(true);
+    }
     return pts;
   }
   /** Everything ahead that stands in the way, and every enemy, turns into gold where it was. */
@@ -308,12 +348,17 @@ export class Game {
     this.time += STEP;
     const p = this.player;
     const rate = timeRate(p);
+    const x0 = p.x;
     stepPlayer(p, input, this.world.roofs, (e) => this.onPhys(e));
     if (this.dead) return;
+    // Distance pays one point a metre, times the lap and a golden rush.
+    if (p.x > x0) this.distExtra += ((p.x - x0) / PX_PER_M) * (this.scoreMult - 1);
+    this.stepGolden();
     this.magnetTime = Math.max(0, this.magnetTime - STEP);
     this.doubleTime = Math.max(0, this.doubleTime - STEP);
     this.keepTime = Math.max(0, this.keepTime - STEP);
     this.feverTime = Math.max(0, this.feverTime - STEP);
+    if (this.feverTime <= 0) this.feverLevel = 0;
 
     // Counted in the runner's simulation time.
     if (this.combo > 0 && this.keepTime <= 0) {
@@ -347,7 +392,8 @@ export class Game {
       this.onRoad = false;
       this.events.push({ type: 'roadExit', x: p.x, y: p.y });
     }
-    const level = 1 + Math.floor((paceSpeed(p.pace, p.x) - p.pace.base) / LEVEL_SPEED);
+    // The speed level leaves out the lap's gear, which the lap itself announces.
+    const level = 1 + Math.floor((paceSpeed(p.pace, p.x) / gearFactor(p.pace, p.x) - p.pace.base) / LEVEL_SPEED);
     if (level > this.level) {
       this.level = level;
       this.events.push({ type: 'speedup', level });
@@ -367,6 +413,18 @@ export class Game {
       return;
     }
     this.world.ensure(p.x, p.x + 1400);
+  }
+
+  /** Over a golden roof or its gap: points ×3. Its start and end are told, the end with what it paid. */
+  private stepGolden(): void {
+    const x = this.player.x;
+    const r = this.world.roofs.find((q) => x >= q.x && x < q.x + q.w + q.gap);
+    // In the endless city a rush ends at the lap's line, even halfway along a roof.
+    const golden = !!r?.golden && (this.world.goalX !== null || inGolden(this.distance));
+    if (golden === this.golden) return;
+    this.golden = golden;
+    if (golden) { this.goldenFrom = this.score; this.events.push({ type: 'golden' }); }
+    else this.events.push({ type: 'goldenEnd', points: this.score - this.goldenFrom });
   }
 
   /** A cracked roof gives way under a runner who stays; a slide through a puddle splashes forward. */

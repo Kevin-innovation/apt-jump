@@ -75,3 +75,26 @@ it('a planning player survives four minutes, up to near top speed, on 25 seeds',
   }
   expect(died).toEqual([]);
 }, 60000);
+
+it('each lap shifts up a gear, pays more, and ends in a golden rush', async () => {
+  const { LAP_LENGTH, lapMultiplier } = await import('../src/progression');
+  const { PX_PER_M } = await import('../src/physics');
+  const g = new Game(3), b = new Bot();
+  const seen: { type: string; [k: string]: unknown }[] = [];
+  while (!g.dead && g.distance < LAP_LENGTH * 2 + 50) {
+    g.step(b.next(g));
+    for (const e of g.drain()) if (['lap', 'golden', 'goldenEnd', 'fever'].includes(e.type)) seen.push(e as never);
+  }
+  const laps = seen.filter((e) => e.type === 'lap');
+  expect(laps.map((e) => [e.lap, e.gear, e.mult])).toEqual([[2, 2, lapMultiplier(2)], [3, 3, lapMultiplier(3)]]);
+  expect(laps.every((e) => (e.gained as number) > 0)).toBe(true);
+  // A rush starts before each lap's end and pays when it is over.
+  const golds = seen.filter((e) => e.type === 'goldenEnd');
+  expect(golds.length).toBeGreaterThanOrEqual(2);
+  expect(golds.every((e) => (e.points as number) > 0)).toBe(true);
+  expect(g.player.x).toBeGreaterThan(LAP_LENGTH * 2 * PX_PER_M);
+  // A chain goes up a stage at a time, from ×2.
+  const fevers = seen.filter((e) => e.type === 'fever').map((e) => e.level as number);
+  expect(fevers[0]).toBe(1);
+  fevers.forEach((l, i) => { if (i) expect(l <= fevers[i - 1]! + 1).toBe(true); });
+}, 60000);

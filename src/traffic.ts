@@ -7,7 +7,7 @@ export function roadCars(road: Road, time: number): Car[] {
   if (road.traffic === false) return [];
   const left = road.x + 65, span = road.rampStart - left - 34;
   if (span < 100) return [];
-  const count = Math.max(1, Math.floor(span / 245));
+  const count = Math.max(1, Math.floor(span / (road.spacing ?? 245)));
   const speed = 75 + (road.id % 4) * 9;
   return Array.from({ length: count }, (_, i) => {
     const offset = (i + 0.6) * span / count + (road.id % 7) * 13 - time * speed;

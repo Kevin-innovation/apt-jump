@@ -1,5 +1,5 @@
-import { baseSpeed, CEILING, ease, jumpHeightAt, jumpReach, jumpTime, PX_PER_M, roofEnd } from './physics';
-import { cityPlan, districtAt, lapEvent, type CityPlan, type DistrictKind, type LapEvent } from './progression';
+import { baseSpeed, CEILING, DEFAULT_PACE, ease, gearFactor, jumpHeightAt, jumpReach, jumpTime, PX_PER_M, roofEnd } from './physics';
+import { cityPlan, districtAt, inGolden, lapEvent, type CityPlan, type DistrictKind, type LapEvent } from './progression';
 import { POWER_KINDS, type Power, type PowerKind } from './items';
 import { mixSeed, Rng } from './rng';
 
@@ -16,7 +16,8 @@ export interface Enemy { id: number; kind: 'drone' | 'pigeon'; x: number; y: num
  */
 export interface Route { id: number; x: number; hatch: number; y: number; rampStart: number; rampEnd: number }
 /** A street under a run of scaffolds, with a ramp back up to the next building. */
-export interface Road { id: number; x: number; y: number; rampStart: number; rampEnd: number; rampY: number; traffic?: boolean }
+/** spacing: room between cars, wider in a higher gear so they come no more often (made maps keep the usual). */
+export interface Road { id: number; x: number; y: number; rampStart: number; rampEnd: number; rampY: number; traffic?: boolean; spacing?: number }
 /** Rising air in a gap: it lifts a runner inside its column up to `top`. */
 export interface Vent { x: number; w: number; top: number }
 /** Water on a roof: sliding through it splashes for points and speed. */
@@ -27,6 +28,8 @@ export interface Roof {
   vent?: Vent; puddles?: Puddle[];
   /** Gives way under a runner who stays on it too long. */
   cracked?: boolean;
+  /** Part of a golden rush: points ×3 over it and its gap. */
+  golden?: boolean;
   /** Gap to the next roof and its height change. */
   gap: number; nextDy: number;
 }
@@ -116,7 +119,10 @@ function zoneAt(x: number, plan: CityPlan) {
   const rest = d.progress >= 0.85;
   const surge = !rest && d.progress >= 0.5;
   // Each lap presses harder, up to the fifth.
-  return { profile: PROFILES[d.kind], kind: d.kind, rest, surge, lap: Math.min(0.12, (d.lap - 1) * 0.03), event: lapEvent(d.lap, plan) as LapEvent };
+  return {
+    profile: PROFILES[d.kind], kind: d.kind, rest, surge, lap: Math.min(0.12, (d.lap - 1) * 0.03), event: lapEvent(d.lap, plan) as LapEvent,
+    golden: inGolden(Math.max(0, (x - 60) / PX_PER_M)),
+  };
 }
 
 /**
@@ -185,6 +191,7 @@ export class World implements City {
     return {
       id: n, kind, x, w, y, style: this.rng.int(0, 4), seed: this.rng.int(1, 1e9), number: 100 + n,
       obstacles: [], lines: [], coins: [], powers: [], enemies: [], road: null, gap: 0, nextDy: 0,
+      ...(inGolden(Math.max(0, (x - 60) / PX_PER_M)) ? { golden: true } : {}),
     };
   }
   private coin(r: Roof, x: number, y: number, kind: CoinKind = 'coin'): void { r.coins.push({ x, y, kind, taken: false }); }
@@ -216,6 +223,7 @@ export class World implements City {
     const d = difficulty(edge);
     const overRoad = this.scaffolds > 0 || this.roadOwner !== null;
     const z = zoneAt(edge, this.plan);
+    if (z.golden && !overRoad) { this.goldenGap(r, edge); return; }
     let dy = Math.round(this.rng.range(-MAX_RISE, MAX_DROP) * (0.45 + 0.55 * d) * z.profile.rise * (z.rest ? 0.5 : 1));
     dy = Math.max(-MAX_RISE, Math.min(MAX_DROP, dy));
     if (overRoad) dy = Math.round(this.rng.range(-18, 18)); // keep scaffolds clear of the street
@@ -253,6 +261,27 @@ export class World implements City {
         this.coin(r, edge - 8 + speed * t * Math.min(1, share + 0.2), r.y - jumpHeightAt(t) - 6);
       }
     }
+  }
+
+  /** A golden rush: short, level hops with an arc of gold over each. */
+  private goldenGap(r: Roof, edge: number): void {
+    let dy = Math.round(this.rng.range(-16, 16));
+    if (r.y + dy < -80 || r.y + dy > 80) dy = -dy;
+    const speed = baseSpeed(edge), reach = jumpReach(speed, dy), share = this.rng.range(0.3, 0.42);
+    r.nextDy = dy;
+    r.gap = Math.max(26, Math.round(reach * share));
+    const T = jumpTime(dy);
+    for (let i = 0; i < 3; i++) {
+      const t = T * (0.2 + (0.6 * i) / 2);
+      this.coin(r, edge - 8 + speed * t * Math.min(1, share + 0.2), r.y - jumpHeightAt(t) - 6, i === 1 ? 'gold' : 'coin');
+    }
+  }
+  /** A golden rush roof: open, a row of coins, now and then a diamond up where a double jump reaches. */
+  private goldenRoof(x: number, y: number, speed: number): Roof {
+    const r = this.blank(x, Math.round(speed * this.rng.range(1.1, 1.6)), y);
+    for (let cx = x + 30; cx < x + r.w - 20; cx += 52) this.coin(r, cx, y - 10);
+    if (this.rng.chance(0.45)) this.coin(r, x + Math.round(r.w * 0.5), y - 118, 'diamond');
+    return r;
   }
 
   private furnish(r: Roof): void {
@@ -339,12 +368,13 @@ export class World implements City {
     this.sinceRoad++;
     const z = zoneAt(r.x, this.plan);
     // No new street in a district's breather.
-    if (r.x < ROAD_START || z.rest || (this.sinceRoad < z.profile.roadEvery && !this.rng.chance(z.profile.roadChance))) return;
+    if (r.x < ROAD_START || z.rest || z.golden || zoneAt(r.x + r.w + 2400, this.plan).golden || (this.sinceRoad < z.profile.roadEvery && !this.rng.chance(z.profile.roadChance))) return;
     this.sinceRoad = 0;
     this.roadOwner = r;
     this.scaffolds = this.rng.int(3, 4) + z.profile.scaffolds;
     const x = r.x + r.w;
-    r.road = { id: this.nextId++, x, y: r.y + ROAD_DEPTH, rampStart: x, rampEnd: x, rampY: r.y };
+    const spacing = Math.round(245 * gearFactor(DEFAULT_PACE, x));
+    r.road = { id: this.nextId++, x, y: r.y + ROAD_DEPTH, rampStart: x, rampEnd: x, rampY: r.y, ...(spacing > 245 ? { spacing } : {}) };
   }
 
   private closeRoad(next: Roof): void {
@@ -385,8 +415,15 @@ export class World implements City {
       return;
     }
     const z = zoneAt(x, this.plan);
+    if (z.golden && !this.roadOwner) {
+      const r = this.goldenRoof(x, y, speed);
+      this.maybePower(r);
+      this.planGap(r);
+      this.roofs.push(r);
+      return;
+    }
     this.sinceRoute++;
-    if (x >= ROUTE_START && !z.rest && this.sinceRoute >= 8 && (this.sinceRoute >= 13 || this.rng.chance(0.25))) {
+    if (x >= ROUTE_START && !z.rest && !z.golden && this.sinceRoute >= 8 && (this.sinceRoute >= 13 || this.rng.chance(0.25))) {
       this.sinceRoute = 0;
       this.sincePower++; // as long as two roofs
       const marked = this.routeBuilding(x, y);

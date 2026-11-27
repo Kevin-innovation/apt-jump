@@ -5,6 +5,7 @@ import {
   AIR_COOLDOWN, baseSpeed, DEFAULT_PACE, enemyBox, newPlayer, PH, PW, STEP, stepPlayer, type PhysEvent, type Player,
 } from '../src/physics';
 import { DIAMOND_HEIGHT, ENEMY_START, World, type Enemy, type Roof } from '../src/world';
+import { GEAR_MAX } from '../src/progression';
 
 const idle = { pressed: false, held: false };
 const roof = (x: number, w: number, y: number, extra: Partial<Roof> = {}): Roof => ({
@@ -166,7 +167,8 @@ describe('speed', () => {
     expect(at(1000)).toBeGreaterThan(at(0) * 1.65);
     for (let m = 0; m < 20000; m += 50) {
       expect(at(m + 50)).toBeGreaterThan(at(m));
-      expect(at(m)).toBeLessThan(DEFAULT_PACE.base + DEFAULT_PACE.gain + 8 * DEFAULT_PACE.stageGain!);
+      // Each lap's gear adds to it, up to GEAR_MAX.
+      expect(at(m)).toBeLessThan((DEFAULT_PACE.base + DEFAULT_PACE.gain + 8 * DEFAULT_PACE.stageGain!) * (1 + GEAR_MAX));
     }
   });
 });
@@ -178,12 +180,13 @@ describe('enemies', () => {
     return out;
   };
   it('stay away from the opening and grow more common', () => {
-    const all = enemies(60, 40000);
+    const all = enemies(60, 48000);
     expect(Math.min(...all.map((a) => a.e.x))).toBeGreaterThan(ENEMY_START);
     const count = (a: number, b: number) => all.filter(({ e }) => e.x >= a && e.x < b).length;
     // Encounters per second matter: at late speeds, each kilometre is crossed much sooner. Measured over a long
     // stretch, since which districts come where differs from city to city.
-    expect(count(26000, 40000) / 14000 * baseSpeed(33000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) / 4000 * baseSpeed(ENEMY_START + 2000) * 1.3);
+    // Past the first lap's golden rush, which has none.
+    expect(count(33000, 47000) / 14000 * baseSpeed(40000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) / 4000 * baseSpeed(ENEMY_START + 2000) * 1.3);
     expect(all.some(({ e }) => e.kind === 'drone')).toBe(true);
     expect(all.some(({ e }) => e.kind === 'pigeon')).toBe(true);
   });

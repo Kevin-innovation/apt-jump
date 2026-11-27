@@ -1,5 +1,5 @@
 import { drawPower, powerColor } from './art';
-import { COMBO_TIME, FEVER_COMBO, FEVER_TIME, SAVED_COMBO, type Game } from './game';
+import { COMBO_TIME, FEVER_COMBO, FEVER_MULTS, FEVER_NAMES, FEVER_TIME, SAVED_COMBO, type Game } from './game';
 import { LAP_EVENT_NAMES, LAP_EVENT_TEXT } from './progression';
 import { POWER_KINDS, POWER_NAMES, POWER_TEXT, POWER_TIME, type PowerKind } from './items';
 import { medalFor, missionText, nextMedal } from './missions';
@@ -38,6 +38,9 @@ const CROSS = '<path d="M5 2h1v1H5zM7 2h1v1H7zM6 3h1v2H6zM5 5h1v1H5zM7 5h1v1H7z"
 const num = (n: number) => n.toLocaleString('ko-KR');
 
 export class UI {
+  /** The score as shown, rolling up to the real one. */
+  private shown = 0;
+  private pumping = false;
   screen: ScreenName | null = null;
   onAct: (a: Act) => void = () => {};
   private device: Device = 'key';
@@ -230,10 +233,25 @@ export class UI {
     meter.classList.toggle('charging', charge > 0);
     meter.classList.toggle('full', charge >= 0.99);
     this.text('jump-label', charge >= 0.99 ? '최대 높이!' : charge > 0 ? '꾹 누르는 중…' : '길게 누를수록 높게');
-    this.text('score', num(g.score));
+    // The score rolls up to what it is, quicker the further behind it is, and swells a little on a big jump.
+    const target = g.score;
+    if (target < this.shown || g.time < 0.1) this.shown = target;
+    else if (target > this.shown) {
+      const gap = target - this.shown;
+      this.shown += Math.max(1, Math.ceil(gap * 0.22));
+      if (gap >= 2000 && !this.pumping) { this.pumping = true; const s = this.el('score'); s.classList.remove('pump'); void s.offsetWidth; s.classList.add('pump'); }
+    }
+    if (this.shown >= target) this.pumping = false;
+    this.text('score', num(this.shown));
+    // Endless runs: the lap's gear and what every point is multiplied by (gold in a golden rush).
+    const endless = g.progress === null;
+    const mult = g.scoreMult;
+    this.hidden('lapx', !endless || mult <= 1);
+    if (endless && mult > 1) this.text('lapx', `${g.golden ? '골든 ' : '점수 '}x${Number.isInteger(mult) ? mult : mult.toFixed(1)}`);
+    this.el('lapx').classList.toggle('golden', g.golden);
     this.text('dist', `${Math.floor(g.distance)}m`);
     this.text('coins', String(g.coins));
-    this.text('lv', g.progress === null ? `속도 ${g.level}` : `${Math.floor(g.progress * 100)}%`);
+    this.text('lv', g.progress === null ? (g.gear > 1 ? `기어 ${g.gear} · 속도 ${g.level}` : `속도 ${g.level}`) : `${Math.floor(g.progress * 100)}%`);
     const bestRow = this.el('best').parentElement!;
     if (bestRow.hidden !== (g.progress !== null)) bestRow.hidden = g.progress !== null;
     this.el('air').classList.toggle('ready', canAirJump(g.player));
@@ -277,7 +295,10 @@ export class UI {
     }
     this.hidden('fever', !gauge);
     this.el('fever').classList.toggle('on', fever);
-    this.text('fever-label', fever ? `피버 x2 ${Math.ceil(g.feverTime)}초` : '피버');
+    // A running fever shows its stage and, until the last, how close the next one is.
+    const next = fever && g.feverLevel < FEVER_MULTS.length - 1 ? ` ▲${Math.floor(Math.min(1, g.fever) * 100)}%` : '';
+    this.text('fever-label', fever ? `${FEVER_NAMES[g.feverLevel]} x${FEVER_MULTS[g.feverLevel]} ${Math.ceil(g.feverTime)}초${next}` : '피버');
+    this.el('fever').dataset.level = String(fever ? g.feverLevel : 0);
     this.style('fever-bar', 'transform', `scaleX(${fever ? g.feverTime / FEVER_TIME : Math.min(1, g.fever)})`);
   }
   /** A combo worth keeping with under a second left on its clock. */

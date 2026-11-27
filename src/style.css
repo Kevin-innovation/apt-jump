@@ -573,3 +573,13 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .ed-toast.warn { background: #6a1f3c; border-color: #ff7a7a; }
 .ed-toast.show { opacity: 1; transform: translate(-50%, 0); pointer-events: auto; cursor: pointer; }
 @media (prefers-reduced-motion: reduce) { .ed-toast { transition: none; } }
+
+/* The lap's score multiplier beside the speed, gold in a golden rush; the score swells on a big jump. */
+#lapx { color: #7dfff0; font-weight: 700; }
+#lapx.golden { color: #f5c440; text-shadow: 0 0 6px rgba(245,196,64,.7); }
+#hud .score #score { display: inline-block; transform-origin: left center; }
+#score.pump { animation: score-pump .35s ease-out; }
+@keyframes score-pump { 0% { transform: scale(1); } 35% { transform: scale(1.18); color: #ffd85a; } 100% { transform: scale(1); } }
+#fever[data-level='2'] { color: #ff9be6; }
+#fever[data-level='3'] { color: #fff; text-shadow: 0 0 6px #ff3d3d, 0 0 10px #5ad1ff; }
+@media (prefers-reduced-motion: reduce) { #score.pump { animation: none; } }

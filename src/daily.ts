@@ -25,7 +25,7 @@ const POOL: { stat: DailyStat; goals: readonly [number, number, number]; text: (
   { stat: 'stomps', goals: [8, 20, 40], text: (n) => `밟기 ${n}번` },
   { stat: 'slides', goals: [8, 20, 40], text: (n) => `슬라이드 ${n}번` },
   { stat: 'coins', goals: [150, 400, 900], text: (n) => `동전 ${n}개 모으기` },
-  { stat: 'bestScore', goals: [15000, 50000, 120000], text: (n) => `한 판에 ${n}점` },
+  { stat: 'bestScore', goals: [30000, 100000, 250000], text: (n) => `한 판에 ${n}점` },
 ];
 /** Coins for the easy, middle and hard mission of a day. */
 export const DAILY_REWARDS = [200, 350, 600] as const;

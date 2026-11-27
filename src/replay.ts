@@ -4,7 +4,7 @@ import { SEGMENT, World } from './world';
 import { STEP, type JumpInput } from './physics';
 
 /** Raise whenever a change makes an old replay play differently. */
-export const SIM_VERSION = 8;
+export const SIM_VERSION = 9;
 export const MAX_STEPS = Math.round((30 * 60) / STEP);
 export const MAX_REPLAY = 120_000;
 /**
@@ -14,7 +14,7 @@ export const MAX_REPLAY = 120_000;
 export const SEGMENT_SEEDS = 330;
 export const RELEASE_LEAD = 15;
 /** Faster than any runner moves on screen: top pace, full boost and the speed item together. */
-export const RELEASE_SPEED = 760;
+export const RELEASE_SPEED = 1100;
 export function releasedSeeds(elapsedMs: number): number {
   return Math.max(1, Math.min(SEGMENT_SEEDS, Math.floor((Math.max(0, elapsedMs) / 1000 + RELEASE_LEAD) * RELEASE_SPEED / SEGMENT) + 1));
 }

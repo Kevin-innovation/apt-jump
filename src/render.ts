@@ -2,8 +2,8 @@ import { START_X, type Game, type GameEvent } from './game';
 import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawRoute, drawScaffold, drawTank, drawWarning, powerColor } from './art';
 import { GLIDE_FALL, MAGNET_RANGE, POWER_NAMES } from './items';
 import { missionText } from './missions';
-import { BOOST_SPEED, canAirJump, enemyBox, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, SLIDE_TIME, timeRate } from './physics';
-import { districtAt, LAP_EVENT_NAMES, LAP_LENGTH, type District, type DistrictKind, type LapEvent } from './progression';
+import { BOOST_SPEED, canAirJump, enemyBox, gearFactor, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, SLIDE_TIME, timeRate } from './physics';
+import { districtAt, GEAR_MAX, LAP_EVENT_NAMES, LAP_LENGTH, type District, type DistrictKind, type LapEvent } from './progression';
 import { Rng } from './rng';
 import { makeSprites, type Sprites } from './sprites';
 import { costumeById } from './shop';
@@ -27,6 +27,14 @@ const KINDS: readonly DistrictKind[] = ['residential', 'construction', 'neon', '
 const FONT = '11px Galmuri11, "Malgun Gothic", sans-serif';
 const BIG_FONT = '22px Galmuri11, "Malgun Gothic", sans-serif';
 const FEVER_COLORS = ['#ff7a3d', '#ffd85a', '#7dfff0', '#ff9be6'];
+/** Frame colours: a golden rush, then each fever stage. */
+const FRAME_COLORS: Record<number, readonly string[]> = {
+  0: ['#f5c440', '#fff6c0', '#e8a020', '#ffe680'],
+  1: FEVER_COLORS,
+  2: ['#ff5ad1', '#b35cff', '#ffd85a', '#ff9be6'],
+  3: ['#ff3d3d', '#ffd85a', '#7dff8a', '#5ad1ff', '#b35cff', '#ffffff'],
+};
+const FEVER_TITLES = ['', '피버 타임! x2', '하이퍼 피버! x3', '울트라 피버!! x4'];
 const HEAD = 54;
 export const RISK_NAMES = { tank: '위험한 길: 물탱크', line: '위험한 길: 빨랫줄', far: '먼 옥상 점프', inside: '창문 돌파' } as const;
 const hex = (h: string): RGB => [parseInt(h.slice(1, 3), 16), parseInt(h.slice(3, 5), 16), parseInt(h.slice(5, 7), 16)];
@@ -641,8 +649,22 @@ export class Renderer {
       case 'comboSaved': this.shake = Math.max(this.shake, 2); burst(18, p.x + 5, p.y - 10, ['#ff6b81', '#fff6e0', '#ffd85a'], 120, 30); pop(p.x - 14, p.y - 40, `콤보 세이브! ${e.combo}콤보 유지`, '#ff8fa3'); break;
       case 'saveGained': pop(p.x - 8, p.y - 46, `콤보 세이브 +1 (${e.saves}/3)`, '#ff8fa3'); break;
       case 'comboCash': burst(16, p.x + 5, p.y - 20, ['#ffd85a', '#fff'], 120, 30); pop(p.x - 14, p.y - 82, `콤보 정산 ${e.combo} +${e.points}`, '#ffd85a'); break;
-      case 'fever': this.shake = Math.max(this.shake, 3); burst(36, p.x + 5, p.y - 10, FEVER_COLORS, 170, 50); pop(p.x - 30, p.y - 62, '피버 타임! x2', '#ff7a3d', true); break;
-      case 'lap': burst(40, p.x + 5, p.y - 20, FEVER_COLORS, 180, 60); pop(p.x - 40, p.y - 96, `${e.lap}랩${e.event === 'none' ? '' : ` · ${LAP_EVENT_NAMES[e.event]}`}!`, '#7dfff0', true); pop(p.x - 10, p.y - 70, `랩 보너스 +${e.points}`, '#ffd85a'); break;
+      case 'fever': {
+        const colors = FRAME_COLORS[e.level] ?? FEVER_COLORS;
+        this.shake = Math.max(this.shake, 2 + e.level * 1.5);
+        burst(30 + e.level * 14, p.x + 5, p.y - 10, [...colors], 160 + e.level * 30, 50);
+        pop(p.x - 30, p.y - 62, FEVER_TITLES[e.level] ?? FEVER_TITLES[1]!, colors[0]!, true);
+        break;
+      }
+      case 'lap':
+        this.shake = Math.max(this.shake, 4);
+        burst(56, p.x + 5, p.y - 20, FEVER_COLORS, 200, 70);
+        pop(p.x - 46, p.y - 110, `${e.lap - 1}랩 클리어! +${e.gained.toLocaleString('ko-KR')}`, '#ffd85a', true);
+        pop(p.x - 40, p.y - 84, `기어 ${e.gear} · 점수 x${e.mult}${e.event === 'none' ? '' : ` · ${LAP_EVENT_NAMES[e.event]}`}`, '#7dfff0', true);
+        pop(p.x - 10, p.y - 62, `랩 보너스 +${e.points.toLocaleString('ko-KR')}`, '#ffd85a');
+        break;
+      case 'golden': this.shake = Math.max(this.shake, 3); burst(40, p.x + 5, p.y - 20, [...FRAME_COLORS[0]!], 190, 60); pop(p.x - 36, p.y - 80, '골든 러시! 점수 x3', '#f5c440', true); break;
+      case 'goldenEnd': if (e.points > 0) { burst(30, p.x + 5, p.y - 20, [...FRAME_COLORS[0]!], 160, 50); pop(p.x - 30, p.y - 136, `골든 러시 +${e.points.toLocaleString('ko-KR')}`, '#f5c440', true); } break;
       case 'splash': burst(18, e.x, e.y - 2, ['#5fb7e6', '#bff6ff', '#ffffff'], 120, 70); pop(e.x - 8, e.y - 20, `물보라 +${e.points}`, '#8fd8ff'); break;
       case 'crumble': this.shake = Math.max(this.shake, 4); burst(20, e.x, e.y, ['#b98a7c', '#e9dcd0', '#6f5a66'], 110, 20); pop(e.x - 10, e.y - 26, '와르르!', '#ff9a7a'); break;
       case 'rush': if (e.count) { burst(24, p.x + 40, p.y - 10, ['#f5c440', '#fff6c0'], 160, 30); pop(p.x - 10, p.y - 50, `코인 러시! 금화 ${e.count}개`, '#f5c440'); } break;
@@ -660,7 +682,8 @@ export class Renderer {
     const sh = this.shakeOn ? this.shake : 0;
     // The faster it goes, the more road ahead is shown.
     const pace = Math.max(0, Math.min(1, (paceSpeed(p.pace, p.x) - 130) / 170));
-    const look = (this.W > this.H ? 0.25 : 0.18) - 0.07 * pace;
+    // A higher gear shows a little more still.
+    const look = (this.W > this.H ? 0.25 : 0.18) - 0.07 * pace - 0.04 * Math.min(1, (gearFactor(p.pace, p.x) - 1) / GEAR_MAX);
     const cx = Math.round(p.x - this.W * look + (Math.random() - 0.5) * sh * 2);
     const cy = Math.round(this.camY + (Math.random() - 0.5) * sh * 2);
 
@@ -709,6 +732,7 @@ export class Renderer {
       if (r.vent) this.drawVent(r.vent.x - cx, r.vent.w, r.vent.top - cy, r.y - cy);
       if (r.puddles) for (const w of r.puddles) this.drawPuddle(Math.round(w.x - cx), Math.round(r.y - cy), w.w, game.splashed.has(w.id));
       if (r.cracked) this.drawCracks(game, r, x, Math.round(r.y - cy));
+      if (r.golden) this.drawGoldenEdge(Math.round(x), Math.round(r.y - cy), r.w);
       const w = r.route;
       if (w) drawRoute(g, Math.round(w.x - cx), Math.round(r.y - cy), w.rampStart - w.x, w.rampEnd - w.rampStart, w.y - r.y, w.hatch, this.broken.has(w.id) || p.inside === r.id, this.t);
       for (const l of r.lines) {
@@ -755,7 +779,10 @@ export class Renderer {
     this.drawWires(cx, cy, dt);
     this.drawWeather(game, cx, cy);
     if (p.slowTime > 0) { g.fillStyle = 'rgba(80,110,255,.12)'; g.fillRect(0, 0, this.W, this.H); }
-    if (game.feverTime > 0) this.drawFeverFrame(game.feverTime);
+    this.drawSpeedLines(game, dt);
+    if (game.golden) { g.fillStyle = 'rgba(255,200,70,.09)'; g.fillRect(0, 0, this.W, this.H); }
+    if (game.feverTime > 0) this.drawFeverFrame(game.feverTime, game.feverLevel);
+    else if (game.golden) this.drawFeverFrame(9, 0);
     this.drawFx(cx, cy, dt, n);
   }
 
@@ -874,18 +901,45 @@ export class Renderer {
   }
 
   /** A fever: a frame of light running round the screen. */
-  private drawFeverFrame(left: number): void {
+  /** The frame round the screen: a fever's colours (hotter and thicker each stage), or gold in a golden rush (0). */
+  private drawFeverFrame(left: number, level: number): void {
     const g = this.g, W = this.W, H = this.H;
     if (left < 1.5 && Math.floor(this.t * 10) % 2) return;
-    const seg = 12, phase = Math.floor(this.t * 20);
+    const colors = FRAME_COLORS[level] ?? FEVER_COLORS;
+    const seg = 12, phase = Math.floor(this.t * (16 + level * 8)), t = level >= 2 ? 3 : 2;
     for (let i = 0; i * seg < W; i++) {
-      g.fillStyle = FEVER_COLORS[(i + phase) % FEVER_COLORS.length]!;
-      g.fillRect(i * seg, 0, seg, 2); g.fillRect(W - (i + 1) * seg, H - 2, seg, 2);
+      g.fillStyle = colors[(i + phase) % colors.length]!;
+      g.fillRect(i * seg, 0, seg, t); g.fillRect(W - (i + 1) * seg, H - t, seg, t);
     }
     for (let i = 0; i * seg < H; i++) {
-      g.fillStyle = FEVER_COLORS[(i + phase + 2) % FEVER_COLORS.length]!;
-      g.fillRect(0, H - (i + 1) * seg, 2, seg); g.fillRect(W - 2, i * seg, 2, seg);
+      g.fillStyle = colors[(i + phase + 2) % colors.length]!;
+      g.fillRect(0, H - (i + 1) * seg, t, seg); g.fillRect(W - t, i * seg, t, seg);
     }
+  }
+
+  /** Streaks rushing past once the run is fast: more and longer the faster it goes, gold in a golden rush. */
+  private drawSpeedLines(game: Game, dt: number): void {
+    const p = game.player;
+    const k = Math.max(0, Math.min(1, (p.vx - 430) / 260)) + (game.golden ? 0.35 : 0);
+    if (k <= 0 || this.quality === 'low') return;
+    const g = this.g, n = Math.round(4 + 14 * Math.min(1, k)), len = 18 + 50 * Math.min(1, k);
+    g.fillStyle = game.golden ? 'rgba(255,220,120,.55)' : 'rgba(255,255,255,.35)';
+    for (let i = 0; i < n; i++) {
+      // Each streak keeps its row and runs right to left, at its own speed.
+      const row = (i * 0.618034) % 1, speed = 0.9 + ((i * 0.37) % 1) * 0.8;
+      const x = this.W - (((this.t * speed * (1.2 + k) + row) % 1) * (this.W + len));
+      g.fillRect(Math.round(x), Math.round(14 + row * (this.H - 28)), Math.round(len), 1);
+    }
+    void dt;
+  }
+
+  /** A golden roof's edge: a gold band with a glint running along it. */
+  private drawGoldenEdge(x: number, y: number, w: number): void {
+    const g = this.g;
+    g.fillStyle = '#f5c440'; g.fillRect(x, y - 1, w, 2);
+    g.fillStyle = '#fff6c0';
+    const glint = Math.round(((this.t * 0.8) % 1) * w);
+    g.fillRect(x + glint, y - 1, Math.min(10, w - glint), 1);
   }
 
   private drawPlayer(game: Game, cx: number, cy: number, dt: number, moving: boolean): void {

@@ -490,7 +490,9 @@ function onEvent(e: GameEvent): void {
     case 'comboSaved': audio.play('save'); input.rumble(90, 0.5); break;
     case 'saveGained': audio.play('save'); break;
     case 'comboCash': audio.play('mission'); break;
-    case 'lap': audio.play('lap'); break;
+    case 'lap': audio.play('lap'); input.rumble(120, 0.5); break;
+    case 'golden': audio.play('rush'); input.rumble(60, 0.3); break;
+    case 'goldenEnd': if (e.points > 0) audio.play('fever'); break;
     case 'splash': audio.play('splash'); break;
     case 'crumble': audio.play('crumble'); input.rumble(140, 0.6); break;
     case 'rush': audio.play('rush'); break;
@@ -593,7 +595,7 @@ function frame(now: number): void {
       break;
   }
   if (phase === 'editor') { editor.draw(dt); return; }
-  audio.tempo = (1 + Math.min(0.25, (game.level - 1) * 0.022)) * (game.player.boostTime > 0 ? 1.12 : 1);
+  audio.tempo = (1 + Math.min(0.42, Math.min(0.25, (game.level - 1) * 0.022) + (game.gear - 1) * 0.03 + (game.golden ? 0.06 : 0))) * (game.player.boostTime > 0 ? 1.12 : 1);
   audio.night = view.nightAt(game.distance);
   audio.mood = phase === 'title' ? 'none' : game.lapEvent;
   view.draw(game, phase === 'paused' || phase === 'countdown' ? 0 : dt, phase === 'playing' || phase === 'title');

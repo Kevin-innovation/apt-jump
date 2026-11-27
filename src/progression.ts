@@ -3,6 +3,16 @@ import { mixSeed, Rng } from './rng';
 /** One district is 400 m of running; five districts make one 2 km lap. */
 export const DISTRICT_LENGTH = 400;
 export const LAP_LENGTH = DISTRICT_LENGTH * 5;
+/** The last metres of every lap are a golden rush: open roofs, rows of gold, points ×3. */
+export const GOLDEN_LENGTH = 240;
+export const GOLDEN_MULT = 3;
+/** Whether a distance into an endless run lies in a lap's golden rush. */
+export function inGolden(m: number): boolean { return m > 0 && m % LAP_LENGTH >= LAP_LENGTH - GOLDEN_LENGTH; }
+/** Points for everything grow with the lap: ×1, ×1.5, ×2 … up to ×5 from the ninth. */
+export function lapMultiplier(lap: number): number { return Math.min(5, 1 + 0.5 * (Math.max(1, lap) - 1)); }
+/** Each lap puts the city in a higher gear: this much faster per lap, up to GEAR_MAX. */
+export const GEAR_STEP = 0.07;
+export const GEAR_MAX = 0.42;
 
 export type DistrictKind = 'residential' | 'construction' | 'neon' | 'riverside' | 'highrise';
 /**

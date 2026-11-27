@@ -35,9 +35,10 @@ export const onFloor = (t: ItemType) => t === 'ac' || t === 'tank' || t === 'pig
 export interface MapItem { t: ItemType; x: number; y: number }
 /**
  * `route`: a marked building with a passage under its glass roof; `vent`: rising air in the gap after it;
- * `cracked`: a roof that gives way under a runner who stays. All optional, so older maps read as they were.
+ * `cracked`: a roof that gives way under a runner who stays; `golden`: a golden rush, points ×3 over the segment
+ * and its gap. All optional, so older maps read as they were.
  */
-export interface Segment { kind: 'building' | 'scaffold'; w: number; h: number; gap: number; road: boolean; items: MapItem[]; route?: boolean; vent?: boolean; cracked?: boolean }
+export interface Segment { kind: 'building' | 'scaffold'; w: number; h: number; gap: number; road: boolean; items: MapItem[]; route?: boolean; vent?: boolean; cracked?: boolean; golden?: boolean }
 export interface GameMap { format: typeof MAP_FORMAT; version: typeof MAP_VERSION; title: string; pace: Pace; segments: Segment[] }
 export interface MapProblem { segment: number | null; text: string }
 export type MapResult = { map: GameMap; problems: MapProblem[] } | { map: null; problems: MapProblem[] };
@@ -82,9 +83,10 @@ export function readMap(v: unknown): MapResult {
       if (!whole(it.x, [0, s.w + s.gap]) || !whole(it.y, onFloor(t) ? [0, 0] : LIMITS.itemY)) { bad(i, `${ITEM_NAMES[t]}의 위치가 범위를 벗어났습니다.`); continue; }
       list.push({ t, x: it.x, y: it.y });
     }
-    for (const flag of ['route', 'vent', 'cracked'] as const) if (s[flag] !== undefined && typeof s[flag] !== 'boolean') bad(i, '구간 설정 값이 잘못되었습니다.');
+    for (const flag of ['route', 'vent', 'cracked', 'golden'] as const) if (s[flag] !== undefined && typeof s[flag] !== 'boolean') bad(i, '구간 설정 값이 잘못되었습니다.');
     segments.push({ kind: s.kind, w: s.w, h: s.h, gap: s.gap, road: s.road, items: list,
-      ...(s.route === true ? { route: true } : {}), ...(s.vent === true ? { vent: true } : {}), ...(s.cracked === true ? { cracked: true } : {}) });
+      ...(s.route === true ? { route: true } : {}), ...(s.vent === true ? { vent: true } : {}), ...(s.cracked === true ? { cracked: true } : {}),
+      ...(s.golden === true ? { golden: true } : {}) });
     return undefined;
   });
   if (problems.length) return { map: null, problems };
@@ -217,6 +219,7 @@ export function buildCourse(m: GameMap): Course {
       else r.coins.push({ x: ix, y: iy, kind: it.t, taken: false });
     }
     if (s.cracked) r.cracked = true;
+    if (s.golden) r.golden = true;
     if (s.vent && next) r.vent = { x: x + s.w * UNIT + 4, w: s.gap * UNIT - 8, top: Math.min(y, -next.h * UNIT) - VENT_HEIGHT };
     if (s.route && s.kind === 'building') {
       const speed = paceSpeed(m.pace, x), p = passage(x + routeLead(speed), y, speed, () => id++);

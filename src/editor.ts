@@ -32,6 +32,7 @@ const FORM_ICONS: Record<string, string[]> = {
   road: ['.........', '..rrrr...', '.rcrrcr..', 'rrrrrrrrr', 'rorrrrorr', '.o....o..', '.........', 'y.y.y.y.y', '.........'],
   route: ['cccc.cccc', '#...y...#', '#...y...#', '#.y.y.y.#', '#..yyy..#', '#...y...#', '#.......#', '#.##.##.#', '#########'],
   vent: ['..c...c..', '.ccc.ccc.', 'c.c.c.c.c', '..c...c..', '.c...c...', '..c...c..', '...c...c.', '..c...c..', '#########'],
+  golden: ['....y....', '...yyy...', 'yyyy#yyyy', '.yyy#yyy.', '..yy#yy..', '.yyyyyyy.', '.yy...yy.', 'yy.....yy', '.........'],
   cracked: ['ggggggggg', '####r####', '###r#####', '####r#r##', '###r###r#', '##r######', '#########', '#.#.#.#.#', '#########'],
   add: ['.........', '....y....', '....y....', '....y....', '.yyyyyyy.', '....y....', '....y....', '....y....', '.........'],
   copy: ['#####....', '#...#....', '#..cccccc', '#..c....c', '####c....', '...c....c', '...c....c', '...cccccc', '.........'],
@@ -234,8 +235,8 @@ export class Editor {
       case 'gain': this.edit((m) => { m.pace.gain = clamp(m.pace.gain + by, LIMITS.gain); }); return;
       case 'kind': this.edit(() => { this.seg.kind = this.seg.kind === 'building' ? 'scaffold' : 'building'; if (this.seg.kind === 'scaffold') this.seg.road = false; }); return;
       case 'road': this.edit(() => { this.seg.road = !this.seg.road; }); return;
-      case 'route': case 'vent': case 'cracked': {
-        const key = c as 'route' | 'vent' | 'cracked';
+      case 'route': case 'vent': case 'cracked': case 'golden': {
+        const key = c as 'route' | 'vent' | 'cracked' | 'golden';
         this.edit(() => { if (this.seg[key]) delete this.seg[key]; else this.seg[key] = true; });
         if (key === 'route' && this.seg.route) this.message('유리 지붕에서 ↓ 를 누르면 건물 안 통로로 들어가요. 상자·배관·상자는 자동으로 놓여요.');
         return;
@@ -331,7 +332,7 @@ export class Editor {
     label(road, s.road ? '뒤에 도로: 있음' : '뒤에 도로: 없음');
     road.setAttribute('aria-pressed', String(s.road));
     road.disabled = s.kind !== 'building';
-    const flag = (key: 'route' | 'vent' | 'cracked', name: string, off: boolean) => {
+    const flag = (key: 'route' | 'vent' | 'cracked' | 'golden', name: string, off: boolean) => {
       const b = document.querySelector<HTMLButtonElement>(`[data-ed=${key}]`)!;
       label(b, `${name}: ${s[key] ? '있음' : '없음'}`);
       b.setAttribute('aria-pressed', String(!!s[key]));
@@ -341,6 +342,7 @@ export class Editor {
     flag('route', '실내 통로', s.kind !== 'building' || this.selected === 0 || last);
     flag('vent', '뒤에 상승 기류', last);
     flag('cracked', '균열 옥상', s.kind !== 'building');
+    flag('golden', '골든 러시', false);
     document.querySelectorAll<HTMLElement>('[data-tool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === this.tool)));
     if (!document.querySelector('#editor [data-tip]:hover, #editor [data-tip]:focus-within')) text('ed-help', HELP[this.tool]);
     (document.querySelector('[data-ed=undo]') as HTMLButtonElement).disabled = !this.undoStack.length;
@@ -432,6 +434,11 @@ export class Editor {
         g.fillStyle = 'rgba(220,245,255,.55)';
         for (let k = 0; k < 5; k++) { const sx = r.vent.x - cx + ((k + 0.5) * r.vent.w) / 5; for (let yy = r.vent.top - cy; yy < r.y - cy + 80; yy += 14) g.fillRect(sx, yy + ((this.t * 40 + k * 5) % 14), 1, 6); }
         g.fillStyle = '#bff6ff'; g.fillRect(r.vent.x - cx, r.vent.top - cy, r.vent.w, 1);
+      }
+      // A golden rush: a gold band along the roof and a glow over its gap.
+      if (r.golden) {
+        g.fillStyle = 'rgba(255,200,70,.18)'; g.fillRect(r.x - cx, r.y - cy - 60, r.w + r.gap, 60);
+        g.fillStyle = '#f5c440'; g.fillRect(r.x - cx, r.y - cy - 1, r.w, 3);
       }
       // Cracks across a roof that gives way.
       if (r.cracked) { g.fillStyle = '#2a1c40'; for (let k = r.x + 18; k < r.x + r.w - 12; k += 34) { g.fillRect(k - cx, r.y - cy, 1, 3); g.fillRect(k - cx + 1, r.y - cy + 2, 2, 1); g.fillRect(k - cx - 2, r.y - cy + 3, 2, 1); } }
