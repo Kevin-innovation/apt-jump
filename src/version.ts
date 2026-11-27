@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.1.1', date: '2026-11-27', title: '장애물 테두리 · 안내 글씨 정리',
+    notes: [
+      '부딪히는 장애물에 테두리: 레인보우 = 점프로 넘거나 밟기 (실외기 · 물탱크 · 드론 · 비둘기)',
+      '하늘색 테두리 + ↓ = 슬라이드로 해결 (상자는 부수고, 배관은 밑으로)',
+      '기어 · 구간 정산 · 골든 러시 안내 글씨를 작게',
+    ],
+  },
+  {
     version: '3.1.0', date: '2026-11-27', title: '기어는 거리마다, 더 자주',
     notes: [
       '기어가 2km 랩이 아니라 거리로 올라가요: 300m · 700m · 1.2km · 1.8km · 2.5km … (약 20초마다)',

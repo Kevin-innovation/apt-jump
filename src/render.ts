@@ -13,7 +13,8 @@ import { roadCars } from './traffic';
 type Ctx = CanvasRenderingContext2D;
 type RGB = [number, number, number];
 interface Particle { x: number; y: number; vx: number; vy: number; life: number; max: number; color: string; size: number; g: number }
-interface Popup { x: number; y: number; life: number; text: string; color: string; big?: boolean }
+/** big: news in the middle of the screen; mid: the same, smaller, for tallies and gear changes. */
+interface Popup { x: number; y: number; life: number; text: string; color: string; big?: boolean; mid?: boolean }
 interface Pair { day: HTMLCanvasElement; night: HTMLCanvasElement }
 interface Layer { pair: Pair; speed: number; base: number }
 type Palette = District['palette'];
@@ -26,7 +27,10 @@ const KINDS: readonly DistrictKind[] = ['residential', 'construction', 'neon', '
 
 const FONT = '11px Galmuri11, "Malgun Gothic", sans-serif';
 const BIG_FONT = '22px Galmuri11, "Malgun Gothic", sans-serif';
+const MID_FONT = '13px Galmuri11, "Malgun Gothic", sans-serif';
 const FEVER_COLORS = ['#ff7a3d', '#ffd85a', '#7dfff0', '#ff9be6'];
+/** The outline of things a slide gets past. */
+const SLIDE_EDGE = '#7dfff0';
 /** Frame colours: a golden rush, then each fever stage. */
 const FRAME_COLORS: Record<number, readonly string[]> = {
   0: ['#f5c440', '#fff6c0', '#e8a020', '#ffe680'],
@@ -595,11 +599,11 @@ export class Renderer {
         this.particles.push({ x, y, vx: Math.cos(a) * s, vy: Math.sin(a) * s - up, life: 0, max: 0.3 + Math.random() * 0.35, color: colors[i % colors.length]!, size: Math.random() < 0.4 ? 2 : 1, g: grav });
       }
     };
-    const pop = (x: number, y: number, text: string, color: string, big = false) => {
+    const pop = (x: number, y: number, text: string, color: string, big: boolean | 'mid' = false) => {
       // The same big news again while it is still up only starts it over.
       const same = big && this.popups.find((q) => q.big && q.text === text);
       if (same) same.life = 0;
-      else this.popups.push({ x, y, life: 0, text, color, big });
+      else this.popups.push({ x, y, life: 0, text, color, big: !!big, mid: big === 'mid' });
     };
     switch (e.type) {
       case 'jump':
@@ -660,11 +664,11 @@ export class Renderer {
       case 'gear':
         this.shake = Math.max(this.shake, e.up ? 4 : 2);
         burst(e.up ? 56 : 30, p.x + 5, p.y - 20, FEVER_COLORS, 200, 70);
-        if (e.up) pop(p.x - 46, p.y - 120, `기어 ${e.gear}! 점수 x${e.mult}`, '#7dfff0', true);
-        if (e.gained > 0) pop(p.x - 30, p.y - (e.up ? 96 : 110), `구간 정산 +${e.gained.toLocaleString('ko-KR')}`, '#ffd85a', true);
+        if (e.up) pop(p.x - 46, p.y - 120, `기어 ${e.gear} · 점수 x${e.mult}`, '#7dfff0', 'mid');
+        if (e.gained > 0) pop(p.x - 30, p.y - (e.up ? 96 : 110), `구간 정산 +${e.gained.toLocaleString('ko-KR')}`, '#ffd85a', 'mid');
         break;
-      case 'golden': this.shake = Math.max(this.shake, 3); burst(40, p.x + 5, p.y - 20, [...FRAME_COLORS[0]!], 190, 60); pop(p.x - 36, p.y - 80, '골든 러시! 점수 x3', '#f5c440', true); break;
-      case 'goldenEnd': if (e.points > 0) { burst(30, p.x + 5, p.y - 20, [...FRAME_COLORS[0]!], 160, 50); pop(p.x - 30, p.y - 136, `골든 러시 +${e.points.toLocaleString('ko-KR')}`, '#f5c440', true); } break;
+      case 'golden': this.shake = Math.max(this.shake, 3); burst(40, p.x + 5, p.y - 20, [...FRAME_COLORS[0]!], 190, 60); pop(p.x - 36, p.y - 80, '골든 러시! 점수 x3', '#f5c440', 'mid'); break;
+      case 'goldenEnd': if (e.points > 0) { burst(30, p.x + 5, p.y - 20, [...FRAME_COLORS[0]!], 160, 50); pop(p.x - 30, p.y - 136, `골든 러시 +${e.points.toLocaleString('ko-KR')}`, '#f5c440', 'mid'); } break;
       case 'splash': burst(18, e.x, e.y - 2, ['#5fb7e6', '#bff6ff', '#ffffff'], 120, 70); pop(e.x - 8, e.y - 20, `물보라 +${e.points}`, '#8fd8ff'); break;
       case 'crumble': this.shake = Math.max(this.shake, 4); burst(20, e.x, e.y, ['#b98a7c', '#e9dcd0', '#6f5a66'], 110, 20); pop(e.x - 10, e.y - 26, '와르르!', '#ff9a7a'); break;
       case 'rush': if (e.count) { burst(24, p.x + 40, p.y - 10, ['#f5c440', '#fff6c0'], 160, 30); pop(p.x - 10, p.y - 50, `코인 러시! 금화 ${e.count}개`, '#f5c440'); } break;
@@ -748,10 +752,18 @@ export class Renderer {
       }
       for (const o of r.obstacles) {
         if (p.gone.includes(o.id)) continue;
-        if (o.kind === 'ac') drawAc(g, Math.round(o.x - cx), Math.round(o.y - cy), this.t);
-        else if (o.kind === 'tank') drawTank(g, Math.round(o.x - cx), Math.round(o.y - cy));
-        else if (o.kind === 'box') drawBox(g, Math.round(o.x - cx), Math.round(o.y - cy));
-        else drawBar(g, Math.round(o.x - cx), Math.round(o.y - cy), o.w, o.h, this.t);
+        const ox = Math.round(o.x - cx), oy = Math.round(o.y - cy);
+        if (ox > this.W + 4 || ox + o.w < -4) continue;
+        // Its outline says how to get past: cyan to slide (break a crate, under a duct), rainbow to jump or stomp.
+        const slide = o.kind === 'box' || o.kind === 'bar';
+        this.outlined(slide ? SLIDE_EDGE : this.rainbow(o.x), ox, oy, o.w, o.h, (c, x, y) => {
+          if (o.kind === 'ac') drawAc(c, x, y, this.t);
+          else if (o.kind === 'tank') drawTank(c, x, y);
+          else if (o.kind === 'box') drawBox(c, x, y);
+          else drawBar(c, x, y, o.w, o.h, this.t);
+        });
+        if (o.kind === 'box') this.slideMark(ox + o.w / 2, oy - 7);
+        else if (o.kind === 'bar') this.slideMark(ox + o.w / 2, oy + o.h + 2);
       }
       for (const c of r.coins) if (!c.taken) {
         if (c.kind === 'diamond') { drawDiamond(g, Math.round(c.x - cx - 5), Math.round(c.y - cy - 4 + Math.sin(this.t * 3) * 2), this.t); continue; }
@@ -772,7 +784,7 @@ export class Renderer {
       if (ex > this.W - 4) {
         // Warn before it comes into view.
         if (e.x - p.x < Math.max(this.W, p.vx * 2.4)) drawWarning(g, this.W - 14, Math.max(60, Math.min(this.H - 12, ey + 5)), this.t);
-      } else if (ex > -20) (e.kind === 'drone' ? drawDrone : drawPigeon)(g, ex, ey, this.t);
+      } else if (ex > -20) this.outlined(this.rainbow(e.x), ex, ey, b.w, b.h, (c, x, y) => (e.kind === 'drone' ? drawDrone : drawPigeon)(c, x, y, this.t));
     }
 
     this.drawPlayer(game, cx, cy, dt, moving);
@@ -933,6 +945,38 @@ export class Renderer {
     void dt;
   }
 
+  /** Scratch canvases for outlines: the thing drawn alone, then its silhouette grown by a pixel. */
+  private outA = document.createElement('canvas');
+  private outB = document.createElement('canvas');
+  /** Draws something with a one-pixel outline of its own shape round it, in the given colour. */
+  private outlined(color: string, x: number, y: number, w: number, h: number, draw: (c: CanvasRenderingContext2D, x: number, y: number) => void): void {
+    const pad = 8, cw = Math.ceil(w) + pad * 2, ch = Math.ceil(h) + pad * 2;
+    const a = this.outA, b = this.outB;
+    if (a.width < cw || a.height < ch) { a.width = b.width = Math.max(a.width, cw); a.height = b.height = Math.max(a.height, ch); }
+    const ga = a.getContext('2d'), gb = b.getContext('2d');
+    if (!ga || !gb) { draw(this.g, x, y); return; }
+    ga.clearRect(0, 0, cw, ch);
+    draw(ga, pad, pad);
+    gb.clearRect(0, 0, cw, ch);
+    for (const [dx, dy] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) gb.drawImage(a, 0, 0, cw, ch, dx, dy, cw, ch);
+    gb.globalCompositeOperation = 'source-in';
+    gb.fillStyle = color; gb.fillRect(0, 0, cw, ch);
+    gb.globalCompositeOperation = 'source-over';
+    this.g.drawImage(b, 0, 0, cw, ch, x - pad, y - pad, cw, ch);
+    this.g.drawImage(a, 0, 0, cw, ch, x - pad, y - pad, cw, ch);
+  }
+  /** A colour going round the rainbow, offset along the street so neighbours differ. */
+  private rainbow(x: number): string { return `hsl(${Math.floor(this.t * 220 + x * 0.6) % 360} 100% 62%)`; }
+  /** A small bobbing ↓ by something to slide into or under. */
+  private slideMark(x: number, y: number): void {
+    const g = this.g, bob = Math.floor(this.t * 4) % 2;
+    x = Math.round(x); y = Math.round(y) + bob;
+    g.fillStyle = '#1a1230'; g.fillRect(x - 3, y - 1, 7, 6);
+    g.fillStyle = SLIDE_EDGE;
+    // An arrow: a stem, then its head narrowing to the point.
+    g.fillRect(x, y, 1, 3); g.fillRect(x - 2, y + 2, 1, 1); g.fillRect(x + 2, y + 2, 1, 1); g.fillRect(x - 1, y + 3, 3, 1); g.fillRect(x, y + 4, 1, 1);
+  }
+
   /** A golden roof's edge: a gold band with a glint running along it. */
   private drawGoldenEdge(x: number, y: number, w: number): void {
     const g = this.g;
@@ -1053,12 +1097,13 @@ export class Renderer {
     }
     popups.length = kept;
     g.textBaseline = 'alphabetic';
-    let bigs = 0;
+    let stack = 0;
     for (const q of this.popups) {
-      g.font = q.big ? BIG_FONT : FONT;
+      g.font = q.mid ? MID_FONT : q.big ? BIG_FONT : FONT;
       // Big news stands in the middle of the screen, stacked when it comes together; the rest floats where it happened.
       const x = q.big ? Math.round((this.W - g.measureText(q.text).width) / 2) : Math.round(q.x - cx - 8);
-      const y = q.big ? Math.round(this.H * 0.42 + 26 * bigs++ - q.life * 10) : Math.round(q.y - cy - q.life * 24);
+      if (q.big) stack += q.mid ? 17 : 26;
+      const y = q.big ? Math.round(this.H * 0.42 - 26 + stack - q.life * 10) : Math.round(q.y - cy - q.life * 24);
       g.globalAlpha = Math.min(1, ((q.big ? 1.5 : 0.9) - q.life) * 4);
       g.fillStyle = '#1a1230';
       for (const [a, b] of [[-1, 0], [1, 0], [0, -1], [0, 1], [1, 1]] as const) g.fillText(q.text, x + a, y + b);
