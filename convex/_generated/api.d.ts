@@ -14,7 +14,9 @@ import type * as auth from "../auth.js";
 import type * as daily from "../daily.js";
 import type * as maps from "../maps.js";
 import type * as maptimes from "../maptimes.js";
+import type * as crons from "../crons.js";
 import type * as ranking from "../ranking.js";
+import type * as rewards from "../rewards.js";
 import type * as shop from "../shop.js";
 import type * as users from "../users.js";
 
@@ -31,7 +33,9 @@ declare const fullApi: ApiFromModules<{
   daily: typeof daily;
   maps: typeof maps;
   maptimes: typeof maptimes;
+  crons: typeof crons;
   ranking: typeof ranking;
+  rewards: typeof rewards;
   shop: typeof shop;
   users: typeof users;
 }>;

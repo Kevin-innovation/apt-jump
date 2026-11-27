@@ -42,7 +42,7 @@ describe('stomp', () => {
   it('from above smashes the unit and bounces', () => {
     // Find a jump that comes down on it.
     const hits = [];
-    for (let x = 60; x < 180; x += 4) { const r = approach(x, 0.3); if (r.ev.some((e) => e.type === 'stomp')) hits.push(r); }
+    for (const hold of [0.05, 0.15, 0.3]) for (let x = 0; x < 180; x += 4) { const r = approach(x, hold); if (r.ev.some((e) => e.type === 'stomp')) hits.push(r); }
     expect(hits.length).toBeGreaterThan(2);
     for (const r of hits) {
       expect(r.ev.some((e) => e.type === 'stumble')).toBe(false);
@@ -185,8 +185,8 @@ describe('enemies', () => {
     const count = (a: number, b: number) => all.filter(({ e }) => e.x >= a && e.x < b).length;
     // Encounters per second matter: at late speeds, each kilometre is crossed much sooner. Measured over a long
     // stretch, since which districts come where differs from city to city.
-    // Past the first lap's golden rush, which has none.
-    expect(count(33000, 47000) / 14000 * baseSpeed(40000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) / 4000 * baseSpeed(ENEMY_START + 2000) * 1.3);
+    // Golden rushes, which have none, take a share of every later stretch.
+    expect(count(33000, 47000) / 14000 * baseSpeed(40000)).toBeGreaterThan(count(ENEMY_START, ENEMY_START + 4000) / 4000 * baseSpeed(ENEMY_START + 2000) * 1.2);
     expect(all.some(({ e }) => e.kind === 'drone')).toBe(true);
     expect(all.some(({ e }) => e.kind === 'pigeon')).toBe(true);
   });

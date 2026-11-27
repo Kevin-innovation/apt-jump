@@ -633,7 +633,7 @@ export class Renderer {
       case 'slideBonus': pop(e.x - 8, e.y - 14, `${e.what === 'smash' ? '돌파' : '슬라이드'} +${e.points}`, '#7dfff0'); break;
       case 'breakin': this.broken.add(e.id); this.shake = Math.max(this.shake, 3); burst(26, e.x, e.y + 2, ['#bff6ff', '#7fd8f0', '#ffffff'], 150, 30); break;
       case 'escape': pop(e.x, e.y - 20, `통로 탈출 +${e.points}`, '#9be36b'); break;
-      case 'stompBonus': pop(e.x - 8, e.y - 18, `밟기 +${e.points}`, '#ffe14a'); break;
+      case 'stompBonus': pop(e.x - 8, e.y - 18, e.chain > 1 ? `연속 밟기 x${e.chain} +${e.points}` : `밟기 +${e.points}`, e.chain > 1 ? '#ff9b3d' : '#ffe14a'); if (e.chain > 1) this.shake = Math.max(this.shake, 1 + e.chain); break;
       case 'power': burst(20, e.x, e.y, [powerColor(e.kind), '#fff'], 130); pop(e.x - 10, e.y - 12, `${POWER_NAMES[e.kind]}! +${e.points}`, powerColor(e.kind)); break;
       case 'dash': pop(e.x, e.y - 18, `질주 착지 +${e.points}`, '#ffd85a'); break;
       case 'mission': burst(30, p.x + 5, p.y - 20, ['#ffd85a', '#9be36b', '#7dfff0', '#fff'], 150, 40); pop(p.x - 14, p.y - 58, `미션 완료! ${missionText(e.mission)} +${e.points}`, '#9be36b'); break;
@@ -787,6 +787,7 @@ export class Renderer {
       } else if (ex > -20) this.outlined(this.rainbow(e.x), ex, ey, b.w, b.h, (c, x, y) => (e.kind === 'drone' ? drawDrone : drawPigeon)(c, x, y, this.t));
     }
 
+    this.drawMarks(game, cx, cy);
     this.drawPlayer(game, cx, cy, dt, moving);
     this.drawWires(cx, cy, dt);
     this.drawWeather(game, cx, cy);
@@ -943,6 +944,35 @@ export class Renderer {
       g.fillRect(Math.round(x), Math.round(14 + row * (this.H - 28)), Math.round(len), 1);
     }
     void dt;
+  }
+
+  /** Flags to chase along the endless city, in metres: my best, this week's first. */
+  marks: { m: number; label: string; color: string }[] = [];
+  /** Each flag on the roof under it (or the last roof before its gap), with its name above. */
+  private drawMarks(game: Game, cx: number, cy: number): void {
+    if (game.progress !== null) return;
+    const g = this.g;
+    for (const k of this.marks) {
+      const wx = START_X + k.m * PX_PER_M, x = Math.round(wx - cx);
+      if (x < -60 || x > this.W + 4) continue;
+      const roof = [...game.world.roofs].reverse().find((r) => r.x <= wx);
+      if (!roof) continue;
+      const y = Math.round(roof.y - cy);
+      g.fillStyle = '#1a1230'; g.fillRect(x - 1, y - 34, 3, 34);
+      g.fillStyle = '#e9dcd0'; g.fillRect(x, y - 34, 1, 34);
+      const wave = Math.floor(this.t * 6) % 2;
+      g.fillStyle = k.color; g.fillRect(x + 1, y - 34 + wave, 12, 7); g.fillRect(x + 13, y - 32 + wave, 2, 3);
+      g.font = FONT; g.textBaseline = 'alphabetic';
+      const w = g.measureText(k.label).width;
+      g.fillStyle = '#1a1230';
+      for (const [a, b] of [[-1, 0], [1, 0], [0, -1], [0, 1]] as const) g.fillText(k.label, x - w / 2 + 6 + a, y - 38 + b);
+      g.fillStyle = k.color; g.fillText(k.label, x - w / 2 + 6, y - 38);
+    }
+  }
+  /** Big news from outside the run, e.g. a flag passed. */
+  announce(text: string, color: string, game: Game): void {
+    const p = game.player;
+    this.popups.push({ x: p.x, y: p.y - 60, life: 0, text, color, big: true, mid: true });
   }
 
   /** Scratch canvases for outlines: the thing drawn alone, then its silhouette grown by a pixel. */

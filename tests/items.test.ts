@@ -4,7 +4,7 @@ import { COIN_POINTS, COMBO_TIME, FEVER_FILL, FEVER_TIME, Game } from '../src/ga
 import { BOOST_RATE, DASH_POINTS, MAX_AIR_BONUS, POWER_KINDS, POWER_POINTS, POWER_TIME, type PowerKind } from '../src/items';
 import { buildCourse, PRACTICE, checkMap, parseMap, serializeMap, type GameMap } from '../src/maps';
 import { medalFor, MEDALS, MISSIONS, missionText, nextMedal } from '../src/missions';
-import { baseSpeed, jumpReach, newPlayer, STEP, stepPlayer, type PhysEvent, type Player } from '../src/physics';
+import { baseSpeed, DEFAULT_PACE, jumpReach, newPlayer, STEP, stepPlayer, type PhysEvent, type Player } from '../src/physics';
 import { Recorder, verifyReplay } from '../src/replay';
 import { World, type Roof } from '../src/world';
 
@@ -29,8 +29,10 @@ describe('difficulty', () => {
   it('is much faster much sooner than the first version of the game', () => {
     const before = (m: number) => 118 + 122 * ((m * 16) / (m * 16 + 6000));
     for (const m of [100, 250, 500, 1000]) expect(baseSpeed(m * 16)).toBeGreaterThan(before(m) * 1.2);
-    expect(baseSpeed(100 * 16)).toBeGreaterThan(baseSpeed(0) * 1.45);
-    expect(baseSpeed(250 * 16)).toBeGreaterThan(baseSpeed(0) * 1.75);
+    // A brisk start, still climbing, toward the same top pace as before the faster start.
+    expect(baseSpeed(0)).toBeGreaterThanOrEqual(200);
+    expect(baseSpeed(250 * 16)).toBeGreaterThan(baseSpeed(0) * 1.3);
+    expect(DEFAULT_PACE.base + DEFAULT_PACE.gain).toBe(140 + 180);
   });
   it('puts something to dodge early', () => {
     let early = 0;

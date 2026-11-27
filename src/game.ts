@@ -12,8 +12,10 @@ import { World, type City, type CoinKind, type SeedSource } from './world';
 export const COMBO_TIME = 4;
 /** A perfect jump buys a little more time than anything else. */
 export const PERFECT_COMBO_TIME = 5;
-/** From this combo the multiplier is full, and points fill the fever gauge instead. */
-export const FEVER_COMBO = 20;
+/** From this combo points fill the fever gauge. */
+export const FEVER_COMBO = 10;
+/** Stomps in a row without touching down multiply, up to this. */
+export const MAX_STOMP_CHAIN = 5;
 /** Base points (before any multiplier) that fill the gauge, and the seconds a fever doubles everything. */
 export const FEVER_FILL = 1200;
 export const FEVER_TIME = 8;
@@ -58,7 +60,7 @@ export type GameEvent =
   | PhysEvent
   | { type: 'coin'; kind: CoinKind; points: number; x: number; y: number }
   | { type: 'perfectBonus'; points: number; x: number; y: number }
-  | { type: 'stompBonus'; points: number; x: number; y: number }
+  | { type: 'stompBonus'; points: number; x: number; y: number; chain: number }
   | { type: 'slideBonus'; what: 'dodge' | 'smash'; points: number; x: number; y: number }
   | { type: 'escape'; points: number; x: number; y: number }
   | { type: 'risk'; kind: RiskKind; points: number; x: number; y: number }
@@ -107,6 +109,8 @@ export class Game {
   /** The fever gauge, 0 to 1, and the seconds left of a fever. */
   fever = 0;
   feverTime = 0;
+  /** Stomps since last touching down. */
+  stompChain = 0;
   /** The fever's stage while one is on: 1 ×2, 2 ×3, 3 ×4. */
   feverLevel = 0;
   /** Over a golden rush now, and the score when it began. */
@@ -420,6 +424,8 @@ export class Game {
     if (tier <= this.tier) return;
     const up = Math.min(MAX_GEAR, tier) > Math.min(MAX_GEAR, this.tier);
     this.tier = tier;
+    // The first gear change brings the first fever, so every run gets to see one.
+    if (up && this.gear === 2 && this.feverTime <= 0) this.startFever();
     const gained = this.score - this.tierFrom;
     this.tierFrom = this.score;
     this.events.push({ type: 'gear', gear: this.gear, mult: this.gearMult, gained, up });
@@ -471,11 +477,14 @@ export class Game {
         this.comboTimer = PERFECT_COMBO_TIME;
         this.events.push({ type: 'perfectBonus', points: this.award(PERFECT_POINTS), x: p.x, y: p.y - PH });
         break;
-      case 'stomp':
+      case 'stomp': {
         this.stomps++;
         this.addCombo();
-        this.events.push({ type: 'stompBonus', points: this.award(STOMP_POINTS[e.target]), x: e.x, y: e.y });
+        // Stomp after stomp without landing: each pays more, ×2, ×3 … up to ×5.
+        const chain = this.stompChain = Math.min(MAX_STOMP_CHAIN, this.stompChain + 1);
+        this.events.push({ type: 'stompBonus', points: this.award(STOMP_POINTS[e.target] * chain), x: e.x, y: e.y, chain });
         break;
+      }
       case 'smash': case 'dodge':
         this.slides++;
         this.addCombo();
@@ -486,7 +495,7 @@ export class Game {
         this.addCombo();
         this.events.push({ type: 'escape', points: this.award(BREAKOUT_POINTS), x: e.x, y: e.y - PH });
         break;
-      case 'land': this.onLand(e.surface.kind, e.surface.id); break;
+      case 'land': this.stompChain = 0; this.onLand(e.surface.kind, e.surface.id); break;
       case 'stumble': case 'wall': this.loseCombo(); break;
       case 'trafficHit': this.loseCombo(true); this.deathCause = 'traffic'; this.dead = true; break;
       case 'fell': this.deathCause = 'fall'; this.dead = true; break;

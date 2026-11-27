@@ -57,7 +57,8 @@ export const VENT_RISE = 260;
 /** half is the distance in pixels by which half the gain is reached. */
 /** lapGear: how much faster each gear of an endless run is (made maps have no gears). */
 export interface Pace { base: number; gain: number; half?: number; stageGain?: number; lapGear?: number }
-export const DEFAULT_PACE: Readonly<Pace> = { base: 140, gain: 180, half: 2400, stageGain: 22, lapGear: 0.04 };
+// A brisk start (base) with the same top pace as before: what the start gained, the climb gives back.
+export const DEFAULT_PACE: Readonly<Pace> = { base: 200, gain: 120, half: 2400, stageGain: 22, lapGear: 0.04 };
 // The simulation uses only basic arithmetic (no exp or sin), so a replay gives the same run on every engine.
 /** Rises from 0 toward 1, halfway at `half`. */
 export function ease(x: number, half: number): number { const u = Math.max(0, x); return u / (u + half); }

@@ -584,3 +584,19 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #fever[data-level='2'] { color: #ff9be6; }
 #fever[data-level='3'] { color: #fff; text-shadow: 0 0 6px #ff3d3d, 0 0 10px #5ad1ff; }
 @media (prefers-reduced-motion: reduce) { #score.pump { animation: none; } }
+
+/* Notes in the middle of the HUD: slide here, an update waiting for the run to end. */
+#slide-note, #update-badge { width: max-content; max-width: 100%; margin: 0 auto 4px; padding: .15em .7em; font-size: calc(var(--u) * .6); white-space: nowrap; border: 2px solid; }
+#slide-note { color: #1a1230; background: #7dfff0; border-color: #1a1230; animation: slide-bob .5s steps(2) infinite; }
+#update-badge { color: #ffd85a; background: rgba(26,18,48,.85); border-color: #ffd85a; }
+@keyframes slide-bob { 50% { transform: translateY(2px); } }
+@media (prefers-reduced-motion: reduce) { #slide-note { animation: none; } }
+/* The next flag to chase, beside the speed. */
+#flag-note { color: #ffd85a; }
+
+/* Last week's reward, once, on the title. */
+.week-reward { display: flex; align-items: center; gap: .6em; flex-wrap: wrap; justify-content: center; margin: 4px auto; padding: .35em .8em;
+  font-size: calc(var(--u) * .7); color: #1a1230; background: linear-gradient(#ffe680, #f5c440); border: 2px solid #1a1230; box-shadow: 0 4px 0 rgba(0,0,0,.35); }
+.week-reward[hidden] { display: none; }
+.week-reward b { color: #8a2c4c; }
+.week-reward button { min-height: 30px; padding: 0 .8em; }

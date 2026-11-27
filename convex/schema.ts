@@ -78,6 +78,11 @@ export default defineSchema({
   // 'participants' and one row per achievement id: the denominator and numerator of the earned percentage.
   achievementCounts: defineTable({ key: v.string(), count: v.number() }).index('by_key', ['key']),
   // A player's verified runs added up over one day (in Korea), and that day's missions already paid.
+  // Coins paid when a week ends: its top three by best score, and everyone who ran often. One row per player and
+  // week; `seen` once the player has been told.
+  weeklyRewards: defineTable({
+    week: v.string(), userId: v.id('users'), rank: v.optional(v.number()), steady: v.boolean(), coins: v.number(), seen: v.boolean(),
+  }).index('by_week', ['week']).index('by_user_seen', ['userId', 'seen']),
   dailyProgress: defineTable({
     userId: v.id('users'), day: v.string(),
     runs: v.number(), distance: v.number(), perfects: v.number(), stomps: v.number(), slides: v.number(), coins: v.number(), bestScore: v.number(),

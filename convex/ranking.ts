@@ -150,9 +150,10 @@ export const claim = internalMutation({
     if (run.status !== 'open') throw new ConvexError('이미 제출했거나 무효가 된 기록입니다.');
     if (await outdated(ctx, run.startedAt)) throw new ConvexError(RESTARTED);
     const elapsed = Date.now() - run.startedAt;
-    const late = elapsed > RUN_LIFE || run.version !== SIM_VERSION;
+    // -1: too old to check; -2: begun before a change to how runs play, so it can't be checked the same way.
+    const late = elapsed > RUN_LIFE, stale = run.version !== SIM_VERSION;
     await ctx.db.patch(runId, { status: 'claimed' });
-    return { seed: run.seed, seeds: run.seeds ?? null, elapsed: late ? -1 : elapsed };
+    return { seed: run.seed, seeds: run.seeds ?? null, elapsed: stale ? -2 : late ? -1 : elapsed };
   },
 });
 
@@ -198,7 +199,7 @@ export const finish = action({
     const paced = !run.seeds || run.elapsed <= gameMs + pauseAllowanceMs(gameMs) + SLACK;
     if (!verdict?.ok || !real || !paced) {
       await ctx.runMutation(internal.ranking.settle, { runId, result: null });
-      throw new ConvexError(run.elapsed < 0 ? '너무 오래된 기록입니다.' : verdict?.ok && real ? '일시정지가 너무 길어 순위에 등록하지 않았습니다.' : '확인되지 않는 기록이라 등록하지 않았습니다.');
+      throw new ConvexError(run.elapsed === -2 ? '게임 규칙이 업데이트되어 이번 판은 순위에 오르지 않았어요. 새 버전으로 다시 달려 주세요.' : run.elapsed < 0 ? '너무 오래된 기록입니다.' : verdict?.ok && real ? '일시정지가 너무 길어 순위에 등록하지 않았습니다.' : '확인되지 않는 기록이라 등록하지 않았습니다.');
     }
     const saved: { best: boolean; daily: { text: string; reward: number }[] } = await ctx.runMutation(internal.ranking.settle, { runId, result: { score: verdict.score, distance: verdict.distance, stats: verdict.stats, coins: verdict.coins } });
     return { score: verdict.score, best: saved.best, coins: verdict.coins, daily: saved.daily };

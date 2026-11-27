@@ -69,12 +69,21 @@ const LADDERS: readonly Ladder[] = [
     name: (n) => `퍼펙트 ${n}회`, description: (n) => `퍼펙트 착지 ${n}회` },
 ];
 
+/**
+ * Goals added on top of a ladder later, with their rarity fixed: so the ladder's own rarities (and the rewards
+ * already paid by them) stay as they were. Scores grew several times over with gears in 3.0.
+ */
+const EXTRA: readonly (Achievement & { rank: number })[] = [
+  [1_000_000, 5], [2_000_000, 6], [3_000_000, 6], [5_000_000, 6],
+].map(([goal, rank]) => ({ id: `score-${goal}`, name: `점수 ${comma(goal!)}`, description: `일반 판에서 ${comma(goal!)}점`, stat: 'score' as const, goal: goal!, rank: rank! }));
+
 export const ACHIEVEMENTS: readonly Achievement[] = [
   ...CORE,
   ...LADDERS.flatMap((ladder) => ladder.goals.map((goal) => ({
     id: `${ladder.stat}-${goal}`, name: ladder.name(goal), description: ladder.description(goal),
     stat: ladder.stat, goal,
   }))),
+  ...EXTRA.map(({ rank: _rank, ...a }) => a),
 ];
 
 const STATS: readonly AchievementStat[] = ['runs', 'score', 'distance', 'slides', 'stomps', 'maxCombo', 'perfects'];
@@ -130,10 +139,12 @@ export const TITLES: readonly Title[] = [
 /** An achievement's rarity, 1 (일반) to 6 (신화): how far up its own stat's ladder it stands. */
 const RANKS = 6;
 const ACHIEVEMENT_RANK = new Map<string, number>();
+const extraIds = new Set(EXTRA.map((a) => a.id));
 for (const stat of new Set(ACHIEVEMENTS.map((a) => a.stat))) {
-  const ladder = ACHIEVEMENTS.filter((a) => a.stat === stat).sort((a, b) => a.goal - b.goal);
+  const ladder = ACHIEVEMENTS.filter((a) => a.stat === stat && !extraIds.has(a.id)).sort((a, b) => a.goal - b.goal);
   ladder.forEach((a, i) => ACHIEVEMENT_RANK.set(a.id, 1 + Math.floor((i * RANKS) / ladder.length)));
 }
+for (const a of EXTRA) ACHIEVEMENT_RANK.set(a.id, a.rank);
 export function achievementRank(id: string): 1 | 2 | 3 | 4 | 5 | 6 {
   return (ACHIEVEMENT_RANK.get(id) ?? 1) as 1 | 2 | 3 | 4 | 5 | 6;
 }

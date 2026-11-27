@@ -1,8 +1,10 @@
 export interface Save {
   best: number; bestDistance: number; runs: number;
+  /** Slides made in endless runs, all told: the hint to slide stops after a few. */
+  slides: number;
   music: number; sfx: number; muted: boolean; shake: boolean;
 }
-export const DEFAULTS: Readonly<Save> = { best: 0, bestDistance: 0, runs: 0, music: 2, sfx: 2, muted: false, shake: true };
+export const DEFAULTS: Readonly<Save> = { best: 0, bestDistance: 0, runs: 0, slides: 0, music: 2, sfx: 2, muted: false, shake: true };
 const KEY = 'apt-jump.v1';
 type Store = Pick<Storage, 'getItem' | 'setItem'>;
 
@@ -17,7 +19,7 @@ export function parseSave(raw: string): Save {
     if (v && typeof v === 'object') o = v as Record<string, unknown>;
   } catch { /* damaged save: use defaults */ }
   return {
-    best: count(o.best, 0), bestDistance: count(o.bestDistance, 0), runs: count(o.runs, 0),
+    best: count(o.best, 0), bestDistance: count(o.bestDistance, 0), runs: count(o.runs, 0), slides: count(o.slides, 0),
     music: count(o.music, DEFAULTS.music, 3), sfx: count(o.sfx, DEFAULTS.sfx, 3),
     muted: flag(o.muted, false), shake: flag(o.shake, true),
   };
@@ -47,8 +49,9 @@ export class SaveFile {
   }
 
   /** Records a finished run; true when it beat the old best score. */
-  record(score: number, distance: number): boolean {
+  record(score: number, distance: number, slides = 0): boolean {
     const isBest = score > this.data.best;
+    this.data.slides += slides;
     this.data.best = Math.max(this.data.best, score);
     this.data.bestDistance = Math.max(this.data.bestDistance, Math.floor(distance));
     this.data.runs++;

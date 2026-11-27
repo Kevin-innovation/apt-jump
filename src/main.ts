@@ -105,6 +105,29 @@ function syncEntry(): void {
   if (booted && !testing && !updating && phase === 'title' && ui.screen === 'title' && account && firstVisit.shouldShow(account.status)) ui.show('welcome');
   if (account?.status === 'in' && ui.screen === 'welcome') title();
   guardAdmin(account?.status === 'in');
+  if (signedIn) void showRewards();
+}
+
+/** Last week's rewards, told once on the title: the place it earned and the coins for running often. */
+let rewardsAsked = false;
+async function showRewards(): Promise<void> {
+  const online = onlineUi.online;
+  if (!online || rewardsAsked || testing) return;
+  rewardsAsked = true;
+  const list = await online.rewards().catch(() => []);
+  if (!list.length) return;
+  const n = (v: number) => v.toLocaleString('ko-KR');
+  document.getElementById('week-reward-text')!.textContent = list.map((r) => [
+    r.rank ? `${r.rank}위 +${n(r.coins - (r.steady ? 300 : 0))}코인` : '',
+    r.steady ? '꾸준히 달린 보상 +300코인' : '',
+  ].filter(Boolean).join(' · ')).join(' / ');
+  const box = document.getElementById('week-reward')!;
+  box.hidden = false;
+  document.getElementById('week-reward-ok')!.onclick = () => {
+    box.hidden = true;
+    void online.seeRewards().catch(() => {});
+    void daily.refreshChip();
+  };
 }
 
 /** Leaves nothing of the admin page once the account is logged out, revoked or changed. */
@@ -240,6 +263,8 @@ function begin(run: Issued | null, why: string): void {
   heldAtPause = assistHold = false;
   pausesLeft = PAUSES_PER_RUN;
   pauseButton();
+  setFlags();
+  ui.slideHelp = mode.kind === 'endless' && save.data.slides < 12;
   input.release();
   ui.show(null);
   ui.count(null);
@@ -272,6 +297,31 @@ function unrank(why: string): void {
   ranked = null; city = null;
   unrankedNote = why;
   ui.onlineNote(why);
+}
+
+/** Flags to chase in the endless city: my own best distance, and this week's first when it isn't me. */
+let flagsPassed = new Set<string>();
+function setFlags(): void {
+  flagsPassed = new Set();
+  const marks = mode.kind === 'endless' && save.data.bestDistance >= 100 ? [{ m: save.data.bestDistance, label: '내 최고', color: '#7dfff0' }] : [];
+  view.marks = marks; ui.flags = marks;
+  const online = onlineUi.online, run = game;
+  if (mode.kind !== 'endless' || !online) return;
+  online.board(weekKey(online.now())).then((b) => {
+    const first = b.top[0];
+    if (game !== run || !first || first.mine || first.distance < 100) return;
+    const all = [...view.marks, { m: first.distance, label: `1위 ${first.nickname}`, color: '#ffd85a' }];
+    view.marks = all; ui.flags = all;
+  }, () => {});
+}
+/** Says so, once, as each flag is passed. */
+function passFlags(): void {
+  for (const k of view.marks) {
+    if (flagsPassed.has(k.label) || game.distance < k.m) continue;
+    flagsPassed.add(k.label);
+    view.announce(`${k.label} 돌파!`, k.color, game);
+    audio.play('best');
+  }
 }
 
 /** A player's own pauses: one a run. Leaving the tab or an update still pauses, since the run can't go on unseen. */
@@ -437,8 +487,16 @@ function submitRun(): void {
       say(line);
       // Where that leaves the player this week, right on the result.
       online.board(weekKey(online.now())).then((b) => {
-        if (b.mine?.rank) say(`${line} · 이번 주 ${b.mine.rank}위`);
-        else if (b.mine) say(`${line} · 이번 주 1000위 밖`);
+        const me = b.mine;
+        if (!me) return;
+        if (!me.rank) { say(`${line} · 이번 주 1000위 밖`); return; }
+        // How far the next place and the first are: the reason for one more run.
+        const n = (v: number) => v.toLocaleString('ko-KR');
+        const next = [...b.top].reverse().find((t) => t.score > me.score);
+        const first = b.top[0];
+        const gaps = me.rank === 1 ? ' · 1위를 지키는 중!'
+          : (next ? ` · ${next.rank}위까지 ${n(next.score - me.score + 1)}점` : '') + (first && first !== next && first.score > me.score ? ` · 1위까지 ${n(first.score - me.score + 1)}점` : '');
+        say(`${line} · 이번 주 ${me.rank}위${gaps}`);
       }, () => {});
       // The ranking may already be open from the result screen, showing the board from before this run.
       void onlineUi.refreshBoard();
@@ -574,6 +632,7 @@ function frame(now: number): void {
       if (ui.danger(game) && Math.floor(game.time * 2) !== warnTick) { warnTick = Math.floor(game.time * 2); audio.play('warn'); }
       if (city && 'fallback' in game.world && game.world.fallback) unrank('연결이 늦어 이번 판은 순위에 오르지 않습니다.');
       if (game.distance > (unrankedNote ? 150 : 30)) ui.hint(false);
+      passFlags();
       ui.update(game, input.held || assistHold);
       break;
     case 'paused': {
@@ -601,7 +660,7 @@ function frame(now: number): void {
       if (inPhase > (game.finished ? 1100 : 650)) {
         // Made maps keep their own best; only the endless city counts as a record.
         const shelf = mode.kind === 'map' && mode.id ? maps.get(mode.id) : undefined;
-        const isBest = mode.kind === 'endless' ? save.record(game.score, game.distance)
+        const isBest = mode.kind === 'endless' ? save.record(game.score, game.distance, game.slides)
           : shelf ? maps.record(shelf.id, game.score, game.finished) : false;
         const best = mode.kind === 'endless' ? save.data.best : shelf ? shelf.best : null;
         if (isBest) audio.play('best');
@@ -609,6 +668,8 @@ function frame(now: number): void {
         input.release();
         ui.hud(false); ui.hint(false);
         ui.result(game, isBest, best);
+        // An update that waited for this run: after a moment to see the result and hand the run in.
+        if (pendingUpdate) { const v = pendingUpdate; window.setTimeout(() => { if (phase !== 'playing' && phase !== 'countdown') offerUpdate(v); }, 7000); }
         if (mode.kind === 'map' && mode.shared) ui.bestNote(game.finished ? `완주 시간 ${timeText(timeOf(Math.round(game.time / STEP)))}` : '완주하지 못했어요');
         submitRun();
       }
@@ -645,7 +706,16 @@ if (url) {
   }, () => { onlineUi.connecting = false; onlineUi.refresh(); uncover(); });
 }
 
+/** A new version found during a run waits for the run to end, so no run is cut short by an update. */
+let pendingUpdate: string | null = null;
 function offerUpdate(version: string): void {
+  if (phase === 'playing' || phase === 'countdown' || phase === 'paused' || phase === 'issuing' || phase === 'dying') {
+    pendingUpdate = version;
+    document.getElementById('update-badge')!.hidden = false;
+    return;
+  }
+  pendingUpdate = null;
+  document.getElementById('update-badge')!.hidden = true;
   reloadSoon('updated', version, '새 버전이 도착했어요', '지금 업데이트', (seconds, wasRunning) => `${seconds}초 뒤 새 버전으로 자동 새로고침합니다. 주간 기록은 유지됩니다.${wasRunning ? ' 진행 중인 판은 종료되며 순위에 등록되지 않습니다.' : ''} 저장된 맵과 로그인은 유지됩니다.`);
 }
 

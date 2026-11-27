@@ -37,9 +37,9 @@ describe('achievements', () => {
   it('refuses forged claims and players who cannot play', async () => {
     const { t, player } = await setup();
     const guest = await t.query(ach.catalog, {});
-    expect(ACHIEVEMENTS).toHaveLength(80);
+    expect(ACHIEVEMENTS).toHaveLength(84);
     expect(TITLES).toHaveLength(57);
-    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(80);
+    expect(new Set(ACHIEVEMENTS.map((a) => a.id)).size).toBe(84);
     expect(new Set(TITLES.map((x) => x.id)).size).toBe(57);
     expect(new Set(TITLES.map((x) => x.name)).size).toBe(57);
     // Players have these equipped: they must keep existing.
@@ -50,7 +50,7 @@ describe('achievements', () => {
     expect(TITLES.map((x) => x.id)).toEqual(expect.arrayContaining(kept));
     const ids = new Set(ACHIEVEMENTS.map((a) => a.id));
     expect(TITLES.every((x) => x.requires.every((need) => ids.has(need)))).toBe(true);
-    expect(guest.achievements).toHaveLength(80);
+    expect(guest.achievements).toHaveLength(84);
     expect(guest.titles).toHaveLength(57);
     expect(guest.participants).toBe(0);
     expect(guest.achievements.find((a: { id: string }) => a.id === 'first-run'))
@@ -112,4 +112,12 @@ describe('achievements', () => {
     expect(await a.as.mutation(ach.equip, { titleId: null })).toBeNull();
     expect((await a.as.query(ach.catalog, {})).equipped).toBeNull();
   });
+});
+
+it('keeps the rarity of every older score goal when higher ones are added', async () => {
+  const { achievementRank } = await import('../src/achievements');
+  // As they were before the 3.0 goals: an eleven-goal ladder over six ranks.
+  const before = ['score-10000', 'score-20000', 'score-30000', 'score-50000', 'score-75000', 'score-100000', 'score-150000', 'score-200000', 'score-300000', 'score-500000', 'score-750000'];
+  expect(before.map(achievementRank)).toEqual(before.map((_, i) => 1 + Math.floor((i * 6) / 11)));
+  expect(['score-1000000', 'score-5000000'].map(achievementRank)).toEqual([5, 6]);
 });

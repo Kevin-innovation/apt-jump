@@ -1,6 +1,8 @@
 import type { AchievementCatalog } from './achievementview';
 
 /** What the game uses of the online side. The vanilla game never imports Convex or React itself. */
+/** A finished week's reward: its place (1–3) if any, and whether it was for running often. */
+export interface WeekReward { week: string; rank: number | null; steady: boolean; coins: number }
 export interface DailyState {
   day: string; checkedIn: boolean; streak: number; reward: number;
   missions: { id: string; text: string; goal: number; progress: number; reward: number; done: boolean }[];
@@ -59,6 +61,9 @@ export interface Online {
   finish(runId: string, replay: string): Promise<{ score: number; best: boolean; coins: number; daily: { text: string; reward: number }[] }>;
   /** Today's attendance and missions; null for a guest. */
   daily(): Promise<DailyState | null>;
+  /** Week rewards not yet shown, and telling the server they have been. */
+  rewards(): Promise<WeekReward[]>;
+  seeRewards(): Promise<void>;
   checkIn(): Promise<{ streak: number; reward: number }>;
   /** The player's coins and costumes; null for a guest. */
   shop(): Promise<ShopState | null>;

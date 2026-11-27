@@ -38,6 +38,10 @@ const CROSS = '<path d="M5 2h1v1H5zM7 2h1v1H7zM6 3h1v2H6zM5 5h1v1H5zM7 5h1v1H7z"
 const num = (n: number) => n.toLocaleString('ko-KR');
 
 export class UI {
+  /** Shows "↓ slide" by crates and ducts until the player has slid a few times. */
+  slideHelp = false;
+  /** Flags along the endless city: my best and this week's first, in metres. */
+  flags: { m: number; label: string }[] = [];
   /** The score as shown, rolling up to the real one. */
   private shown = 0;
   private pumping = false;
@@ -267,6 +271,12 @@ export class UI {
     // Told a few seconds ahead, however fast the run: the sign alone comes into view late at top speed.
     const p = g.player;
     this.hidden('route-note', p.inside !== 0 || !g.world.roofs.some((r) => r.route && r.route.x + r.route.hatch > p.x && r.route.x - p.x < p.vx * 2.5));
+    this.hidden('slide-note', !this.slideHelp || p.inside !== 0 || !g.world.roofs.some((r) => r.obstacles.some((o) =>
+      (o.kind === 'box' || o.kind === 'bar') && !p.gone.includes(o.id) && o.x > p.x && o.x - p.x < Math.max(120, p.vx * 1.4))));
+    // The next flag ahead, once it is near enough to chase.
+    const ahead = endless ? this.flags.filter((f) => f.m > g.distance).sort((a, b) => a.m - b.m)[0] : undefined;
+    this.hidden('flag-note', !ahead);
+    if (ahead) this.text('flag-note', `${ahead.label}까지 ${num(Math.ceil(ahead.m - g.distance))}m`);
     const m = g.mission;
     this.hidden('mission', !m);
     if (m) {

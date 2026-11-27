@@ -17,12 +17,14 @@
     <div id="jump-meter"><span id="jump-label">길게 누를수록 높게</span><div role="progressbar" aria-label="점프 높이" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" id="jump-pressure"><i id="jump-fill"></i><b></b><b></b><b></b></div><small>짧게 ↑　길게 ↑↑↑</small></div>
     <div class="left">
       <div class="score"><span id="score">0</span><small>점</small></div>
-      <div class="sub"><span id="dist">0m</span><span id="lv">속도 1</span><span id="lapx" hidden></span><span>최고 <b id="best">0</b></span></div>
+      <div class="sub"><span id="dist">0m</span><span id="lv">속도 1</span><span id="lapx" hidden></span><span id="flag-note" hidden></span><span>최고 <b id="best">0</b></span></div>
       <div id="district" aria-label="구역 안내" hidden><b id="district-name"></b><span id="district-left"></span><span id="district-goal"></span><span id="district-event" hidden></span></div>
       <div id="effects" aria-label="작동 중인 아이템"></div>
     </div>
     <div class="mid">
       <div id="route-note" role="status" hidden>앞 유리에서 ↓ 보너스</div>
+      <div id="slide-note" role="status" hidden>↓ 슬라이드! 하늘색 테두리</div>
+      <div id="update-badge" role="status" hidden>새 버전이 있어요 · 이 판이 끝나면 업데이트</div>
       <div id="mission" hidden><span id="mission-text"></span></div>
       <div id="combo" hidden>
         <div class="combo-line"><b id="combo-n">0</b><span>콤보</span><em id="combo-x">x1</em><span id="saves" role="img" aria-label="콤보 세이브 0칸"><i></i><i></i><i></i></span></div>
@@ -49,6 +51,7 @@
     <div class="title-chips">
       <button type="button" class="version-chip" data-act="notes" aria-label="패치노트 보기"><b id="version-label"></b><span id="version-news"></span><em>패치노트 ▸</em></button>
       <button type="button" class="daily-chip" id="daily-chip" data-act="daily" hidden></button>
+      <div id="week-reward" class="week-reward" role="status" hidden><b>지난주 보상 도착!</b><span id="week-reward-text"></span><button type="button" id="week-reward-ok" class="primary">받았어요</button></div>
     </div>
     <ul class="guide" aria-label="조작 안내">
       <li class="g-jump"><kbd data-key="jump">Space</kbd><b>점프</b><span>짧게 낮게 · 길게 높게</span></li>

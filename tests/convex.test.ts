@@ -267,13 +267,13 @@ describe('ranked runs', () => {
     expect((await a.as.query(api.ranking.board, { week: '2026-11-16' })).top).toHaveLength(1);
     expect((await a.as.query(api.ranking.board, { week: '2026-11-30' })).top).toEqual([]);
   });
-  it('a run begun under other rules can’t be handed in', async () => {
+  it('a run begun under other rules can’t be handed in, and says why', async () => {
     const { t, a } = await setup();
     const { runId, seed } = await start(a);
     await t.run((ctx) => ctx.db.patch(runId, { version: SIM_VERSION - 1 }));
     const run = play(seed, 3);
     vi.setSystemTime(NOW + run.ms + 1000);
-    await expect(a.as.action(api.ranking.finish, { runId, replay: run.text })).rejects.toThrow('오래된');
+    await expect(a.as.action(api.ranking.finish, { runId, replay: run.text })).rejects.toThrow('게임 규칙이 업데이트');
     expect((await a.as.query(api.ranking.board, { week: '2026-11-23' })).top).toEqual([]);
   });
   it('the board shows fifty, best first, and where the caller stands below them', async () => {
@@ -407,5 +407,31 @@ describe('shop', () => {
       if (plan.stat in expected) expect(m.progress).toBe(Math.min(m.goal, expected[plan.stat]!));
       expect(m.done).toBe(done.daily.some((d) => d.text === m.text));
     }
+  });
+});
+
+describe('weekly rewards', () => {
+  it('pay a finished week once: its top three, ties sharing, and everyone who ran often', async () => {
+    const { t, player, a, b } = await setup();
+    const c = await player('씨이'), d = await player('디이');
+    const week = '2026-11-16';
+    const score = (userId: typeof a.id, s: number) => t.run((ctx) => ctx.db.insert('scores', { week, userId, score: s, distance: 1000, achievedAt: Date.parse(week) + 3_600_000 }));
+    await score(a.id, 9000); await score(b.id, 7000); await score(c.id, 7000); await score(d.id, 100);
+    // d ran often that week; a ran a little.
+    for (const [userId, runs] of [[d.id, 6], [d.id, 5], [a.id, 3]] as const) {
+      const day = runs === 5 ? '2026-11-18' : '2026-11-17';
+      await t.run((ctx) => ctx.db.insert('dailyProgress', { userId, day, runs, distance: 0, perfects: 0, stomps: 0, slides: 0, coins: 0, bestScore: 0, paid: [] }));
+    }
+    const coins = async (p: typeof a) => (await p.as.query(api.shop.mine, {}))!.coins;
+    const before = await Promise.all([a, b, c, d].map(coins));
+    await t.mutation(internal.rewards.payLastWeek, { week });
+    await t.mutation(internal.rewards.payLastWeek, { week }); // a second run pays nothing more
+    await expect(t.mutation(internal.rewards.payLastWeek, { week: '2026-11-23' })).rejects.toThrow(); // under way
+    const after = await Promise.all([a, b, c, d].map(coins));
+    expect(after.map((x, i) => x - before[i]!)).toEqual([5000, 3000, 3000, 300]);
+    expect(await b.as.query(api.rewards.unseen, {})).toEqual([{ week, rank: 2, steady: false, coins: 3000 }]);
+    await b.as.mutation(api.rewards.markSeen, {});
+    expect(await b.as.query(api.rewards.unseen, {})).toEqual([]);
+    expect(await d.as.query(api.rewards.unseen, {})).toEqual([{ week, rank: null, steady: true, coins: 300 }]);
   });
 });

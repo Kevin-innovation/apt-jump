@@ -125,6 +125,8 @@ export function connect(url: string): Online {
     equipBadge: async (achievementId) => { await write(() => client.mutation(api.achievements.equipBadge, { achievementId })); },
     shop: () => client.query(api.shop.mine, {}),
     daily: () => client.query(api.daily.mine, {}),
+    rewards: () => client.query(api.rewards.unseen, {}),
+    seeRewards: async () => { await write(() => client.mutation(api.rewards.markSeen, {})); },
     checkIn: () => write(() => client.mutation(api.daily.checkIn, {})),
     buy: (id) => write(() => client.mutation(api.shop.buy, { id })),
     wear: (id) => write(() => client.mutation(api.shop.wear, { id })),
