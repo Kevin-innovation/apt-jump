@@ -510,7 +510,7 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .ach-badge svg { width: 64%; height: 64%; display: block; }
 /* A map shared within the last day: a NEW tag on the card's top left corner. */
 #maps .card { position: relative; }
-.new-tag { display: inline-block; margin-right: .5em; padding: 0 6px; vertical-align: .15em; font-size: 11px; line-height: 16px; color: #1a1230; background: #ffd85a; box-shadow: 2px 2px #140c2e; letter-spacing: .05em; }
+.new-tag { position: absolute; top: -2px; left: -2px; z-index: 1; padding: 0 6px; font-size: 11px; line-height: 16px; color: #1a1230; background: #ffd85a; box-shadow: 2px 2px #140c2e; letter-spacing: .05em; }
+#maps .card.is-new { padding-top: 18px; }
 @media (prefers-reduced-motion: no-preference) { .new-tag { animation: new-blink 1.4s steps(2, jump-none) infinite; } }
 @keyframes new-blink { 50% { background: #ff9be6; } }
-#maps .card > div span.new-tag { display: inline-block; overflow: visible; }

@@ -360,8 +360,9 @@ export class OnlineScreens {
       const tag = document.createElement('span');
       tag.className = 'new-tag';
       tag.textContent = 'NEW';
-      // At the head of the title line, so it never covers a letter.
-      card.querySelector(':scope > div > span')?.prepend(tag);
+      // On the card's top left corner; the card's lines move down to make room for it.
+      card.classList.add('is-new');
+      card.prepend(tag);
     }
     return card;
   }

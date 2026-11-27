@@ -6,8 +6,8 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
-    version: '2.7.3', date: '2026-11-27', title: 'NEW 태그 위치',
-    notes: ['공유 맵의 NEW 태그를 제목 앞에 붙여 글자를 가리지 않게'],
+    version: '2.7.4', date: '2026-11-27', title: 'NEW 태그 위치',
+    notes: ['공유 맵의 NEW 태그는 카드 왼쪽 위 모서리에, 카드 글자는 그 아래로 내려 겹치지 않게'],
   },
   {
     version: '2.7.2', date: '2026-11-27', title: '공유 맵 카드 정리',
