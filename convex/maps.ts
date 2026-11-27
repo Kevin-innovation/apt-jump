@@ -82,7 +82,7 @@ export const list = query({
     const opts = { ...args.paginationOpts, numItems: Math.max(1, Math.min(PAGE, Math.floor(args.paginationOpts.numItems) || PAGE)) };
     const r = await ctx.db.query('maps').withIndex('by_updated').order(args.order === 'new' ? 'desc' : 'asc').paginate(opts);
     const page = await Promise.all(r.page.map(async (m) => ({
-      id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, mine: m.ownerId === me,
+      id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, createdAt: m._creationTime, mine: m.ownerId === me,
       author: (await ctx.db.get(m.ownerId))?.nickname ?? '(탈퇴)',
       ...(await fastest(ctx, m.bodyId)),
     })));

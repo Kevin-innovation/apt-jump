@@ -298,7 +298,7 @@ describe('shared maps', () => {
     const { t, a } = await setup();
     const id = await a.as.mutation(api.maps.publish, { json: serializeMap(PRACTICE) });
     const list = await t.query(api.maps.list, { paginationOpts: page, order: 'new' });
-    expect(list.page).toEqual([{ id, title: '연습 옥상', segments: PRACTICE.segments.length, updatedAt: expect.closeTo(NOW, -2), mine: false, author: '에이', best: null, bestBy: null, bestTied: 0 }]);
+    expect(list.page).toEqual([{ id, title: '연습 옥상', segments: PRACTICE.segments.length, updatedAt: expect.closeTo(NOW, -2), createdAt: expect.any(Number), mine: false, author: '에이', best: null, bestBy: null, bestTied: 0 }]);
     expect(JSON.parse((await t.query(api.maps.get, { id }))!)).toEqual(PRACTICE);
     expect((await a.as.query(api.maps.list, { paginationOpts: page, order: 'new' })).page[0]!.mine).toBe(true);
   });

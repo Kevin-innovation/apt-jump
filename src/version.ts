@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.7.2', date: '2026-11-27', title: '공유 맵 카드 정리',
+    notes: ['공유 맵 카드는 플레이 · 기록 버튼만 오른쪽 끝에 (내보내기는 내 맵에서만)', '새로 공유된 맵에는 24시간 동안 왼쪽 위에 NEW 태그'],
+  },
+  {
     version: '2.7.1', date: '2026-11-27', title: '코스튬 가격 조정',
     notes: ['코스튬 가격 상향: 야광 러너 3,000 · 소방관 5,000 · 닌자 10,000 · 산타 배달부 20,000 · 우주 비행사 35,000 · 고양이 후드 60,000 · 황금 러너 100,000 (환영 코인 300은 그대로)'],
   },

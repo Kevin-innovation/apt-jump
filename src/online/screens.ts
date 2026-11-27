@@ -4,7 +4,7 @@ import { titleClasses } from '../title-style';
 import { achievementById, achievementRank } from '../achievements';
 import { statIcon } from '../badges';
 import { parseMap, serializeMap, type GameMap } from '../maps';
-import { downloadMap, mapCard, type MapActions } from '../mapscreen';
+import { mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
 import { timeText } from '../mapreplay';
 import { weekEnd, weekKey } from '../week';
@@ -13,6 +13,8 @@ import { Pager } from '../pager';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const num = (n: number) => n.toLocaleString('ko-KR');
+/** How long a newly shared map wears its NEW tag. */
+const NEW_FOR = 24 * 3_600_000;
 const note = (text: string) => { const p = document.createElement('p'); p.className = 'keys'; p.textContent = text; return p; };
 
 /** A scoreboard over a ranking whose first place is shared, naming everyone on it. Null otherwise. */
@@ -327,15 +329,14 @@ export class OnlineScreens {
   }
 
   private card(m: SharedMapInfo): HTMLElement {
-    // Same four slots on every card: play, records, export, and taking down one's own.
-    const buttons: Parameters<typeof mapCard>[2] = [
+    // Play and records at the right end of every card; one's own map has taking it down left of them.
+    const play: Parameters<typeof mapCard>[2] = [
       ['플레이', () => void this.open(m.id, (map) => this.maps.playShared ? this.maps.playShared(map, m.id) : this.maps.play(map, null)), true],
       ['기록', () => this.maps.times?.(m.id)],
-      ['내보내기', () => void this.open(m.id, downloadMap)],
     ];
-    if (!m.mine) buttons.push(null);
-    else {
-      buttons.push(['공유 취소', (b) => {
+    const buttons: Parameters<typeof mapCard>[2] = [null];
+    if (m.mine) {
+      buttons[0] = ['공유 취소', (b) => {
         if (!b.dataset.sure) {
           b.dataset.sure = '1';
           b.textContent = '정말 취소';
@@ -347,12 +348,21 @@ export class OnlineScreens {
           this.tell('공유를 취소했습니다.');
           return this.refreshMaps();
         }, (e) => this.tell(errorText(e)));
-      }]);
+      }];
     }
+    buttons.push(...play);
     // Who made it, and apart from that, who holds its record: never read as one person.
     const holder = m.bestBy ? ` ${m.bestBy}${(m.bestTied ?? 1) > 1 ? ` 외 ${(m.bestTied ?? 1) - 1}명` : ''}` : '';
     // Two short lines, never cut: who made it, then the record and who holds it.
-    return mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}\n${m.best === null ? '아직 완주 기록 없음' : `최단 ${timeText(m.best)} ·${holder}`}`, buttons);
+    const card = mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}\n${m.best === null ? '아직 완주 기록 없음' : `최단 ${timeText(m.best)} ·${holder}`}`, buttons);
+    // New for a day after it was first shared.
+    if (m.createdAt !== undefined && Date.now() - m.createdAt < NEW_FOR) {
+      const tag = document.createElement('span');
+      tag.className = 'new-tag';
+      tag.textContent = 'NEW';
+      card.prepend(tag);
+    }
+    return card;
   }
 
   /** Brings the share button of each of the player's own maps to life when signed in. */
