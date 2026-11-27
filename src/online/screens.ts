@@ -3,6 +3,8 @@ import { cleanNickname } from '../nickname';
 import { titleClasses } from '../title-style';
 import { achievementById, achievementRank } from '../achievements';
 import { statIcon } from '../badges';
+import { costumeById } from '../shop';
+import { makeSprites } from '../sprites';
 import { parseMap, serializeMap, type GameMap } from '../maps';
 import { mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
@@ -13,6 +15,19 @@ import { Pager } from '../pager';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const num = (n: number) => n.toLocaleString('ko-KR');
+/** A still of the runner in a costume, made once per costume and reused on every row. */
+const runners = new Map<string, string>();
+function runnerPicture(id: string | undefined): HTMLImageElement {
+  const c = costumeById(id);
+  let src = runners.get(c.id);
+  if (!src) { src = makeSprites(c.pal).run[1]!.toDataURL(); runners.set(c.id, src); }
+  const img = document.createElement('img');
+  img.className = 'rank-runner';
+  img.src = src;
+  img.alt = '';
+  img.title = c.name;
+  return img;
+}
 /** How long a newly shared map wears its NEW tag. */
 const NEW_FOR = 24 * 3_600_000;
 const note = (text: string) => { const p = document.createElement('p'); p.className = 'keys'; p.textContent = text; return p; };
@@ -216,6 +231,8 @@ export class OnlineScreens {
           // The whole text on hover, where a column cuts it short.
           if (cls === 'rank-nick' || cls === 'rank-title') s.title = t;
           if (cls === 'rank-title' && t) s.classList.add(...titleClasses(t));
+          // The runner in the costume they wear, before their name.
+          if (cls === 'rank-nick') s.prepend(runnerPicture(r.costume));
           // The badge, left of the title: the achievement's stat on its rarity's colour.
           const badge = cls === 'rank-badge' ? achievementById(r.badge) : null;
           if (badge) {

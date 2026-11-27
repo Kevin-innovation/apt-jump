@@ -1,4 +1,5 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
+import { COSTUMES, DEFAULT_COSTUME } from '../src/shop';
 import { paginationOptsValidator } from 'convex/server';
 import { ConvexError, v } from 'convex/values';
 import { nicknameKey } from '../src/nickname';
@@ -88,6 +89,10 @@ const memberShape = v.object({
   joinedAt: v.number(), lastActiveAt: v.union(v.null(), v.number()), plays: v.number(), suspended: v.boolean(), admin: v.boolean(),
 });
 
+/** A member's wallet and wardrobe, for the admin. */
+const shopShape = v.object({ coins: v.number(), coinsEarned: v.number(), owned: v.array(v.string()), costume: v.string() });
+const shopOf = (u: Doc<'users'>) => ({ coins: u.coins ?? 0, coinsEarned: u.coinsEarned ?? 0, owned: u.owned ?? [], costume: u.costume ?? DEFAULT_COSTUME });
+
 async function member(ctx: QueryCtx, u: Doc<'users'>, adminId: Id<'users'>) {
   return {
     id: u._id,
@@ -129,13 +134,13 @@ export const members = query({
 /** One member, with how many sessions it holds (never the sessions themselves). */
 export const memberDetail = query({
   args: { id: v.id('users') },
-  returns: v.object({ member: memberShape, sessions: v.number() }),
+  returns: v.object({ member: memberShape, sessions: v.number(), shop: shopShape }),
   handler: async (ctx, { id }) => {
     const adminId = await requireAdmin(ctx);
     const u = await ctx.db.get(id);
     if (!u) throw new ConvexError('회원을 찾을 수 없습니다.');
     const sessions = await ctx.runQuery(components.auth.public.listSessions, { userId: id });
-    return { member: await member(ctx, u, adminId), sessions: sessions.length };
+    return { member: await member(ctx, u, adminId), sessions: sessions.length, shop: shopOf(u) };
   },
 });
 
@@ -155,8 +160,46 @@ async function target(ctx: MutationCtx, id: Id<'users'>): Promise<Doc<'users'>> 
 async function ownSession(ctx: MutationCtx, adminId: Id<'users'>, id: Id<'users'>): Promise<string | null> {
   return id === adminId ? (await ctx.auth.getUserIdentity())?.subject ?? null : null;
 }
-const log = (ctx: MutationCtx, adminId: Id<'users'>, u: Doc<'users'>, action: Doc<'adminLog'>['action'], sessions: number) =>
-  ctx.db.insert('adminLog', { adminId, targetId: u._id, targetName: u.nickname ?? '(닉네임 없음)', action, sessions });
+const log = (ctx: MutationCtx, adminId: Id<'users'>, u: Doc<'users'>, action: Doc<'adminLog'>['action'], sessions: number, extra: { amount?: number; note?: string } = {}) =>
+  ctx.db.insert('adminLog', { adminId, targetId: u._id, targetName: u.nickname ?? '(닉네임 없음)', action, sessions, ...extra });
+
+/** The most coins one adjustment may move, either way: a slip of the finger stays small. */
+const MAX_ADJUST = 1_000_000;
+
+/** Gives (+) or takes (-) coins; the balance never goes below zero. Logged with the amount moved. */
+export const adjustCoins = mutation({
+  args: { id: v.id('users'), delta: v.number() },
+  returns: shopShape,
+  handler: async (ctx, { id, delta }) => {
+    const adminId = await requireAdmin(ctx);
+    const u = await target(ctx, id);
+    if (!Number.isInteger(delta) || delta === 0 || Math.abs(delta) > MAX_ADJUST) throw new ConvexError(`코인은 ±${MAX_ADJUST.toLocaleString('ko-KR')} 안의 0이 아닌 정수로 조정해 주세요.`);
+    const before = u.coins ?? 0, coins = Math.max(0, before + delta);
+    await ctx.db.patch(id, { coins, ...(delta > 0 ? { coinsEarned: (u.coinsEarned ?? 0) + delta } : {}) });
+    await log(ctx, adminId, u, 'coins', 0, { amount: coins - before });
+    return shopOf((await ctx.db.get(id))!);
+  },
+});
+
+/** Takes a costume back, optionally refunding its price; one being worn is swapped for the courier's own. */
+export const revokeCostume = mutation({
+  args: { id: v.id('users'), costume: v.string(), refund: v.boolean() },
+  returns: shopShape,
+  handler: async (ctx, { id, costume, refund }) => {
+    const adminId = await requireAdmin(ctx);
+    const u = await target(ctx, id);
+    const owned = u.owned ?? [];
+    if (!owned.includes(costume)) throw new ConvexError('가지고 있지 않은 코스튬입니다.');
+    const back = refund ? COSTUMES.find((c) => c.id === costume)?.price ?? 0 : 0;
+    await ctx.db.patch(id, {
+      owned: owned.filter((c) => c !== costume),
+      costume: u.costume === costume ? DEFAULT_COSTUME : u.costume,
+      coins: (u.coins ?? 0) + back,
+    });
+    await log(ctx, adminId, u, 'revokeCostume', 0, { amount: back, note: costume });
+    return shopOf((await ctx.db.get(id))!);
+  },
+});
 
 /** Sets a new password (stored by the password component, as at sign-up) and ends the member's sessions. */
 export const resetPassword = mutation({
@@ -209,12 +252,12 @@ export const revokeSessions = mutation({
 export const logs = query({
   args: { paginationOpts: paginationOptsValidator },
   returns: v.object({
-    page: v.array(v.object({ at: v.number(), action: v.string(), target: v.string(), targetId: v.id('users'), sessions: v.number() })),
+    page: v.array(v.object({ at: v.number(), action: v.string(), target: v.string(), targetId: v.id('users'), sessions: v.number(), amount: v.optional(v.number()), note: v.optional(v.string()) })),
     isDone: v.boolean(), continueCursor: v.string(),
   }),
   handler: async (ctx, { paginationOpts }) => {
     await requireAdmin(ctx);
     const r = await ctx.db.query('adminLog').order('desc').paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 50) });
-    return { page: r.page.map((l) => ({ at: l._creationTime, action: l.action, target: l.targetName, targetId: l.targetId, sessions: l.sessions })), isDone: r.isDone, continueCursor: r.continueCursor };
+    return { page: r.page.map((l) => ({ at: l._creationTime, action: l.action, target: l.targetName, targetId: l.targetId, sessions: l.sessions, amount: l.amount, note: l.note })), isDone: r.isDone, continueCursor: r.continueCursor };
   },
 });

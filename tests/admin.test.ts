@@ -1,3 +1,4 @@
+import { costumeById } from '../src/shop';
 // @vitest-environment edge-runtime
 // The admin page's server side, with real sign-up, sign-in and sessions: nothing of Convex Auth is replaced.
 import { registerUsername } from '@convex-dev/auth/components/username/test';
@@ -41,6 +42,8 @@ const calls = (as: As, id: Id<'users'>) => [
   () => as.mutation(api.admin.resetPassword, { id, password: 'new-password' }),
   () => as.mutation(api.admin.setSuspended, { id, suspended: true }),
   () => as.mutation(api.admin.revokeSessions, { id }),
+  () => as.mutation(api.admin.adjustCoins, { id, delta: 100 }),
+  () => as.mutation(api.admin.revokeCostume, { id, costume: 'neon', refund: true }),
 ];
 
 describe('the admin page', () => {
@@ -70,6 +73,23 @@ describe('the admin page', () => {
     expect((await admin.as.query(api.admin.members, { search: 'RUNNER_A', paginationOpts: page })).page.map((m) => m.nickname)).toEqual(['에이']);
     expect((await admin.as.query(api.admin.members, { search: '에', paginationOpts: page })).page.map((m) => m.nickname)).toEqual(['에이']);
     expect(await admin.as.query(api.admin.memberDetail, { id: a.id })).toMatchObject({ sessions: 1, member: { nickname: '에이' } });
+  });
+
+  it('gives and takes coins, never below zero, and takes a costume back with or without a refund', async () => {
+    const { join } = setup();
+    const admin = await join('kvkvkv', '운영자');
+    const a = await join('runner_a', '에이');
+    const start = (await a.as.query(api.shop.mine, {}))!.coins;
+    const price = costumeById('neon').price;
+    expect(await admin.as.mutation(api.admin.adjustCoins, { id: a.id, delta: price })).toMatchObject({ coins: start + price });
+    await a.as.mutation(api.shop.buy, { id: 'neon' });
+    expect((await admin.as.query(api.admin.memberDetail, { id: a.id })).shop).toEqual({ coins: start, coinsEarned: start + price, owned: ['neon'], costume: 'neon' });
+    expect(await admin.as.mutation(api.admin.revokeCostume, { id: a.id, costume: 'neon', refund: true })).toEqual({ coins: start + price, coinsEarned: start + price, owned: [], costume: 'courier' });
+    await expect(admin.as.mutation(api.admin.revokeCostume, { id: a.id, costume: 'neon', refund: false })).rejects.toThrow('가지고 있지 않은');
+    expect(await admin.as.mutation(api.admin.adjustCoins, { id: a.id, delta: -10_000_00 })).toMatchObject({ coins: 0 });
+    await expect(admin.as.mutation(api.admin.adjustCoins, { id: a.id, delta: 1.5 })).rejects.toThrow('정수');
+    const logs = (await admin.as.query(api.admin.logs, { paginationOpts: page })).page;
+    expect(logs.map((l) => [l.action, l.amount, l.note ?? null])).toEqual([['coins', -(start + price), null], ['revokeCostume', price, 'neon'], ['coins', price, null]]);
   });
 
   it('resets a password: the new one signs in, the old one and old sessions stop working', async () => {

@@ -9,6 +9,7 @@ import { PRACTICE, serializeMap } from '../src/maps';
 import { pauseAllowanceMs, Recorder, releasedSeeds, SIM_VERSION, verifyReplay } from '../src/replay';
 import { achievementReward, WELCOME_COINS } from '../src/achievements';
 import { costumeById } from '../src/shop';
+import { dailyMissions, dayKey, streakReward } from '../src/daily';
 import { STEP } from '../src/physics';
 
 // Real sign-in is in auth.test.ts. Here the caller's identity names the user row directly, without password
@@ -103,7 +104,7 @@ describe('ranked runs', () => {
     await a.as.action(api.ranking.finish, { runId, replay: run.text });
     // A second settle of the same run changes nothing.
     const stats = { score: 999999, distance: 1, slides: 1, stomps: 1, maxCombo: 1, perfects: 1 };
-    expect(await t.mutation(internal.ranking.settle, { runId, result: { score: 999999, distance: 1, stats } })).toEqual({ best: false });
+    expect(await t.mutation(internal.ranking.settle, { runId, result: { score: 999999, distance: 1, stats } })).toMatchObject({ best: false });
     const rows = await t.run((ctx) => ctx.db.query('achievementProgress').collect());
     expect(rows.map((r) => [r.runs, r.maxScore])).toEqual([[1, run.score]]);
   });
@@ -381,5 +382,30 @@ describe('shop', () => {
     expect((await a.as.query(api.shop.mine, {}))!.coins).toBe(owed);
     expect(await t.mutation(internal.shop.backfill, {})).toEqual({ welcomed: 0, rewards: 0, coins: 0 });
     expect((await a.as.query(api.shop.mine, {}))!.coins).toBe(owed);
+  });
+  it('pays attendance once a day, more for each day in a row, from one again after a gap', async () => {
+    const { a } = await setup();
+    const coins = async () => (await a.as.query(api.shop.mine, {}))!.coins;
+    const before = await coins();
+    expect(await a.as.mutation(api.daily.checkIn, {})).toEqual({ streak: 1, reward: streakReward(1) });
+    await expect(a.as.mutation(api.daily.checkIn, {})).rejects.toThrow('이미');
+    vi.setSystemTime(NOW + 86_400_000);
+    expect(await a.as.mutation(api.daily.checkIn, {})).toEqual({ streak: 2, reward: streakReward(2) });
+    vi.setSystemTime(NOW + 3 * 86_400_000);
+    expect(await a.as.query(api.daily.mine, {})).toMatchObject({ checkedIn: false, streak: 1 });
+    expect(await a.as.mutation(api.daily.checkIn, {})).toEqual({ streak: 1, reward: streakReward(1) });
+    expect(await coins()).toBe(before + 2 * streakReward(1) + streakReward(2));
+  });
+  it('adds verified runs to the day\'s missions', async () => {
+    const { a } = await setup();
+    const r = await start(a), run = play(r.seed, 20);
+    vi.setSystemTime(NOW + run.ms + 1000);
+    const done = await a.as.action(api.ranking.finish, { runId: r.runId, replay: run.text });
+    const today = await a.as.query(api.daily.mine, {});
+    const expected: Record<string, number> = { runs: 1, coins: run.coins, bestScore: run.score };
+    for (const [m, plan] of today!.missions.map((m, i) => [m, dailyMissions(dayKey(Date.now()))[i]!] as const)) {
+      if (plan.stat in expected) expect(m.progress).toBe(Math.min(m.goal, expected[plan.stat]!));
+      expect(m.done).toBe(done.daily.some((d) => d.text === m.text));
+    }
   });
 });

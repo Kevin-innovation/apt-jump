@@ -10,10 +10,10 @@ import type { Device, MenuAction } from './input';
 import type { SaveFile } from './storage';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
-export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'maptimes' | 'items' | 'welcome' | 'achievements' | 'notes' | 'shop';
+export type ScreenName = 'title' | 'pause' | 'result' | 'settings' | 'credits' | 'maps' | 'editor' | 'ranking' | 'account' | 'admin' | 'maptimes' | 'items' | 'welcome' | 'achievements' | 'notes' | 'shop' | 'daily';
 export type Act = 'start' | 'resume' | 'restart' | 'home' | 'settings' | 'credits' | 'back' | 'mute' | 'music' | 'sfx' | 'shake'
-  | 'maps' | 'ranking' | 'achievements' | 'account' | 'admin' | 'logout' | 'items' | 'notes' | 'shop' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-test';
-const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome', 'achievements', 'notes', 'shop'];
+  | 'maps' | 'ranking' | 'achievements' | 'account' | 'admin' | 'logout' | 'items' | 'notes' | 'shop' | 'daily' | 'signup' | 'login' | 'guest' | 'newmap' | 'import' | 'ed-back' | 'ed-save' | 'ed-test';
+const SCREENS: ScreenName[] = ['title', 'pause', 'result', 'settings', 'credits', 'maps', 'editor', 'ranking', 'account', 'admin', 'maptimes', 'items', 'welcome', 'achievements', 'notes', 'shop', 'daily'];
 const GOAL_NAMES = { coins: '동전', perfects: '퍼펙트', stomps: '밟기', risks: '위험' } as const;
 const VOLUME = ['끔', '작게', '보통', '크게'];
 const KEYS: Record<Device, string> = {
@@ -185,7 +185,7 @@ export class UI {
       if (this.screen === 'settings' || this.screen === 'credits' || this.screen === 'items' || this.screen === 'notes') this.onAct('back');
       else if (this.screen === 'pause') this.onAct('resume');
       else if (this.screen === 'welcome') this.onAct('guest');
-      else if (this.screen === 'result' || this.screen === 'maps' || this.screen === 'ranking' || this.screen === 'achievements' || this.screen === 'account' || this.screen === 'shop') this.onAct('home');
+      else if (this.screen === 'result' || this.screen === 'maps' || this.screen === 'ranking' || this.screen === 'achievements' || this.screen === 'account' || this.screen === 'shop' || this.screen === 'daily') this.onAct('home');
       else if (this.screen === 'admin') this.onAct('account');
       else if (this.screen === 'maptimes') this.onAct('maps');
       else if (this.screen === 'editor') this.onAct('ed-back');

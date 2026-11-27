@@ -514,3 +514,37 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #maps .card.is-new { padding-top: 18px; }
 @media (prefers-reduced-motion: no-preference) { .new-tag { animation: new-blink 1.4s steps(2, jump-none) infinite; } }
 @keyframes new-blink { 50% { background: #ff9be6; } }
+.admin-costumes { display: grid; gap: 4px; width: 100%; }
+.admin-costume { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 4px 8px; background: #2c2052; text-align: left; }
+/* The runner in their costume, before each name on the weekly board. */
+.rank-runner { width: 1.1em; height: auto; margin-right: .4em; vertical-align: -.2em; image-rendering: pixelated; }
+
+/* The title's chips: the version and, signed in, today's missions (a dot while attendance waits). */
+.title-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
+.daily-chip { position: relative; display: inline-flex; align-items: center; padding: .4em 1em; font-size: .85em; color: #9be36b; background: #2c2052e6; border: 2px solid #9be36b; box-shadow: 0 0 0 2px #140c2e; }
+.daily-chip.alert::after { content: ''; position: absolute; top: -5px; right: -5px; width: 10px; height: 10px; background: #ff5566; box-shadow: 0 0 0 2px #140c2e; }
+.daily-chip:hover, .daily-chip:focus-visible { outline: 3px solid #7dfff0; outline-offset: 2px; }
+@media (prefers-reduced-motion: no-preference) { .daily-chip.alert::after { animation: new-blink 1s steps(2, jump-none) infinite; } }
+/* Today's missions: the week's attendance strip, then three mission cards. */
+#daily .screen-top, .attend, .daily-list { width: min(860px, 100%); }
+.attend { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 10px; align-items: center; padding: 10px; background: #1f1840; border: 2px solid #5a4a90; }
+.attend-days { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 4px; }
+.attend-day { display: grid; justify-items: center; gap: 2px; padding: 6px 2px; background: #140c2e; border: 2px solid #3a2c6a; font-variant-numeric: tabular-nums; }
+.attend-day small { color: #b9afcf; font-size: .7em; }
+.attend-day b { color: #ffd85a; font-weight: normal; font-size: .85em; }
+.attend-day.got { background: #2a4a2a; border-color: #9be36b; } .attend-day.got b { color: #9be36b; }
+.attend-day.today { border-color: #ffd85a; box-shadow: 0 0 10px #ffd85a55; }
+.attend-go { min-height: 48px; padding: 0 1.2em; color: #1a1230; background: #ffd85a; border: 2px solid #fff6c8; font: inherit; }
+.attend-go:disabled { color: #9be36b; background: #1f3a24; border-color: #9be36b; opacity: 1; }
+#daily-msg:empty { display: none; }
+.daily-list { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px; }
+.daily-card { display: grid; gap: 6px; align-content: start; padding: 12px; text-align: left; background: #2c2052; border: 2px solid #5a4a90; }
+.daily-card small { color: #b9afcf; font-size: .7em; }
+.daily-card.level-2 small { color: #7fb8ff; } .daily-card.level-3 small { color: #ffb347; }
+.daily-card b { font-weight: normal; color: #fff6e0; }
+.daily-bar { height: 8px; background: #140c2e; box-shadow: 0 0 0 2px #140c2e; }
+.daily-bar i { display: block; height: 100%; background: #9be36b; transform-origin: left; }
+.daily-progress { font-size: .75em; color: #cfc4ee; font-variant-numeric: tabular-nums; }
+.daily-card.done { background: linear-gradient(165deg, #2a4a2a, #1f2a3a); border-color: #9be36b; }
+.daily-card.done .daily-progress { color: #9be36b; }
+@media (max-width: 640px) { .daily-list { grid-template-columns: 1fr; } .attend { grid-template-columns: 1fr; } }

@@ -6,6 +6,7 @@ import { MAX_REPLAY, pauseAllowanceMs, releasedSeeds, SEGMENT_SEEDS, SIM_VERSION
 import { isWeekKey, weekKey } from '../src/week';
 import { awardVerified } from './achievements';
 import { credit } from './shop';
+import { recordDaily } from './daily';
 import { internal } from './_generated/api';
 import type { Id } from './_generated/dataModel';
 import { action, internalMutation, mutation, query, type QueryCtx, type MutationCtx } from './_generated/server';
@@ -159,34 +160,35 @@ const runStats = v.object({ score: v.number(), distance: v.number(), slides: v.n
 
 export const settle = internalMutation({
   args: { runId: v.id('runs'), result: v.union(v.null(), v.object({ score: v.number(), distance: v.number(), stats: v.optional(runStats), coins: v.optional(v.number()) })) },
-  returns: v.object({ best: v.boolean() }),
+  returns: v.object({ best: v.boolean(), daily: v.array(v.object({ text: v.string(), reward: v.number() })) }),
   handler: async (ctx, { runId, result }) => {
     const run = await ctx.db.get(runId);
-    if (!run || run.status !== 'claimed') return { best: false };
+    if (!run || run.status !== 'claimed') return { best: false, daily: [] };
     // A fresh start between the claim and now.
     if (result && await outdated(ctx, run.startedAt)) throw new ConvexError(RESTARTED);
     await ctx.db.patch(runId, { status: result ? 'done' : 'rejected' });
-    if (!result) return { best: false };
+    if (!result) return { best: false, daily: [] };
     const { stats, coins, ...scored } = result;
     // Every verified run counts toward achievements and pays its coins, a best or not; the status above lets each run in once.
     if (stats) await awardVerified(ctx, run.userId, stats);
     if (coins) await credit(ctx, run.userId, coins);
+    const daily = stats ? await recordDaily(ctx, run.userId, stats, coins ?? 0) : [];
     const now = Date.now();
     const week = weekKey(now);
     const old = await bestOf(ctx, week, run.userId, await weekCutoff(ctx, week));
-    if (old && old.score >= scored.score) return { best: false };
+    if (old && old.score >= scored.score) return { best: false, daily };
     const row = { release: run.release, version: run.version, ...scored, achievedAt: now };
     if (old) await ctx.db.patch(old._id, row);
     else await ctx.db.insert('scores', { week, userId: run.userId, ...row });
-    return { best: true };
+    return { best: true, daily };
   },
 });
 
 /** Hands in a run. The score comes from replaying it here, never from the page. */
 export const finish = action({
   args: { runId: v.id('runs'), replay: v.string() },
-  returns: v.object({ score: v.number(), best: v.boolean(), coins: v.number() }),
-  handler: async (ctx, { runId, replay }): Promise<{ score: number; best: boolean; coins: number }> => {
+  returns: v.object({ score: v.number(), best: v.boolean(), coins: v.number(), daily: v.array(v.object({ text: v.string(), reward: v.number() })) }),
+  handler: async (ctx, { runId, replay }): Promise<{ score: number; best: boolean; coins: number; daily: { text: string; reward: number }[] }> => {
     if (replay.length > MAX_REPLAY) throw new ConvexError('기록이 너무 깁니다.');
     const run: { seed: number; seeds: number[] | null; elapsed: number } = await ctx.runMutation(internal.ranking.claim, { runId });
     const verdict = run.elapsed < 0 ? null : verifyReplay(run.seeds ?? run.seed, replay);
@@ -198,12 +200,12 @@ export const finish = action({
       await ctx.runMutation(internal.ranking.settle, { runId, result: null });
       throw new ConvexError(run.elapsed < 0 ? '너무 오래된 기록입니다.' : verdict?.ok && real ? '일시정지가 너무 길어 순위에 등록하지 않았습니다.' : '확인되지 않는 기록이라 등록하지 않았습니다.');
     }
-    const saved: { best: boolean } = await ctx.runMutation(internal.ranking.settle, { runId, result: { score: verdict.score, distance: verdict.distance, stats: verdict.stats, coins: verdict.coins } });
-    return { score: verdict.score, best: saved.best, coins: verdict.coins };
+    const saved: { best: boolean; daily: { text: string; reward: number }[] } = await ctx.runMutation(internal.ranking.settle, { runId, result: { score: verdict.score, distance: verdict.distance, stats: verdict.stats, coins: verdict.coins } });
+    return { score: verdict.score, best: saved.best, coins: verdict.coins, daily: saved.daily };
   },
 });
 
-const entry = v.object({ rank: v.number(), nickname: v.string(), title: v.optional(v.union(v.string(), v.null())), badge: v.optional(v.union(v.string(), v.null())), score: v.number(), distance: v.number(), mine: v.boolean() });
+const entry = v.object({ rank: v.number(), nickname: v.string(), title: v.optional(v.union(v.string(), v.null())), badge: v.optional(v.union(v.string(), v.null())), costume: v.optional(v.string()), score: v.number(), distance: v.number(), mine: v.boolean() });
 
 /** One board a week, for every version of the game: it starts afresh only on Monday 00:00 in Korea. */
 export const board = query({
@@ -213,7 +215,7 @@ export const board = query({
   handler: async (ctx, { week }) => {
     if (!isWeekKey(week)) throw new ConvexError('잘못된 주간입니다.');
     const me = (await getAuthUserId(ctx)) as Id<'users'> | null;
-    const top: { rank: number; nickname: string; title: string | null; badge: string | null; score: number; distance: number; mine: boolean }[] = [];
+    const top: { rank: number; nickname: string; title: string | null; badge: string | null; costume?: string; score: number; distance: number; mine: boolean }[] = [];
     // Best first, so a player's first row is their highest and the rest are passed over.
     const seen = new Set<Id<'users'>>();
     const cutoff = await weekCutoff(ctx, week);
@@ -223,7 +225,7 @@ export const board = query({
       const user = await ctx.db.get(r.userId);
       // Equal scores share a rank.
       const prev: (typeof top)[number] | undefined = top[top.length - 1];
-      top.push({ rank: prev && prev.score === r.score ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', title: titleById(user?.equippedTitle)?.name ?? null, badge: achievementById(user?.badge)?.id ?? null, score: r.score, distance: r.distance, mine: r.userId === me });
+      top.push({ rank: prev && prev.score === r.score ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', title: titleById(user?.equippedTitle)?.name ?? null, badge: achievementById(user?.badge)?.id ?? null, costume: user?.costume, score: r.score, distance: r.distance, mine: r.userId === me });
       if (top.length >= TOP) break;
     }
     const own = me && (await bestOf(ctx, week, me, cutoff));

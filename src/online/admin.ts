@@ -1,10 +1,11 @@
 import { PASSWORD_MAX, PASSWORD_MIN } from '../username';
-import { errorText, type AdminMember, type Online } from './types';
+import { costumeById } from '../shop';
+import { errorText, type AdminMember, type AdminShop, type Online } from './types';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const num = (n: number) => n.toLocaleString('ko-KR');
 const when = (t: number | null) => t === null ? '-' : new Date(t).toLocaleString('ko-KR', { year: '2-digit', month: 'numeric', day: 'numeric', hour: '2-digit', minute: '2-digit' });
-const ACTIONS: Record<string, string> = { resetPassword: '비밀번호 재설정', suspend: '정지', unsuspend: '정지 해제', revokeSessions: '모든 기기 로그아웃' };
+const ACTIONS: Record<string, string> = { resetPassword: '비밀번호 재설정', suspend: '정지', unsuspend: '정지 해제', revokeSessions: '모든 기기 로그아웃', coins: '코인 조정', revokeCostume: '코스튬 회수' };
 const el = (tag: string, cls: string, text = '') => { const e = document.createElement(tag); if (cls) e.className = cls; e.textContent = text; return e; };
 
 /**
@@ -34,6 +35,7 @@ export class AdminScreen {
       const m = this.selected;
       if (m) this.ask('모든 기기에서 로그아웃할까요?', () => this.revoke(m));
     });
+    ($('admin-coins') as HTMLFormElement).addEventListener('submit', (e) => { e.preventDefault(); this.coins(); });
     $('admin-yes').addEventListener('click', () => { const f = this.pending; this.cancel(); void f?.(); });
     $('admin-no').addEventListener('click', () => this.cancel());
   }
@@ -133,7 +135,10 @@ export class AdminScreen {
       if (fresh) box.replaceChildren();
       for (const l of r.page) {
         const row = el('div', 'admin-log');
-        row.append(el('span', '', `${ACTIONS[l.action] ?? l.action} · ${l.target}`), el('small', '', `${when(l.at)}${l.sessions ? ` · 세션 ${l.sessions}개 종료` : ''}`));
+        // Coins moved, or the costume taken back and what was refunded.
+        const what = l.action === 'coins' && l.amount !== undefined ? ` ${l.amount > 0 ? '+' : ''}${num(l.amount)}`
+          : l.action === 'revokeCostume' ? ` ${costumeById(l.note).name}${l.amount ? ` (환불 ${num(l.amount)})` : ''}` : '';
+        row.append(el('span', '', `${ACTIONS[l.action] ?? l.action}${what} · ${l.target}`), el('small', '', `${when(l.at)}${l.sessions ? ` · 세션 ${l.sessions}개 종료` : ''}`));
         box.append(row);
       }
       if (!box.childElementCount) box.append(el('p', 'keys', '기록이 없어요.'));
@@ -147,7 +152,7 @@ export class AdminScreen {
     this.deselect();
     const ticket = this.detailTicket;
     try {
-      const { member: m, sessions } = await online.admin.detail(id);
+      const { member: m, sessions, shop } = await online.admin.detail(id);
       // Another member was picked while this answer was on its way.
       if (ticket !== this.detailTicket) return;
       this.selected = m;
@@ -157,11 +162,56 @@ export class AdminScreen {
         ['아이디', m.username ?? '-'], ['상태', m.suspended ? '정지' : '정상'], ['가입', when(m.joinedAt)],
         ['최근 활동', when(m.lastActiveAt)], ['플레이', num(m.plays)], ['로그인 기기', num(sessions)],
       ] as const).map(([k, v]) => { const d = el('div', ''); d.append(el('dt', '', k), el('dd', '', v)); return d; }));
+      this.wallet(shop);
       const suspend = $('admin-suspend') as HTMLButtonElement;
       suspend.textContent = m.suspended ? '정지 해제' : '정지';
       suspend.disabled = m.admin;
       $('admin-detail').scrollIntoView({ block: 'nearest' });
     } catch (e) { if (ticket === this.detailTicket) this.say(errorText(e)); }
+  }
+
+  /** The member's coins, and each costume they bought with a way to take it back (with or without a refund). */
+  private wallet(shop: AdminShop): void {
+    $('admin-coin-now').textContent = `지금 ${num(shop.coins)}코인 · 지금까지 받은 ${num(shop.coinsEarned)}코인`;
+    const box = $('admin-costumes');
+    if (!shop.owned.length) { box.replaceChildren(el('p', 'help', '산 코스튬이 없어요.')); return; }
+    box.replaceChildren(...shop.owned.map((id) => {
+      const c = costumeById(id), row = el('div', 'admin-costume');
+      const take = (refund: boolean) => {
+        const b = el('button', 'small', refund ? `회수 + ${num(c.price)} 환불` : '회수만') as HTMLButtonElement;
+        b.type = 'button';
+        b.addEventListener('click', () => this.ask(`${c.name}을(를) ${refund ? `회수하고 ${num(c.price)}코인을 돌려줄까요?` : '회수할까요? (환불 없음)'}`, () => this.revokeCostume(id, refund)));
+        return b;
+      };
+      row.append(el('span', '', `${c.name}${shop.costume === id ? ' · 착용 중' : ''}`), take(true), take(false));
+      return row;
+    }));
+  }
+
+  private coins(): void {
+    const m = this.selected, box = $('admin-coin-delta') as HTMLInputElement;
+    if (!m) return;
+    const delta = Number(box.value);
+    if (!Number.isInteger(delta) || delta === 0) { this.say('조정할 코인을 0이 아닌 정수로 적어 주세요.'); box.focus(); return; }
+    this.say('');
+    this.ask(delta > 0 ? `${num(delta)}코인을 줄까요?` : `${num(-delta)}코인을 뺄까요? (0 아래로는 안 내려가요)`, async () => {
+      const online = this.online();
+      if (!online) return;
+      try {
+        const shop = await online.admin.adjustCoins(m.id, delta);
+        if (this.selected?.id === m.id) box.value = '';
+        await this.after(`코인을 조정했어요. 지금 ${num(shop.coins)}코인이에요.`, m.id);
+      } catch (e) { this.say(errorText(e)); }
+    });
+  }
+
+  private async revokeCostume(id: string, refund: boolean): Promise<void> {
+    const m = this.selected, online = this.online();
+    if (!m || !online) return;
+    try {
+      const shop = await online.admin.revokeCostume(m.id, id, refund);
+      await this.after(`${costumeById(id).name}을(를) 회수했어요. 지금 ${num(shop.coins)}코인이에요.`, m.id);
+    } catch (e) { this.say(errorText(e)); }
   }
 
   /** Reloads after a change to `id`, keeping whoever is selected by then. */

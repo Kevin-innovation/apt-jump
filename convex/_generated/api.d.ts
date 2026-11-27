@@ -11,6 +11,7 @@
 import type * as achievements from "../achievements.js";
 import type * as admin from "../admin.js";
 import type * as auth from "../auth.js";
+import type * as daily from "../daily.js";
 import type * as maps from "../maps.js";
 import type * as maptimes from "../maptimes.js";
 import type * as ranking from "../ranking.js";
@@ -27,6 +28,7 @@ declare const fullApi: ApiFromModules<{
   achievements: typeof achievements;
   admin: typeof admin;
   auth: typeof auth;
+  daily: typeof daily;
   maps: typeof maps;
   maptimes: typeof maptimes;
   ranking: typeof ranking;

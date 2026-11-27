@@ -13,6 +13,7 @@ import { PatchTest } from './patchtest';
 import { AdminScreen } from './online/admin';
 import { OnlineScreens } from './online/screens';
 import { ShopView } from './online/shopview';
+import { DailyView } from './online/dailyview';
 import { errorText, onlineUrl, Refusal } from './online/types';
 import { timeOf, timeText } from './mapreplay';
 import { pauseAllowanceMs, Recorder } from './replay';
@@ -300,6 +301,7 @@ function act(a: Act): void {
     case 'admin': ui.show('admin'); void adminUi.open(); break;
     case 'achievements': ui.show('achievements'); void achievements.open(); break;
     case 'shop': ui.show('shop'); void shop.open(); break;
+    case 'daily': ui.show('daily'); void daily.open(); break;
     case 'start': mode = { kind: 'endless' }; startRun(); break;
     case 'restart': startRun(); break;
     case 'resume': resume(); break;
@@ -360,6 +362,7 @@ onlineUi.myCards = () => mapScreen.cards;
 const adminUi = new AdminScreen(() => onlineUi.online);
 const connected = () => onlineUi.online ?? (() => { throw new Refusal('온라인 연결 뒤에 보여요.'); })();
 const shop = new ShopView(() => onlineUi.online, () => onlineUi.signedIn, (id) => view.setCostume(id));
+const daily = new DailyView(() => onlineUi.online, () => onlineUi.signedIn, () => {});
 const achievements = new AchievementView(document.getElementById('achievement-view')!, {
   catalog: async () => connected().catalog(),
   equip: async (id) => connected().equip(id),
@@ -379,6 +382,7 @@ function syncAchievements(): void {
   shop.clear();
   view.setCostume(null);
   if (a?.status === 'in') void onlineUi.online?.shop().then((s) => { if (s && achiever === who) view.setCostume(s.costume); }, () => {});
+  void daily.refreshChip();
   if (ui.screen === 'achievements') void achievements.open();
 }
 
@@ -405,7 +409,9 @@ function submitRun(): void {
   online.finish(run.runId, run.recorder.text()).then(
     (r) => {
       const paid = r.coins ? ` · 코인 +${r.coins.toLocaleString('ko-KR')}` : '';
-      const line = (r.best ? `이번 주 최고 기록 ${r.score.toLocaleString('ko-KR')}점 등록!` : '이번 주 최고 기록에는 못 미쳤어요') + paid;
+      const missions = r.daily.map((d) => ` · 미션 「${d.text}」 완료 +${d.reward.toLocaleString('ko-KR')}`).join('');
+      const line = (r.best ? `이번 주 최고 기록 ${r.score.toLocaleString('ko-KR')}점 등록!` : '이번 주 최고 기록에는 못 미쳤어요') + paid + missions;
+      void daily.refreshChip();
       say(line);
       // Where that leaves the player this week, right on the result.
       online.board(weekKey(online.now())).then((b) => {
@@ -585,6 +591,7 @@ function frame(now: number): void {
   if (phase === 'editor') { editor.draw(dt); return; }
   audio.tempo = (1 + Math.min(0.25, (game.level - 1) * 0.022)) * (game.player.boostTime > 0 ? 1.12 : 1);
   audio.night = view.nightAt(game.distance);
+  audio.mood = phase === 'title' ? 'none' : game.lapEvent;
   view.draw(game, phase === 'paused' || phase === 'countdown' ? 0 : dt, phase === 'playing' || phase === 'title');
   test?.frame();
 }

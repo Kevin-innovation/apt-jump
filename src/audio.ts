@@ -17,6 +17,9 @@ const LEAD = [
   [76, 0, 0, 80, 0, 83, 0, 80, 76, 0, 74, 0, 71, 0, 68, 0],
 ];
 const BPM = 138;
+/** The music of each lap event: the same loop, played another way. */
+export type Mood = 'none' | 'wind' | 'night' | 'rain' | 'crumble';
+const MOOD_TEMPO: Record<Mood, number> = { none: 1, wind: 1.06, night: 0.9, rain: 0.96, crumble: 1.04 };
 
 export type Sfx = 'jump' | 'land' | 'perfect' | 'coin' | 'gold' | 'risk' | 'stumble' | 'fall' | 'ui' | 'count' | 'best' | 'air' | 'stomp' | 'diamond' | 'goal' | 'up' | 'power' | 'boost' | 'shield' | 'mission'
   | 'fever' | 'save' | 'warn' | 'hook' | 'lap' | 'splash' | 'crumble' | 'rush';
@@ -36,6 +39,8 @@ export class Audio8 {
   night = 0;
   /** How fast the music goes: follows the run. */
   tempo = 1;
+  /** The lap event under way: how the loop is played. */
+  mood: Mood = 'none';
 
   constructor(private save: Save) {}
 
@@ -86,7 +91,7 @@ export class Audio8 {
     const ctx = this.ctx;
     if (!ctx || ctx.state !== 'running') return;
     if (this.nextAt < ctx.currentTime) this.nextAt = ctx.currentTime + 0.05;
-    const len = 60 / (BPM * this.tempo) / 4;
+    const len = 60 / (BPM * this.tempo * MOOD_TEMPO[this.mood]) / 4;
     while (this.nextAt < ctx.currentTime + 0.14) {
       this.note(this.step, this.nextAt, len);
       this.step = (this.step + 1) % (16 * LEAD.length);
@@ -96,10 +101,23 @@ export class Audio8 {
 
   private note(step: number, t: number, len: number): void {
     const bar = Math.floor(step / 16), i = step % 16;
-    const m = this.music;
-    if (i % 2 === 0) this.tone('triangle', hz(BASS[bar]! - (i % 8 === 6 ? 0 : 12)), t, len * 1.7, 0.5, m);
+    const m = this.music, mood = this.mood;
+    // Bass: rounder in the dark, gritty when the roofs crack.
+    const bass = mood === 'crumble' ? 'sawtooth' : mood === 'night' ? 'sine' : 'triangle';
+    if (i % 2 === 0) this.tone(bass, hz(BASS[bar]! - (i % 8 === 6 ? 0 : 12)), t, len * 1.7, mood === 'crumble' ? 0.32 : 0.5, m);
     const n = LEAD[bar]![i]!;
-    if (n) this.tone('pulse', hz(n), t, len * 2.1, 0.16 - 0.04 * this.night, m);
+    if (n) {
+      // Wind lifts the tune an octave every other bar; the blackout drops it and plays it soft.
+      const lift = mood === 'wind' && bar % 2 ? 12 : mood === 'night' ? -12 : 0;
+      const voice = mood === 'night' || mood === 'rain' ? 'triangle' : 'pulse';
+      const vol = (mood === 'night' ? 0.2 : 0.16) - 0.04 * this.night;
+      this.tone(voice, hz(n + lift), t, len * (mood === 'crumble' ? 1.2 : 2.1), vol, m);
+      // Rain: each note echoes back, quieter.
+      if (mood === 'rain') this.tone('triangle', hz(n + 12), t + len * 3, len * 2, vol * 0.35, m);
+    }
+    if (mood === 'wind' && i % 2 === 1) this.tone('sine', hz(CHORDS[bar]![(i >> 1) % 3]! + 24), t, len * 0.7, 0.035, m);
+    if (mood === 'rain') this.hiss(t, len * 0.9, 0.035, 4500, m);
+    if (mood === 'crumble' && i % 4 === 2) this.tone('sine', 95, t, 0.13, 0.45, m, 32);
     if (this.night > 0.35) this.tone('pulse', hz(CHORDS[bar]![i % 3]! + (i % 6 > 2 ? 12 : 0)), t, len * 0.8, 0.05 * this.night, m);
     else if (i % 4 === 2) for (const c of CHORDS[bar]!) this.tone('square', hz(c - 12), t, len * 0.9, 0.035, m);
     if (i % 8 === 0) this.tone('sine', 130, t, 0.11, 0.6, m, 40);

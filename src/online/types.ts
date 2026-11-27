@@ -1,8 +1,12 @@
 import type { AchievementCatalog } from './achievementview';
 
 /** What the game uses of the online side. The vanilla game never imports Convex or React itself. */
+export interface DailyState {
+  day: string; checkedIn: boolean; streak: number; reward: number;
+  missions: { id: string; text: string; goal: number; progress: number; reward: number; done: boolean }[];
+}
 export interface ShopState { coins: number; owned: string[]; costume: string }
-export interface BoardEntry { rank: number; nickname: string; title?: string | null; badge?: string | null; score: number; distance: number; mine: boolean }
+export interface BoardEntry { rank: number; nickname: string; title?: string | null; badge?: string | null; costume?: string; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
 /** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
 export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number }
@@ -17,13 +21,16 @@ export interface Account {
 
 export interface AdminStats { members: number; signups7d: number; active7d: number; plays7d: number; playsToday: number; weeklyRecords: number; maps: number; suspended: number; cap: number }
 export interface AdminMember { id: string; username: string | null; nickname: string | null; joinedAt: number; lastActiveAt: number | null; plays: number; suspended: boolean; admin: boolean }
-export interface AdminLogEntry { at: number; action: string; target: string; targetId: string; sessions: number }
+export interface AdminLogEntry { at: number; action: string; target: string; targetId: string; sessions: number; amount?: number; note?: string }
+export interface AdminShop { coins: number; coinsEarned: number; owned: string[]; costume: string }
 /** The admin page's calls. The server checks every one: these only carry them. */
 export interface AdminApi {
   amI(): Promise<boolean>;
   stats(): Promise<AdminStats>;
   members(search: string, cursor: string | null): Promise<{ page: AdminMember[]; isDone: boolean; continueCursor: string }>;
-  detail(id: string): Promise<{ member: AdminMember; sessions: number }>;
+  detail(id: string): Promise<{ member: AdminMember; sessions: number; shop: AdminShop }>;
+  adjustCoins(id: string, delta: number): Promise<AdminShop>;
+  revokeCostume(id: string, costume: string, refund: boolean): Promise<AdminShop>;
   resetPassword(id: string, password: string): Promise<{ sessions: number }>;
   setSuspended(id: string, suspended: boolean): Promise<{ sessions: number }>;
   revokeSessions(id: string): Promise<{ sessions: number }>;
@@ -49,7 +56,10 @@ export interface Online {
   /** The run's stretch seeds released so far. */
   seeds(runId: string): Promise<number[]>;
   /** `coins` is what the run paid into the player's wallet. */
-  finish(runId: string, replay: string): Promise<{ score: number; best: boolean; coins: number }>;
+  finish(runId: string, replay: string): Promise<{ score: number; best: boolean; coins: number; daily: { text: string; reward: number }[] }>;
+  /** Today's attendance and missions; null for a guest. */
+  daily(): Promise<DailyState | null>;
+  checkIn(): Promise<{ streak: number; reward: number }>;
   /** The player's coins and costumes; null for a guest. */
   shop(): Promise<ShopState | null>;
   buy(id: string): Promise<ShopState>;

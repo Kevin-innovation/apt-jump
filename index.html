@@ -46,7 +46,10 @@
 
   <section class="screen" id="title" hidden>
     <h1><span>아파트</span><span>점프</span></h1>
-    <button type="button" class="version-chip" data-act="notes" aria-label="패치노트 보기"><b id="version-label"></b><span id="version-news"></span><em>패치노트 ▸</em></button>
+    <div class="title-chips">
+      <button type="button" class="version-chip" data-act="notes" aria-label="패치노트 보기"><b id="version-label"></b><span id="version-news"></span><em>패치노트 ▸</em></button>
+      <button type="button" class="daily-chip" id="daily-chip" data-act="daily" hidden></button>
+    </div>
     <ul class="guide" aria-label="조작 안내">
       <li class="g-jump"><kbd data-key="jump">Space</kbd><b>점프</b><span>짧게 낮게 · 길게 높게</span></li>
       <li class="g-air"><kbd data-key="air">공중에서</kbd><b>2단 점프</b><span>한 번 더 뛰어올라요</span></li>
@@ -209,6 +212,13 @@
         <button type="submit" class="small" id="admin-reset-go">비밀번호 재설정</button>
         <small class="help">8자 이상 · 모든 기기에서 로그아웃돼요</small>
       </form>
+      <form id="admin-coins" class="admin-row">
+        <label for="admin-coin-delta">코인 조정 (받으면 +, 빼면 -)</label>
+        <input id="admin-coin-delta" type="number" step="1" inputmode="numeric" placeholder="예: 500 또는 -500" />
+        <button type="submit" class="small">코인 조정</button>
+        <small class="help" id="admin-coin-now"></small>
+      </form>
+      <div id="admin-costumes" class="admin-costumes"></div>
       <nav class="pair">
         <button type="button" id="admin-suspend">정지</button>
         <button type="button" id="admin-revoke">모든 기기 로그아웃</button>
@@ -280,6 +290,17 @@
     <p id="shop-msg" class="keys" role="status"></p>
     <div id="shop-list" class="page-list"></div>
     <nav id="shop-pager"></nav>
+  </section>
+
+  <section class="screen paged" id="daily" hidden>
+    <header class="screen-top"><h2>오늘의 미션</h2><nav><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
+    <div class="attend">
+      <div id="attend-days" class="attend-days" aria-label="이번 주 출석 보상"></div>
+      <button type="button" id="attend-go" class="attend-go"></button>
+    </div>
+    <p id="daily-msg" class="ye" role="status"></p>
+    <div id="daily-list" class="daily-list"></div>
+    <p class="keys">로그인한 순위 판만 집계 · 날짜는 한국 시간 · 미션 보상은 달성하는 순간 자동으로 들어와요</p>
   </section>
 
   <section class="screen paged" id="notes" hidden>

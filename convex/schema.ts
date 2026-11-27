@@ -15,6 +15,8 @@ export default defineSchema({
     owned: v.optional(v.array(v.string())), costume: v.optional(v.string()),
     // The welcome coins were paid; the earned achievement shown as a badge by the title.
     welcomed: v.optional(v.boolean()), badge: v.optional(v.string()),
+    // Attendance: the last day (in Korea) checked in, and how many days in a row up to it.
+    checkInDay: v.optional(v.string()), streak: v.optional(v.number()),
   }).index('by_nickKey', ['nickKey']).index('by_lastActive', ['lastActiveAt']),
 
   // One issued run. It can be handed in once, by the player it was issued to.
@@ -58,8 +60,10 @@ export default defineSchema({
   // What the admin did. Never a password, hash, token or session id.
   adminLog: defineTable({
     adminId: v.id('users'), targetId: v.id('users'), targetName: v.string(),
-    action: v.union(v.literal('resetPassword'), v.literal('suspend'), v.literal('unsuspend'), v.literal('revokeSessions')),
+    action: v.union(v.literal('resetPassword'), v.literal('suspend'), v.literal('unsuspend'), v.literal('revokeSessions'), v.literal('coins'), v.literal('revokeCostume')),
     sessions: v.number(),
+    // For coins: how many were given (+) or taken (-); for a costume taken back: which, and the coins refunded.
+    amount: v.optional(v.number()), note: v.optional(v.string()),
   }),
 
   // Progress starts with the first verified normal run after this update; old scores are never backfilled.
@@ -73,4 +77,10 @@ export default defineSchema({
     .index('by_user', ['userId']).index('by_user_achievement', ['userId', 'achievementId']),
   // 'participants' and one row per achievement id: the denominator and numerator of the earned percentage.
   achievementCounts: defineTable({ key: v.string(), count: v.number() }).index('by_key', ['key']),
+  // A player's verified runs added up over one day (in Korea), and that day's missions already paid.
+  dailyProgress: defineTable({
+    userId: v.id('users'), day: v.string(),
+    runs: v.number(), distance: v.number(), perfects: v.number(), stomps: v.number(), slides: v.number(), coins: v.number(), bestScore: v.number(),
+    paid: v.array(v.string()),
+  }).index('by_user_day', ['userId', 'day']),
 });
