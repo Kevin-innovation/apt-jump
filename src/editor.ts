@@ -135,6 +135,11 @@ export class Editor {
     });
     $('ed-issues').addEventListener('click', () => this.showProblems($('ed-problems').hidden === true));
     $('ed-toast').addEventListener('click', () => this.message(''));
+    // On a short screen the tools and the segment's settings share one side panel, a tab each.
+    document.querySelectorAll<HTMLButtonElement>('[data-edtab]').forEach((b) => b.addEventListener('click', () => {
+      $('editor').classList.toggle('tab-form', b.dataset.edtab === 'form');
+      document.querySelectorAll('[data-edtab]').forEach((x) => x.setAttribute('aria-pressed', String(x === b)));
+    }));
     const title = $('ed-title') as HTMLInputElement;
     title.maxLength = LIMITS.title;
     title.addEventListener('change', () => this.edit((m) => { m.title = cleanTitle(title.value) || '이름 없는 맵'; }));

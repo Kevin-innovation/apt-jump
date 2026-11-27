@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.2.2', date: '2026-11-27', title: '폰 화면 정리 · 미션 목표 조정',
+    notes: [
+      '폰 가로 화면의 맵 제작: 왼쪽 맵, 오른쪽 「도구 | 구간 설정」 탭으로 화면 넘김 없이',
+      '폰 가로 화면에서 점수 아래 줄(거리 · 기어 · 배율 · 최고)이 줄 중간에서 끊기지 않게',
+      '오늘의 미션 「한 판에 N점」을 새 점수에 맞게 6만 · 20만 · 50만으로',
+    ],
+  },
+  {
     version: '3.2.1', date: '2026-11-27', title: '관리자 대시보드',
     notes: ['관리자 화면을 한 화면 대시보드로: 핵심 숫자 13개, 최근 14일 플레이 · 플레이어 · 가입 차트, 회원 표(최근 접속 · 로그인 · 플레이, 7일 판, 주간 최고, 코인) 정렬과 페이지, 최근 플레이와 관리 기록, 오른쪽에서 열리는 회원 상세'],
   },
