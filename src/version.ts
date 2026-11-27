@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.7.3', date: '2026-11-27', title: 'NEW 태그 위치',
+    notes: ['공유 맵의 NEW 태그를 제목 앞에 붙여 글자를 가리지 않게'],
+  },
+  {
     version: '2.7.2', date: '2026-11-27', title: '공유 맵 카드 정리',
     notes: ['공유 맵 카드는 플레이 · 기록 버튼만 오른쪽 끝에 (내보내기는 내 맵에서만)', '새로 공유된 맵에는 24시간 동안 왼쪽 위에 NEW 태그'],
   },
