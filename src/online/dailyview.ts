@@ -1,3 +1,4 @@
+import { track } from '@vercel/analytics';
 import { STREAK_REWARDS } from '../daily';
 import { errorText, type DailyState, type Online } from './types';
 
@@ -79,6 +80,7 @@ export class DailyView {
     ($('attend-go') as HTMLButtonElement).disabled = true;
     try {
       const r = await online.checkIn();
+      track('check_in', { streak: r.streak });
       $('daily-msg').textContent = `출석 ${r.streak}일째! ${num(r.reward)}코인을 받았어요.`;
       this.onChange();
     } catch (e) { $('daily-msg').textContent = errorText(e); }

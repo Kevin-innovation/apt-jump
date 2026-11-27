@@ -1,3 +1,4 @@
+import { inject, track } from '@vercel/analytics';
 import { Audio8 } from './audio';
 import { AchievementView } from './online/achievementview';
 import { Bot } from './bot';
@@ -33,6 +34,8 @@ declare global {
 }
 
 const testing = new URLSearchParams(location.search).get('patch-test') === '1';
+// Page views for Vercel Web Analytics: cookieless, only on the real site (a test run counts for nothing).
+if (!testing) inject({ mode: import.meta.env.PROD ? 'production' : 'development' });
 const canvas = document.getElementById('game') as HTMLCanvasElement;
 // A test run must not touch the player's records.
 const nowhere = () => ({ getItem: () => null, setItem: () => {} });
@@ -221,6 +224,7 @@ function begin(run: Issued | null, why: string): void {
   const away = phase === 'issuing' && awayAtStart;
   ui.wait('');
   ranked = run && { runId: run.runId, recorder: new Recorder(), map: mode.kind === 'map' };
+  if (!testing) track('run_start', { mode: mode.kind === 'map' ? 'map' : run ? 'ranked' : 'guest' });
   // The content the server fixed this run to is the one played.
   if (mode.kind === 'map' && run?.map) mode = { ...mode, map: run.map };
   ui.onlineNote(why);

@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.8.1', date: '2026-11-27', title: '방문 통계',
+    notes: ['Vercel Web Analytics로 방문 · 판 시작 · 코스튬 구매 · 출석을 집계 (쿠키 없음, 개인 정보 수집 없음)'],
+  },
+  {
     version: '2.8.0', date: '2026-11-27', title: '오늘의 미션 · 출석 보상 · 랩 음악 · 순위표 코스튬',
     notes: [
       '출석 보상: 매일 한 번, 연속 출석할수록 더 많이 (100 → 150 → 200 → 250 → 300 → 400 → 7일째 700, 하루 거르면 1일째부터)',

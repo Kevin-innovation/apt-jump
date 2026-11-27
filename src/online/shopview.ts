@@ -1,3 +1,4 @@
+import { track } from '@vercel/analytics';
 import { Pager } from '../pager';
 import { COSTUMES, DEFAULT_COSTUME, type Costume } from '../shop';
 import { makeSprites } from '../sprites';
@@ -109,6 +110,7 @@ export class ShopView {
     this.sure = null;
     try {
       this.state = await online.buy(c.id);
+      track('costume_buy', { costume: c.id, price: c.price });
       this.dress(this.state.costume);
       this.say(`${c.name}을(를) 샀어요! 바로 입었어요.`);
     } catch (e) { this.say(errorText(e)); }
