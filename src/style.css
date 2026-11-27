@@ -554,7 +554,10 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .ed-form > button { display: flex; align-items: center; justify-content: flex-start; gap: 8px; text-align: left; }
 .ed-form > button span { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .ed-form > button[aria-pressed='true'] { background: #1f7f86; border-color: #7dfff0; }
-.ed-form .step[data-icon] { grid-template-columns: 18px minmax(3.6em, 1fr) 36px 2.8em 36px; gap: 6px; }
+.ed-form { grid-template-columns: repeat(auto-fill, minmax(min(100%, 15.5em), 1fr)); }
+.ed-form > * { min-width: 0; box-sizing: border-box; }
+.ed-form .step[data-icon] { grid-template-columns: 18px minmax(0, 1fr) 34px 2.6em 34px; gap: 4px; overflow: hidden; }
+.ed-form .step button { min-width: 0; padding: 0; }
 #ed-help { min-height: 1.4em; margin: 0; color: #cfc4ee; }
 #ed-issues { background: #5a1f3a; border-color: #ff7a7a; color: #ffd0d0; min-width: 6em; }
 #ed-issues[aria-expanded='true'] { background: #8a2c4c; }

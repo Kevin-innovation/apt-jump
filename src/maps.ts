@@ -15,7 +15,7 @@ export const LIMITS = {
 export const ITEM_TYPES = ['coin', 'gold', 'diamond', 'ac', 'tank', 'box', 'bar', 'puddle', 'line', 'drone', 'pigeon', ...POWER_KINDS] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 export const ITEM_NAMES: Record<ItemType, string> = {
-  coin: '동전', gold: '분홍 동전', diamond: '다이아', ac: '실외기', tank: '물탱크', box: '상자', bar: '머리 위 배관', puddle: '물웅덩이',
+  coin: '동전', gold: '분홍 동전', diamond: '다이아', ac: '실외기', tank: '물탱크', box: '상자', bar: '배관', puddle: '물웅덩이',
   line: '빨랫줄', drone: '드론', pigeon: '비둘기',
   ...POWER_NAMES,
 };
@@ -171,7 +171,7 @@ export function checkMap(m: GameMap): MapProblem[] {
       // Something overhead needs a longer look after whatever had to be jumped.
       else if (b.t === 'bar' && !slid(a.t)) {
         const need = Math.ceil((paceSpeed(m.pace, (starts[i]! + a.x) * UNIT) * 0.3) / UNIT);
-        if (b.x - (a.x + a.w) < need) bad(i, `뛰어넘은 뒤 머리 위 배관까지는 ${need} 이상 띄우세요.`);
+        if (b.x - (a.x + a.w) < need) bad(i, `뛰어넘은 뒤 배관까지는 ${need} 이상 띄우세요.`);
       }
     }
     // Two things to slide past in a row: one slide and its rest have to fit between them.

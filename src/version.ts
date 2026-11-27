@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '2.9.1', date: '2026-11-27', title: '맵 제작 화면 정리',
+    notes: ['구간 설정 칸이 어떤 화면 너비에서도 넘치지 않게 정리', '도구 이름 「머리 위 배관」을 「배관」으로 줄임'],
+  },
+  {
     version: '2.9.0', date: '2026-11-27', title: '맵 제작 · 새 장치와 쉬운 설명',
     notes: [
       '맵 제작에 상자 · 머리 위 배관 · 물웅덩이 도구 추가 (↓ 슬라이드로 지나가요)',
