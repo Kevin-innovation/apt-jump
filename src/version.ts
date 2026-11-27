@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.1.2', date: '2026-11-27', title: '일시정지 한 판에 1번 · 자동차 무작위',
+    notes: [
+      '직접 하는 일시정지는 한 판에 1번 (창을 벗어나면 지금처럼 자동으로 멈춰요)',
+      '도로마다 자동차 속도 · 출발 위치 · 간격이 제각각으로 (사이에 착지할 공간은 항상 남겨요)',
+      '첫 화면 조작 안내 카드 글씨가 넘치지 않게 정리',
+    ],
+  },
+  {
     version: '3.1.1', date: '2026-11-27', title: '장애물 테두리 · 안내 글씨 정리',
     notes: [
       '부딪히는 장애물에 테두리: 레인보우 = 점프로 넘거나 밟기 (실외기 · 물탱크 · 드론 · 비둘기)',

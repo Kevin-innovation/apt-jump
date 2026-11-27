@@ -238,6 +238,8 @@ function begin(run: Issued | null, why: string): void {
   view.reset();
   acc = 0;
   heldAtPause = assistHold = false;
+  pausesLeft = PAUSES_PER_RUN;
+  pauseButton();
   input.release();
   ui.show(null);
   ui.count(null);
@@ -270,6 +272,22 @@ function unrank(why: string): void {
   ranked = null; city = null;
   unrankedNote = why;
   ui.onlineNote(why);
+}
+
+/** A player's own pauses: one a run. Leaving the tab or an update still pauses, since the run can't go on unseen. */
+const PAUSES_PER_RUN = 1;
+let pausesLeft = PAUSES_PER_RUN;
+function pauseButton(): void {
+  const b = document.getElementById('btn-pause') as HTMLButtonElement;
+  b.disabled = pausesLeft <= 0;
+  b.title = pausesLeft > 0 ? '일시정지 (한 판에 1번)' : '이번 판 일시정지를 이미 썼어요';
+}
+function askPause(): void {
+  if (phase !== 'playing' && phase !== 'countdown') return;
+  if (pausesLeft <= 0) { ui.wait('일시정지는 한 판에 1번이에요'); window.setTimeout(() => { if (phase === 'playing') ui.wait(unrankedNote ?? ''); }, 1800); return; }
+  pausesLeft--;
+  pauseButton();
+  pause();
 }
 
 function pause(): void {
@@ -436,14 +454,14 @@ input.onGesture = () => audio.unlock();
 input.onMute = () => act('mute');
 input.onEscape = () => {
   if (updating) return false;
-  if (phase === 'playing' || phase === 'countdown') { pause(); return true; }
+  if (phase === 'playing' || phase === 'countdown') { askPause(); return true; }
   if (ui.screen === 'achievements' && achievements.back()) return true;
   // The title has nowhere further back to go.
   return ui.screen !== null && ui.screen !== 'title' && ui.menu('back');
 };
 input.onPause = () => {
   if (updating) return;
-  if (phase === 'playing' || phase === 'countdown') pause();
+  if (phase === 'playing' || phase === 'countdown') askPause();
   else if (ui.screen === 'settings' || ui.screen === 'credits' || ui.screen === 'items' || ui.screen === 'notes') act('back');
   else if (phase === 'paused') act('resume');
   else if (phase === 'title' && ui.screen === 'title') act('start');
@@ -452,7 +470,7 @@ input.onPause = () => {
 input.onDevice = () => ui.setDevice(input.device);
 input.onBlur = () => { if (phase === 'issuing') awayAtStart = true; else pause(); };
 ui.setDevice(input.device);
-document.getElementById('btn-pause')!.addEventListener('click', () => { if (!testing) pause(); });
+document.getElementById('btn-pause')!.addEventListener('click', () => { if (!testing) askPause(); });
 // On the press, not the click: a slide is timed.
 document.getElementById('btn-slide')!.addEventListener('pointerdown', (e) => { e.preventDefault(); input.pressSlide(); });
 
@@ -561,7 +579,8 @@ function frame(now: number): void {
     case 'paused': {
       const left = pauseLeft();
       if (left !== null && left <= 0) unrank('일시정지가 길어 이번 판은 순위에 오르지 않습니다.');
-      ui.pauseNote(left === null ? (unrankedNote && mode.kind === 'endless' ? unrankedNote : '') : `순위 기록 중 · 일시정지 여유 ${Math.ceil(left)}초`);
+      const once = pausesLeft <= 0 ? '이번 판 일시정지를 썼어요 (한 판에 1번)' : '';
+      ui.pauseNote([left === null ? (unrankedNote && mode.kind === 'endless' ? unrankedNote : '') : `순위 기록 중 · 일시정지 여유 ${Math.ceil(left)}초`, once].filter(Boolean).join(' · '));
       break;
     }
     case 'countdown': {
