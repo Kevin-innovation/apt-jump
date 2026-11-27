@@ -195,19 +195,38 @@
   </section>
 
   <section class="screen" id="admin" hidden>
-    <header class="screen-top"><h2>관리자</h2><nav><button type="button" data-act="account">내 계정</button><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
-    <p id="admin-msg" class="warn" role="status"></p>
-    <div id="admin-stats" class="admin-stats"></div>
-    <p class="keys">활동·플레이 수는 관리자 기능 배포 뒤부터 세요.<br />회원 수는 전체예요.</p>
-    <h3>회원</h3>
-    <form id="admin-search" class="admin-row">
-      <label for="admin-q" class="sr">회원 검색</label>
-      <input id="admin-q" type="search" maxlength="32" placeholder="아이디 또는 닉네임" autocomplete="off" />
-      <button type="submit" class="small">검색</button>
-    </form>
-    <div id="admin-members" class="admin-list"></div>
-    <div id="admin-detail" class="admin-detail" hidden>
-      <h3 id="admin-detail-name"></h3>
+    <header class="admin-head">
+      <h2>관리자</h2>
+      <p id="admin-msg" class="warn" role="status"></p>
+      <nav><button type="button" id="admin-refresh" class="small">새로고침</button><button type="button" data-act="account">내 계정</button><button type="button" data-act="home" class="primary">타이틀로</button></nav>
+    </header>
+    <div id="admin-stats" class="admin-kpis"></div>
+    <div class="admin-grid">
+      <section class="admin-panel admin-charts" aria-label="최근 14일">
+        <figure class="admin-chart"><figcaption>하루 플레이 <small>시작한 판</small></figcaption><div id="admin-chart-plays"></div></figure>
+        <figure class="admin-chart"><figcaption>하루 플레이어 <small>검증된 판을 한 회원</small></figcaption><div id="admin-chart-players"></div></figure>
+        <figure class="admin-chart"><figcaption>하루 가입</figcaption><div id="admin-chart-signups"></div></figure>
+      </section>
+      <section class="admin-panel admin-people" aria-label="회원">
+        <form id="admin-search" class="admin-row">
+          <label for="admin-q" class="sr">회원 검색</label>
+          <input id="admin-q" type="search" maxlength="32" placeholder="아이디 또는 닉네임" autocomplete="off" />
+          <button type="submit" class="small">검색</button>
+          <span id="admin-count" class="admin-muted"></span>
+        </form>
+        <div class="admin-table-wrap"><table id="admin-table"><thead><tr>
+          <th data-sort="nickname">닉네임</th><th data-sort="lastActiveAt">최근 접속</th><th data-sort="lastLoginAt">최근 로그인</th><th data-sort="lastPlayAt">최근 플레이</th>
+          <th data-sort="runs7d" class="num">7일 판</th><th data-sort="plays" class="num">전체 판</th><th data-sort="weekBest" class="num">주간 최고</th><th data-sort="coins" class="num">코인</th><th data-sort="joinedAt">가입</th>
+        </tr></thead><tbody id="admin-members"></tbody></table></div>
+        <nav class="admin-pager"><button type="button" id="admin-prev" class="small">◀ 이전</button><span id="admin-page"></span><button type="button" id="admin-next" class="small">다음 ▶</button></nav>
+      </section>
+      <section class="admin-panel admin-feed" aria-label="최근 활동">
+        <div><h3>최근 플레이</h3><ol id="admin-recent" class="admin-feedlist"></ol></div>
+        <div><h3>관리 기록</h3><ol id="admin-logs" class="admin-feedlist"></ol></div>
+      </section>
+    </div>
+    <aside id="admin-detail" class="admin-detail" hidden aria-labelledby="admin-detail-name">
+      <header><h3 id="admin-detail-name"></h3><button type="button" id="admin-detail-close" class="small" aria-label="닫기">닫기 ✕</button></header>
       <dl id="admin-detail-info"></dl>
       <form id="admin-reset" class="admin-row">
         <label for="admin-pass">새 비밀번호</label>
@@ -234,9 +253,7 @@
           <button type="button" id="admin-no">취소</button>
         </nav>
       </div>
-    </div>
-    <h3>작업 기록</h3>
-    <div id="admin-logs" class="admin-list"></div>
+    </aside>
   </section>
 
   <section class="screen" id="editor" hidden>

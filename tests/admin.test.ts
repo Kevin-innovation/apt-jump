@@ -35,6 +35,7 @@ type As = Pick<ReturnType<typeof setup>['t'], 'query' | 'mutation'>;
 /** Every admin call, against one member. */
 const calls = (as: As, id: Id<'users'>) => [
   () => as.query(api.admin.stats, {}),
+  () => as.query(api.admin.trends, {}),
   () => as.query(api.admin.members, { search: '', paginationOpts: page }),
   () => as.query(api.admin.members, { search: 'runner', paginationOpts: page }),
   () => as.query(api.admin.memberDetail, { id }),
@@ -73,6 +74,16 @@ describe('the admin page', () => {
     expect((await admin.as.query(api.admin.members, { search: 'RUNNER_A', paginationOpts: page })).page.map((m) => m.nickname)).toEqual(['에이']);
     expect((await admin.as.query(api.admin.members, { search: '에', paginationOpts: page })).page.map((m) => m.nickname)).toEqual(['에이']);
     expect(await admin.as.query(api.admin.memberDetail, { id: a.id })).toMatchObject({ sessions: 1, member: { nickname: '에이' } });
+    // When each last signed in and played, and the last 14 days with today's play.
+    const [ra] = list.page;
+    expect(ra).toMatchObject({ runs7d: 0, weekBest: null, coins: expect.any(Number), costumes: 0 });
+    expect(ra!.lastLoginAt).toBeGreaterThan(0);
+    expect(ra!.lastPlayAt).toBeGreaterThan(0);
+    expect(list.page[1]!.lastPlayAt).toBeNull();
+    const trends = await admin.as.query(api.admin.trends, {});
+    expect(trends.days).toHaveLength(14);
+    expect(trends.days[13]).toMatchObject({ plays: 1, signups: 2 });
+    expect(trends.recent).toEqual([expect.objectContaining({ nickname: '에이', status: 'open' })]);
   });
 
   it('gives and takes coins, never below zero, and takes a costume back with or without a refund', async () => {

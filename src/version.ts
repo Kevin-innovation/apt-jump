@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.2.1', date: '2026-11-27', title: '관리자 대시보드',
+    notes: ['관리자 화면을 한 화면 대시보드로: 핵심 숫자 13개, 최근 14일 플레이 · 플레이어 · 가입 차트, 회원 표(최근 접속 · 로그인 · 플레이, 7일 판, 주간 최고, 코인) 정렬과 페이지, 최근 플레이와 관리 기록, 오른쪽에서 열리는 회원 상세'],
+  },
+  {
     version: '3.2.0', date: '2026-11-27', title: '추격 깃발 · 주간 보상 · 연속 밟기',
     notes: [
       '달리는 중에 「내 최고」와 「이번 주 1위」 지점에 깃발, 화면 위에 남은 거리 표시. 지나가면 돌파!',

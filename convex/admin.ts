@@ -87,24 +87,84 @@ export const stats = query({
 const memberShape = v.object({
   id: v.id('users'), username: v.union(v.null(), v.string()), nickname: v.union(v.null(), v.string()),
   joinedAt: v.number(), lastActiveAt: v.union(v.null(), v.number()), plays: v.number(), suspended: v.boolean(), admin: v.boolean(),
+  // When they last signed in (newest session) and last played (newest ranked run started); runs verified in the
+  // last 7 days; this week's best; wallet and costumes bought.
+  lastLoginAt: v.union(v.null(), v.number()), lastPlayAt: v.union(v.null(), v.number()), runs7d: v.number(),
+  weekBest: v.union(v.null(), v.object({ score: v.number(), distance: v.number() })), coins: v.number(), costumes: v.number(),
 });
 
 /** A member's wallet and wardrobe, for the admin. */
 const shopShape = v.object({ coins: v.number(), coinsEarned: v.number(), owned: v.array(v.string()), costume: v.string() });
 const shopOf = (u: Doc<'users'>) => ({ coins: u.coins ?? 0, coinsEarned: u.coinsEarned ?? 0, owned: u.owned ?? [], costume: u.costume ?? DEFAULT_COSTUME });
 
+/** Korean dates, newest first, of the last n days. */
+const lastDays = (n: number, now = Date.now()) => Array.from({ length: n }, (_, i) => new Date(now + 9 * 3_600_000 - i * DAY).toISOString().slice(0, 10));
+
 async function member(ctx: QueryCtx, u: Doc<'users'>, adminId: Id<'users'>) {
+  const now = Date.now(), week = weekKey(now);
+  const [username, sessions, lastRun, best, days] = await Promise.all([
+    ctx.runQuery(components.authUsername.public.getUsername, { userId: u._id }),
+    ctx.runQuery(components.auth.public.listSessions, { userId: u._id }),
+    ctx.db.query('runs').withIndex('by_user_started', (q) => q.eq('userId', u._id)).order('desc').first(),
+    ctx.db.query('scores').withIndex('by_week_user_score', (q) => q.eq('week', week).eq('userId', u._id)).order('desc').first(),
+    ctx.db.query('dailyProgress').withIndex('by_user_day', (q) => q.eq('userId', u._id).gte('day', lastDays(7, now)[6]!)).collect(),
+  ]);
+  const cutoff = best ? await weekCutoff(ctx, week) : 0;
+  const lastLogin = sessions.reduce((t, s) => Math.max(t, s.creationTime), 0);
+  const seen = sessions.reduce((t, s) => Math.max(t, s.lastRefreshedAt), u.lastActiveAt ?? 0);
   return {
     id: u._id,
-    username: await ctx.runQuery(components.authUsername.public.getUsername, { userId: u._id }),
+    username,
     nickname: u.nickname ?? null,
     joinedAt: u._creationTime,
-    lastActiveAt: u.lastActiveAt ?? null,
+    lastActiveAt: seen || null,
     plays: u.plays ?? 0,
     suspended: !!u.suspended,
     admin: u._id === adminId,
+    lastLoginAt: lastLogin || null,
+    lastPlayAt: lastRun?.startedAt ?? null,
+    runs7d: days.reduce((n, d) => n + d.runs, 0),
+    weekBest: best && best.achievedAt >= cutoff ? { score: best.score, distance: best.distance } : null,
+    coins: u.coins ?? 0,
+    costumes: (u.owned ?? []).length,
   };
 }
+
+const dayShape = v.object({ day: v.string(), plays: v.number(), signups: v.number(), players: v.number(), best: v.number() });
+const recentShape = v.object({ at: v.number(), nickname: v.union(v.null(), v.string()), userId: v.id('users'), status: v.string() });
+
+/**
+ * The last 14 days, oldest first: plays started, sign-ups, players with a verified run, the day's best score. And
+ * the 30 newest ranked runs, with how each ended.
+ */
+export const trends = query({
+  args: {},
+  returns: v.object({ days: v.array(dayShape), recent: v.array(recentShape), coins: v.number(), costumes: v.number(), activeToday: v.number() }),
+  handler: async (ctx) => {
+    await requireAdmin(ctx);
+    const now = Date.now(), keys = lastDays(14, now).reverse(), from = keys[0]!;
+    const day = new Map(keys.map((k) => [k, { day: k, plays: 0, signups: 0, players: 0, best: 0 }]));
+    for (const d of await ctx.db.query('dailyStats').withIndex('by_day', (q) => q.gte('day', from)).collect()) { const r = day.get(d.day); if (r) r.plays = d.plays; }
+    for await (const u of ctx.db.query('users').withIndex('by_creation_time', (q) => q.gte('_creationTime', Date.parse(from) - 9 * 3_600_000))) {
+      const r = day.get(new Date(u._creationTime + 9 * 3_600_000).toISOString().slice(0, 10)); if (r) r.signups++;
+    }
+    let read = 0;
+    for await (const p of ctx.db.query('dailyProgress')) {
+      const r = day.get(p.day);
+      if (r && p.runs > 0) { r.players++; r.best = Math.max(r.best, p.bestScore); }
+      if (++read >= COUNT_CAP) break;
+    }
+    const recent = [];
+    for (const r of await ctx.db.query('runs').order('desc').take(30)) {
+      const u = await ctx.db.get(r.userId);
+      recent.push({ at: r.startedAt, nickname: u?.nickname ?? null, userId: r.userId, status: r.status });
+    }
+    let coins = 0, costumes = 0, seen = 0;
+    for await (const u of ctx.db.query('users')) { coins += u.coins ?? 0; costumes += (u.owned ?? []).length; if (++seen >= COUNT_CAP) break; }
+    const today = Date.parse(keys[keys.length - 1]!) - 9 * 3_600_000;
+    return { days: [...day.values()], recent, coins, costumes, activeToday: await count(ctx.db.query('users').withIndex('by_lastActive', (q) => q.gte('lastActiveAt', today))) };
+  },
+});
 
 /** Newest first, a page at a time; or, with search, the account with that id and the nicknames that start with it. */
 export const members = query({
@@ -126,7 +186,7 @@ export const members = query({
       }
       return { page: await Promise.all([...found.values()].map((u) => member(ctx, u, adminId))), isDone: true, continueCursor: '' };
     }
-    const r = await ctx.db.query('users').order('desc').paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 50) });
+    const r = await ctx.db.query('users').order('desc').paginate({ ...paginationOpts, numItems: Math.min(paginationOpts.numItems, 100) });
     return { page: await Promise.all(r.page.map((u) => member(ctx, u, adminId))), isDone: r.isDone, continueCursor: r.continueCursor };
   },
 });

@@ -22,13 +22,19 @@ export interface Account {
 }
 
 export interface AdminStats { members: number; signups7d: number; active7d: number; plays7d: number; playsToday: number; weeklyRecords: number; maps: number; suspended: number; cap: number }
-export interface AdminMember { id: string; username: string | null; nickname: string | null; joinedAt: number; lastActiveAt: number | null; plays: number; suspended: boolean; admin: boolean }
+export interface AdminMember {
+  id: string; username: string | null; nickname: string | null; joinedAt: number; lastActiveAt: number | null; plays: number; suspended: boolean; admin: boolean;
+  lastLoginAt: number | null; lastPlayAt: number | null; runs7d: number; weekBest: { score: number; distance: number } | null; coins: number; costumes: number;
+}
+export interface AdminDay { day: string; plays: number; signups: number; players: number; best: number }
+export interface AdminTrends { days: AdminDay[]; recent: { at: number; nickname: string | null; userId: string; status: string }[]; coins: number; costumes: number; activeToday: number }
 export interface AdminLogEntry { at: number; action: string; target: string; targetId: string; sessions: number; amount?: number; note?: string }
 export interface AdminShop { coins: number; coinsEarned: number; owned: string[]; costume: string }
 /** The admin page's calls. The server checks every one: these only carry them. */
 export interface AdminApi {
   amI(): Promise<boolean>;
   stats(): Promise<AdminStats>;
+  trends(): Promise<AdminTrends>;
   members(search: string, cursor: string | null): Promise<{ page: AdminMember[]; isDone: boolean; continueCursor: string }>;
   detail(id: string): Promise<{ member: AdminMember; sessions: number; shop: AdminShop }>;
   adjustCoins(id: string, delta: number): Promise<AdminShop>;
