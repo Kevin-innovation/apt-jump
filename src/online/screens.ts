@@ -50,6 +50,34 @@ function tieBoard(top: readonly { rank: number; nickname: string }[], record: st
   return board;
 }
 
+/** The row of labels on a card's top left corner; the card's lines move down to make room for it. */
+function cardTags(card: HTMLElement): HTMLElement {
+  let row = card.querySelector<HTMLElement>(':scope > .card-tags');
+  if (!row) {
+    row = document.createElement('span');
+    row.className = 'card-tags';
+    card.prepend(row);
+  }
+  return row;
+}
+
+/** Puts BEST! on a card, after NEW where there is one, or takes it off. */
+function markBest(card: HTMLElement, on: boolean): void {
+  const had = card.querySelector('.best-tag');
+  card.classList.toggle('is-best', on);
+  if (on && !had) {
+    const tag = document.createElement('span');
+    tag.className = 'best-tag';
+    tag.textContent = 'BEST!';
+    tag.title = '누적 완주가 가장 많은 맵';
+    cardTags(card).append(tag);
+  } else if (!on && had) {
+    const row = had.parentElement!;
+    had.remove();
+    if (!row.childElementCount) row.remove();
+  }
+}
+
 /** Account, weekly ranking and shared maps. Works, with a plain notice, when nothing is connected. */
 export class OnlineScreens {
   online: Online | null = null;
@@ -353,6 +381,9 @@ export class OnlineScreens {
       // More maps replace the button that fetched them, at the end of the last page.
       const items = cursor === null ? [] : this.sharedItems.slice(0, -1);
       items.push(...r.page.map((m) => this.card(m)));
+      // Each answer carries the leaders as they are now: cards already loaded follow it too.
+      const best = new Set(r.mostPlayed ?? []);
+      for (const item of items) if (item.dataset.mapId) markBest(item, best.has(item.dataset.mapId));
       if (!r.isDone) {
         const more = document.createElement('button');
         more.type = 'button';
@@ -441,14 +472,18 @@ export class OnlineScreens {
     const plays = m.plays ? ` · 누적 완주 ${num(m.plays)}회` : '';
     // Two short lines, never cut: who made it, then the record and who holds it.
     const card = mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${plays}${m.mine ? ' · 내 맵' : ''}\n${m.best === null ? '아직 완주 기록 없음' : `최단 ${timeText(m.best)} ·${holder}`}`, buttons);
-    // New for a day after it was first shared.
-    if (m.createdAt !== undefined && (this.online?.now() ?? Date.now()) - m.createdAt < NEW_FOR) {
+    card.dataset.mapId = m.id;
+    // For a day: UPDATE after its content changed (so its times began again with the maker's), else NEW after it was
+    // first shared.
+    const now = this.online?.now() ?? Date.now();
+    const updated = m.contentUpdatedAt !== undefined && now - m.contentUpdatedAt < NEW_FOR;
+    if (updated || (m.createdAt !== undefined && now - m.createdAt < NEW_FOR)) {
       const tag = document.createElement('span');
-      tag.className = 'new-tag';
-      tag.textContent = 'NEW';
-      // On the card's top left corner; the card's lines move down to make room for it.
+      tag.className = updated ? 'update-tag' : 'new-tag';
+      tag.textContent = updated ? 'UPDATE' : 'NEW';
+      if (updated) tag.title = '맵 내용이 바뀌어 기록이 새로 시작됐어요';
       card.classList.add('is-new');
-      card.prepend(tag);
+      cardTags(card).prepend(tag);
     }
     return card;
   }

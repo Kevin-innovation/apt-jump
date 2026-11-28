@@ -518,7 +518,13 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 /* A map shared within the last day: a NEW tag on the card's top left corner. */
 #maps .card { position: relative; }
 .new-tag { position: absolute; top: -2px; left: -2px; z-index: 1; padding: 0 6px; font-size: 11px; line-height: 16px; color: #1a1230; background: #ffd85a; box-shadow: 2px 2px #140c2e; letter-spacing: .05em; }
-#maps .card.is-new { padding-top: 18px; }
+#maps .card.is-new, #maps .card.is-best { padding-top: 18px; }
+/* A card's labels side by side in its corner: NEW, then BEST! for the most completed. */
+.card-tags { position: absolute; top: -2px; left: -2px; z-index: 1; display: flex; gap: 4px; pointer-events: none; }
+.card-tags > .new-tag { position: static; }
+.card-tags > .best-tag, .card-tags > .update-tag { pointer-events: auto; }
+.best-tag, .update-tag { padding: 0 6px; font-size: 11px; line-height: 16px; color: #1a1230; background: #7dfff0; box-shadow: 2px 2px #140c2e; letter-spacing: .05em; }
+.update-tag { background: #9be36b; }
 @media (prefers-reduced-motion: no-preference) { .new-tag { animation: new-blink 1.4s steps(2, jump-none) infinite; } }
 @keyframes new-blink { 50% { background: #ff9be6; } }
 .admin-costumes { display: grid; gap: 4px; width: 100%; }

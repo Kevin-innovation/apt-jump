@@ -11,6 +11,8 @@ import { requirePlayer, touch } from './users';
 
 export const MAPS_PER_PLAYER = 20;
 export const PAGE = 20;
+/** The most maps named as tied for most completed: far above any real tie, it keeps the read bounded. */
+const TOP_TIES = 1000;
 const MIN_UPDATE_GAP = 3000;
 const RUN_LIFE = 2 * 3_600_000;
 const START_WINDOW = 10 * 60_000;
@@ -160,7 +162,7 @@ export const shareSettle = internalMutation({
       // A name given while this run was under way is newer than the one in it.
       const title = (target.renamedAt ?? 0) > run.startedAt ? target.title : map.title;
       mapId = target._id;
-      await ctx.db.patch(mapId, { title, segments: map.segments.length, bodyId, updatedAt: now, plays: (target.plays ?? 0) + 1 });
+      await ctx.db.patch(mapId, { title, segments: map.segments.length, bodyId, updatedAt: now, plays: (target.plays ?? 0) + 1, ...(bodyId === target.bodyId ? {} : { contentUpdatedAt: now }) });
     } else {
       bodyId = await ctx.db.insert('mapBodies', { json });
       mapId = await ctx.db.insert('maps', { ownerId: userId, title: map.title, segments: map.segments.length, bodyId, updatedAt: now, plays: 1 });
@@ -227,6 +229,13 @@ async function fastest(ctx: QueryCtx, bodyId: Id<'mapBodies'>): Promise<{ best: 
   return { best: top.timeMs, bestBy: (await ctx.db.get(first.userId))?.nickname ?? '(탈퇴)', bestTied: tied.length };
 }
 
+/** Every map sharing the highest count of completions among all shared maps; none while nothing has been finished. */
+async function mostPlayed(ctx: QueryCtx): Promise<Id<'maps'>[]> {
+  const most = (await ctx.db.query('maps').withIndex('by_plays').order('desc').first())?.plays ?? 0;
+  if (most <= 0) return [];
+  return (await ctx.db.query('maps').withIndex('by_plays', (q) => q.eq('plays', most)).take(TOP_TIES)).map((m) => m._id);
+}
+
 export const list = query({
   args: { paginationOpts: paginationOptsValidator, order: v.union(v.literal('new'), v.literal('old')) },
   handler: async (ctx, args) => {
@@ -235,10 +244,12 @@ export const list = query({
     const r = await ctx.db.query('maps').withIndex('by_updated').order(args.order === 'new' ? 'desc' : 'asc').paginate(opts);
     const page = await Promise.all(r.page.map(async (m) => ({
       id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, createdAt: m._creationTime, mine: m.ownerId === me, plays: m.plays ?? 0,
+      ...(m.contentUpdatedAt === undefined ? {} : { contentUpdatedAt: m.contentUpdatedAt }),
       author: (await ctx.db.get(m.ownerId))?.nickname ?? '(탈퇴)',
       ...(await fastest(ctx, m.bodyId)),
     })));
-    return { page, isDone: r.isDone, continueCursor: r.continueCursor };
+    // Judged over all maps, not this page: a page is only the latest changed.
+    return { page, isDone: r.isDone, continueCursor: r.continueCursor, mostPlayed: await mostPlayed(ctx) };
   },
 });
 

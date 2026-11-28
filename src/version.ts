@@ -6,6 +6,13 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.5.0', date: '2026-11-28', title: '가장 많이 완주한 맵',
+    notes: [
+      '공유 맵 가운데 누적 완주가 가장 많은 맵에 BEST! 표시 (동률이면 모두)',
+      '내용이 바뀐 공유 맵에는 하루 동안 UPDATE 표시: 기록은 갱신하며 완주한 제작자부터 새로 시작해요',
+    ],
+  },
+  {
     version: '3.4.3', date: '2026-11-28', title: '순위표 칭호 잘림 수정',
     notes: ['화면을 확대하거나 좁은 화면에서도 주간 순위의 칭호가 잘리지 않게'],
   },

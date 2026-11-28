@@ -11,9 +11,9 @@ export interface ShopState { coins: number; owned: string[]; costume: string }
 export interface BoardEntry { rank: number; nickname: string; title?: string | null; badge?: string | null; costume?: string; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
 /** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
-export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; /** Verified completions counted so far. */ plays?: number }
+export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; /** When an update last changed its content; absent if none has. */ contentUpdatedAt?: number; /** Verified completions counted so far. */ plays?: number }
 export interface MapBoard { title: string; top: { rank: number; nickname: string; timeMs: number; mine: boolean }[]; mine: { rank: number | null; timeMs: number } | null }
-export interface SharedPage { page: SharedMapInfo[]; isDone: boolean; continueCursor: string }
+export interface SharedPage { page: SharedMapInfo[]; isDone: boolean; continueCursor: string; /** Ids of all maps, on any page, with the most completions. */ mostPlayed?: string[] }
 
 export interface Account {
   status: 'loading' | 'out' | 'in';
