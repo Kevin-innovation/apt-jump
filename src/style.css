@@ -595,6 +595,14 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 /* As wide as its words up to the screen's edges: centred from the middle, it would otherwise wrap at half the width. */
 .ed-toast { width: max-content; text-align: center; box-sizing: border-box; }
 
+/* A map's times: now, or one earlier content at a time, chosen with the arrows beside its name and date. */
+#mt-version { display: grid; grid-template-columns: auto minmax(0, 1fr) auto; align-items: center; gap: 8px; width: min(760px, 100%); }
+#mt-version[hidden] { display: none; }
+#mt-version p { margin: 0; overflow-wrap: anywhere; word-break: keep-all; }
+#mt-version-label > .rank-date { display: block; white-space: normal; font-size: .85em; }
+#mt-version button { min-width: 44px; min-height: 40px; background: #3a2c6a; border: 2px solid #7a68b8; }
+#share-confirm-update { display: grid; gap: 6px; }
+
 /* The title's chips: the version and, signed in, today's missions (a dot while attendance waits). */
 .title-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
 .daily-chip { position: relative; display: inline-flex; align-items: center; padding: .4em 1em; font-size: .85em; color: #9be36b; background: #2c2052e6; border: 2px solid #9be36b; box-shadow: 0 0 0 2px #140c2e; }

@@ -4,8 +4,8 @@ import { timeOf, verifyMapReplay } from '../src/mapreplay';
 import { parseMap, serializeMap } from '../src/maps';
 import { MAX_REPLAY, SIM_VERSION } from '../src/replay';
 import { internal } from './_generated/api';
-import type { Id } from './_generated/dataModel';
-import { action, internalMutation, mutation, query } from './_generated/server';
+import type { Doc, Id } from './_generated/dataModel';
+import { action, internalMutation, mutation, query, type QueryCtx } from './_generated/server';
 import { requirePlayer, touch } from './users';
 
 // Best completion times of published maps. They belong to one version of a map's content (its bodyId), for all time.
@@ -16,6 +16,26 @@ const START_WINDOW = 10 * 60_000;
 const STARTS_PER_WINDOW = 60;
 /** Clock and network slack when comparing a run's length with the time it took. */
 const SLACK = 4000;
+/** A verification run's row was written with the content it proved: this close to the content's own creation. */
+const VALIDATION_SLACK = 1000;
+/** The most previous versions listed for one map. */
+const VERSIONS = 100;
+
+/**
+ * Sharing used to write the maker's verification run as a time. Such a row is the owner's, made together with its
+ * content; it stays stored but is on no board. A time the maker sets later is an ordinary one.
+ */
+export async function isValidation(ctx: QueryCtx, row: Doc<'mapTimes'>, ownerId: Id<'users'>): Promise<boolean> {
+  if (row.userId !== ownerId) return false;
+  const body = await ctx.db.get(row.bodyId);
+  return !!body && Math.abs(row.achievedAt - body._creationTime) <= VALIDATION_SLACK;
+}
+/** A player's own counting row for a content, if any. */
+async function ownRow(ctx: QueryCtx, bodyId: Id<'mapBodies'>, userId: Id<'users'>, ownerId: Id<'users'> | undefined) {
+  for (const r of await ctx.db.query('mapTimes').withIndex('by_body_user', (q) => q.eq('bodyId', bodyId).eq('userId', userId)).take(5))
+    if (!ownerId || !(await isValidation(ctx, r, ownerId))) return r;
+  return null;
+}
 
 /** Issues a run of a published map, fixed to the content it has now, which is returned to be played. */
 export const start = mutation({
@@ -71,7 +91,8 @@ export const settle = internalMutation({
     const map = await ctx.db.get(run.mapId);
     if (map) await ctx.db.patch(map._id, { plays: (map.plays ?? 0) + 1 });
     const row = { timeMs: timeOf(steps), achievedAt: Date.now() };
-    const old = await ctx.db.query('mapTimes').withIndex('by_body_user', (q) => q.eq('bodyId', run.bodyId).eq('userId', run.userId)).first();
+    // An old verification row neither blocks the maker's real time nor is overwritten by it.
+    const old = await ownRow(ctx, run.bodyId, run.userId, map?.ownerId);
     if (old && old.timeMs <= row.timeMs) return { best: false };
     if (old) await ctx.db.patch(old._id, row);
     else await ctx.db.insert('mapTimes', { mapId: run.mapId, bodyId: run.bodyId, userId: run.userId, ...row });
@@ -100,17 +121,32 @@ export const finish = action({
 
 const entry = v.object({ rank: v.number(), nickname: v.string(), timeMs: v.number(), achievedAt: v.number(), mine: v.boolean() });
 
-/** The fastest runs of a map as it is now. Open to guests. */
+/** The fastest runs of a map as it is now, or, with `bodyId`, of an earlier content of it. Open to guests. */
 export const board = query({
-  args: { mapId: v.id('maps') },
+  args: { mapId: v.id('maps'), bodyId: v.optional(v.string()) },
   returns: v.union(v.null(), v.object({ title: v.string(), top: v.array(entry), mine: v.union(v.null(), v.object({ rank: v.union(v.null(), v.number()), timeMs: v.number(), achievedAt: v.number() })) })),
-  handler: async (ctx, { mapId }) => {
+  handler: async (ctx, args) => {
+    const { mapId } = args;
     const map = await ctx.db.get(mapId);
     if (!map) return null;
+    let bodyId = map.bodyId, title = map.title;
+    if (args.bodyId !== undefined) {
+      const asked = ctx.db.normalizeId('mapBodies', args.bodyId);
+      // Only a content this map has times on: nothing else, and no other map's.
+      if (!asked || !(await ctx.db.query('mapTimes').withIndex('by_map_body', (q) => q.eq('mapId', mapId).eq('bodyId', asked)).first())) return null;
+      const body = await ctx.db.get(asked);
+      bodyId = asked;
+      if (asked !== map.bodyId) title = (body && parseMap(body.json).map?.title) || map.title;
+    }
     const me = (await getAuthUserId(ctx)) as Id<'users'> | null;
+    const counted = async (rows: Doc<'mapTimes'>[]) => {
+      const out: Doc<'mapTimes'>[] = [];
+      for (const r of rows) if (!(await isValidation(ctx, r, map.ownerId))) out.push(r);
+      return out;
+    };
     // Among equal times, whoever got there first is listed first.
-    const rows = (await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', map.bodyId)).take(TOP))
-      .sort((a, b) => a.timeMs - b.timeMs || a.achievedAt - b.achievedAt);
+    const rows = (await counted(await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', bodyId)).take(TOP + 1)))
+      .sort((a, b) => a.timeMs - b.timeMs || a.achievedAt - b.achievedAt).slice(0, TOP);
     const top: { rank: number; nickname: string; timeMs: number; achievedAt: number; mine: boolean }[] = [];
     for (const r of rows) {
       const user = await ctx.db.get(r.userId);
@@ -118,12 +154,39 @@ export const board = query({
       const prev: (typeof top)[number] | undefined = top[top.length - 1];
       top.push({ rank: prev && prev.timeMs === r.timeMs ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', timeMs: r.timeMs, achievedAt: r.achievedAt, mine: r.userId === me });
     }
-    const own = me && (await ctx.db.query('mapTimes').withIndex('by_body_user', (q) => q.eq('bodyId', map.bodyId).eq('userId', me)).first());
+    const own = me && (await ownRow(ctx, bodyId, me, map.ownerId));
     let mine = null;
     if (own) {
-      const faster = await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', map.bodyId).lt('timeMs', own.timeMs)).take(RANK_CAP);
+      const faster = await counted(await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', bodyId).lt('timeMs', own.timeMs)).take(RANK_CAP));
       mine = { rank: faster.length < RANK_CAP ? faster.length + 1 : null, timeMs: own.timeMs, achievedAt: own.achievedAt };
     }
-    return { title: map.title, top, mine };
+    return { title, top, mine };
+  },
+});
+
+/** The earlier contents of a map that have times, the latest shared first. Open to guests. */
+export const versions = query({
+  args: { mapId: v.id('maps') },
+  returns: v.array(v.object({ bodyId: v.id('mapBodies'), title: v.string(), sharedAt: v.number() })),
+  handler: async (ctx, { mapId }) => {
+    const map = await ctx.db.get(mapId);
+    if (!map) return [];
+    const out: { bodyId: Id<'mapBodies'>; title: string; sharedAt: number }[] = [];
+    // From one content to the next along the index, however many times each holds.
+    let after: Id<'mapBodies'> | null = null;
+    while (out.length < VERSIONS) {
+      const last: Id<'mapBodies'> | null = after;
+      const next: Doc<'mapTimes'> | null = await ctx.db.query('mapTimes')
+        .withIndex('by_map_body', (q) => (last ? q.eq('mapId', mapId).gt('bodyId', last) : q.eq('mapId', mapId))).first();
+      if (!next) break;
+      after = next.bodyId;
+      if (next.bodyId === map.bodyId) continue;
+      let real = false;
+      for (const r of await ctx.db.query('mapTimes').withIndex('by_map_body', (q) => q.eq('mapId', mapId).eq('bodyId', next.bodyId)).take(2))
+        if (!(await isValidation(ctx, r, map.ownerId))) { real = true; break; }
+      const body = real ? await ctx.db.get(next.bodyId) : null;
+      if (body) out.push({ bodyId: body._id, title: parseMap(body.json).map?.title ?? map.title, sharedAt: body._creationTime });
+    }
+    return out.sort((a, b) => b.sharedAt - a.sharedAt);
   },
 });

@@ -10,7 +10,7 @@ import { mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
 import { timeText } from '../mapreplay';
 import { weekEnd, weekKey } from '../week';
-import { errorText, type Online, type SharedMapInfo } from './types';
+import { errorText, type MapOrder, type MapVersion, type Online, type SharedMapInfo } from './types';
 import { Pager } from '../pager';
 
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
@@ -28,6 +28,9 @@ function runnerPicture(id: string | undefined): HTMLImageElement {
   img.title = c.name;
   return img;
 }
+/** The shared list's orders: each press of the button moves to the next. */
+const ORDER_NAMES: Record<MapOrder, string> = { new: '최신순', old: '오래된순', popular: '인기순' };
+const NEXT_ORDER: Record<MapOrder, MapOrder> = { new: 'old', old: 'popular', popular: 'new' };
 /** How long a newly shared map wears its NEW tag. */
 const NEW_FOR = 24 * 3_600_000;
 /** How often the title looks for a newly shared map. */
@@ -97,7 +100,11 @@ export class OnlineScreens {
   /** A service exists but hasn't answered yet. */
   connecting = false;
   private ticket = 0;
-  private order: 'new' | 'old' = 'new';
+  private order: MapOrder = 'new';
+  /** The map times screen shows an earlier content: which of them, and the list once fetched. */
+  private older = false;
+  private versionAt = 0;
+  private versions: MapVersion[] | null = null;
   private mapTicket = 0;
   private adminTicket = 0;
   private timesTicket = 0;
@@ -124,7 +131,11 @@ export class OnlineScreens {
     $('map-rename-cancel').addEventListener('click', () => this.closeName());
     // Keys typed in the box are its own: not the pager's arrows, and Esc only closes the box.
     $('map-rename').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); this.closeName(); } });
-    $('shared-order').addEventListener('click', () => { this.order = this.order === 'new' ? 'old' : 'new'; void this.refreshMaps(); });
+    $('shared-order').addEventListener('click', () => { this.order = NEXT_ORDER[this.order]; void this.refreshMaps(); });
+    $('mt-now').addEventListener('click', () => this.showVersions(false));
+    $('mt-old').addEventListener('click', () => this.showVersions(true));
+    $('mt-newer').addEventListener('click', () => this.showVersions(true, this.versionAt - 1));
+    $('mt-older').addEventListener('click', () => this.showVersions(true, this.versionAt + 1));
     setInterval(() => { if (!$('ranking').hidden) this.countdown(); }, 1000);
     // Someone else may share a map while the title waits: ask again now and then, only while it can be seen.
     setInterval(() => { if (!$('title').hidden && !document.hidden) void this.refreshNewMaps(); }, NEW_CHECK);
@@ -329,8 +340,22 @@ export class OnlineScreens {
 
   // ---- A map's times -----------------------------------------------------
 
+  /** Switches the map times between the current content and the earlier ones. */
+  private showVersions(older: boolean, at = 0): void {
+    // Coming to the earlier ones asks for the list afresh: an update may have added one.
+    if (older && !this.older) this.versions = null;
+    this.older = older;
+    this.versionAt = at;
+    this.timePages.set([note('불러오는 중입니다.')]);
+    $('mt-mine').textContent = '';
+    void this.refreshTimes();
+  }
+
   openTimes(id: string): void {
     this.timesOf = id;
+    this.older = false;
+    this.versions = null;
+    this.versionAt = 0;
     $('mt-title').textContent = '';
     this.timePages.set([note('불러오는 중입니다.')]);
     $('mt-mine').textContent = '';
@@ -339,12 +364,30 @@ export class OnlineScreens {
 
   async refreshTimes(): Promise<void> {
     const mine = $('mt-mine'), ticket = ++this.timesTicket;
+    const older = this.older;
+    $('mt-now').setAttribute('aria-selected', String(!older));
+    $('mt-old').setAttribute('aria-selected', String(older));
+    if (!older) $('mt-version').hidden = true;
     if (!this.online || !this.timesOf) { this.timePages.set([note('기록은 온라인 연결 뒤에 보여요.')]); return; }
     try {
-      const b = await this.online.mapBoard(this.timesOf);
+      let version: MapVersion | undefined;
+      if (older) {
+        const list = this.versions ?? await this.online.mapVersions(this.timesOf);
+        if (ticket !== this.timesTicket) return;
+        this.versions = list;
+        this.versionAt = Math.max(0, Math.min(list.length - 1, this.versionAt));
+        version = list[this.versionAt];
+        $('mt-version').hidden = !version;
+        $('mt-title').textContent = '';
+        if (!version) { this.timePages.set([note('기록이 남은 이전 버전이 없어요.')]); mine.textContent = ''; return; }
+        $('mt-version-label').replaceChildren(`${version.title} · ${this.versionAt + 1}/${list.length}`, recordedAt(version.sharedAt));
+        ($('mt-newer') as HTMLButtonElement).disabled = this.versionAt === 0;
+        ($('mt-older') as HTMLButtonElement).disabled = this.versionAt === list.length - 1;
+      }
+      const b = await this.online.mapBoard(this.timesOf, version?.bodyId);
       if (ticket !== this.timesTicket) return;
       if (!b) { this.timePages.set([note('내려간 맵입니다.')]); mine.textContent = ''; return; }
-      $('mt-title').textContent = b.title;
+      if (!older) $('mt-title').textContent = b.title;
       const tied = tieBoard(b.top, b.top[0] ? timeText(b.top[0].timeMs) : '');
       const rows = b.top.map((r) => {
         const row = document.createElement('div');
@@ -364,7 +407,7 @@ export class OnlineScreens {
       });
       this.timePages.set(b.top.length ? [...(tied ? [tied] : []), ...rows] : [note('아직 완주 기록이 없어요.')], true);
       mine.textContent = b.mine ? `내 기록 ${b.mine.rank === null ? '1000위 밖' : `${b.mine.rank}위`} · ${timeText(b.mine.timeMs)}`
-        : this.signedIn ? '내 완주 기록이 없어요.' : '로그인하면 기록이 등록돼요.';
+        : older ? '이 버전에는 내 기록이 없어요.' : this.signedIn ? '내 완주 기록이 없어요.' : '로그인하면 기록이 등록돼요.';
       // Its date has a line of its own.
       if (b.mine?.achievedAt !== undefined) mine.append(recordedAt(b.mine.achievedAt));
     } catch (e) {
@@ -379,7 +422,7 @@ export class OnlineScreens {
   async refreshMaps(): Promise<void> {
     this.closeName();
     $('shared-order').hidden = !this.online;
-    $('shared-order').textContent = this.order === 'new' ? '최신순' : '오래된순';
+    $('shared-order').textContent = ORDER_NAMES[this.order];
     this.shelf();
     if (!this.online) {
       this.sharedPages.set([note(this.connecting ? '온라인에 연결하는 중입니다.' : '온라인 공유는 준비하고 있습니다. 맵 파일을 내려받아 주고받을 수 있어요.')]);

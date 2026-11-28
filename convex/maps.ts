@@ -7,6 +7,7 @@ import { MAX_REPLAY, SIM_VERSION } from '../src/replay';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { action, internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
+import { isValidation } from './maptimes';
 import { requirePlayer, touch } from './users';
 
 export const MAPS_PER_PLAYER = 20;
@@ -127,8 +128,9 @@ export const shareClaim = internalMutation({
 });
 
 /**
- * Publishes a verified run's map and records the run as its maker's time, in one transaction; or, with null steps,
- * voids the run. Returns why when nothing was published (a throw would also undo voiding the run).
+ * Publishes a verified run's map, in one transaction; or, with null steps, voids the run. The run only proves the map
+ * can be finished: it is no record and counts as no completion. Returns why when nothing was published (a throw would
+ * also undo voiding the run).
  */
 export const shareSettle = internalMutation({
   args: { runId: v.id('mapShares'), steps: v.union(v.null(), v.number()) },
@@ -153,24 +155,21 @@ export const shareSettle = internalMutation({
       target = await same(ctx, mine, map);
       if (!target && mine.length >= MAPS_PER_PLAYER) return refuse(FULL);
     }
-    let mapId: Id<'maps'>, bodyId: Id<'mapBodies'>;
+    let mapId: Id<'maps'>;
     if (target) {
       // The same course keeps its content and times; a changed one gets its own, and the old stays for its times.
       const body = await ctx.db.get(target.bodyId);
       const had = body && parseMap(body.json).map;
-      bodyId = had && course(had) === course(map) ? target.bodyId : await ctx.db.insert('mapBodies', { json });
+      const bodyId = had && course(had) === course(map) ? target.bodyId : await ctx.db.insert('mapBodies', { json });
       // A name given while this run was under way is newer than the one in it.
       const title = (target.renamedAt ?? 0) > run.startedAt ? target.title : map.title;
       mapId = target._id;
-      await ctx.db.patch(mapId, { title, segments: map.segments.length, bodyId, updatedAt: now, plays: (target.plays ?? 0) + 1, ...(bodyId === target.bodyId ? {} : { contentUpdatedAt: now }) });
+      await ctx.db.patch(mapId, { title, segments: map.segments.length, bodyId, updatedAt: now, ...(bodyId === target.bodyId ? {} : { contentUpdatedAt: now }) });
     } else {
-      bodyId = await ctx.db.insert('mapBodies', { json });
-      mapId = await ctx.db.insert('maps', { ownerId: userId, title: map.title, segments: map.segments.length, bodyId, updatedAt: now, plays: 1 });
+      const bodyId = await ctx.db.insert('mapBodies', { json });
+      mapId = await ctx.db.insert('maps', { ownerId: userId, title: map.title, segments: map.segments.length, bodyId, updatedAt: now, plays: 0 });
     }
     const timeMs = timeOf(steps);
-    const old = await ctx.db.query('mapTimes').withIndex('by_body_user', (q) => q.eq('bodyId', bodyId).eq('userId', userId)).first();
-    if (!old) await ctx.db.insert('mapTimes', { mapId, bodyId, userId, timeMs, achievedAt: now });
-    else if (timeMs < old.timeMs) await ctx.db.patch(old._id, { timeMs, achievedAt: now });
     await ctx.db.patch(runId, { status: 'done', mapId, timeMs, json: undefined });
     return { done: { mapId, timeMs }, why: '' };
   },
@@ -219,14 +218,21 @@ export const remove = mutation({
   },
 });
 
-/** Titles and authors only, newest or oldest first, a small page at a time. Open to guests. */
+/** Titles and authors only, newest, oldest or most completed first, a small page at a time. Open to guests. */
 /** A map's best time and who holds it: the first to reach it, and how many share it. */
-async function fastest(ctx: QueryCtx, bodyId: Id<'mapBodies'>): Promise<{ best: number | null; bestBy: string | null; bestTied: number }> {
-  const top = await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', bodyId)).first();
+async function fastest(ctx: QueryCtx, map: Doc<'maps'>): Promise<{ best: number | null; bestBy: string | null; bestTied: number }> {
+  const bodyId = map.bodyId;
+  // At most one of the rows is the maker's old verification run, so two are enough to find the first real one.
+  let top: Doc<'mapTimes'> | undefined;
+  for (const r of await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', bodyId)).take(2))
+    if (!(await isValidation(ctx, r, map.ownerId))) { top = r; break; }
   if (!top) return { best: null, bestBy: null, bestTied: 0 };
-  const tied = await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', bodyId).eq('timeMs', top.timeMs)).take(50);
+  const best = top.timeMs;
+  const tied: Doc<'mapTimes'>[] = [];
+  for (const r of await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', bodyId).eq('timeMs', best)).take(51))
+    if (tied.length < 50 && !(await isValidation(ctx, r, map.ownerId))) tied.push(r);
   const first = tied.reduce((a, b) => (b.achievedAt < a.achievedAt ? b : a), top);
-  return { best: top.timeMs, bestBy: (await ctx.db.get(first.userId))?.nickname ?? '(탈퇴)', bestTied: tied.length };
+  return { best, bestBy: (await ctx.db.get(first.userId))?.nickname ?? '(탈퇴)', bestTied: tied.length };
 }
 
 /** Every map sharing the highest count of completions among all shared maps; none while nothing has been finished. */
@@ -237,16 +243,19 @@ async function mostPlayed(ctx: QueryCtx): Promise<Id<'maps'>[]> {
 }
 
 export const list = query({
-  args: { paginationOpts: paginationOptsValidator, order: v.union(v.literal('new'), v.literal('old')) },
+  args: { paginationOpts: paginationOptsValidator, order: v.union(v.literal('new'), v.literal('old'), v.literal('popular')) },
   handler: async (ctx, args) => {
     const me = await getAuthUserId(ctx);
     const opts = { ...args.paginationOpts, numItems: Math.max(1, Math.min(PAGE, Math.floor(args.paginationOpts.numItems) || PAGE)) };
-    const r = await ctx.db.query('maps').withIndex('by_updated').order(args.order === 'new' ? 'desc' : 'asc').paginate(opts);
+    // Popular: most completions first. A map without a count sorts below every number, so it comes last.
+    const r = args.order === 'popular'
+      ? await ctx.db.query('maps').withIndex('by_plays').order('desc').paginate(opts)
+      : await ctx.db.query('maps').withIndex('by_updated').order(args.order === 'new' ? 'desc' : 'asc').paginate(opts);
     const page = await Promise.all(r.page.map(async (m) => ({
       id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, createdAt: m._creationTime, mine: m.ownerId === me, plays: m.plays ?? 0,
       ...(m.contentUpdatedAt === undefined ? {} : { contentUpdatedAt: m.contentUpdatedAt }),
       author: (await ctx.db.get(m.ownerId))?.nickname ?? '(탈퇴)',
-      ...(await fastest(ctx, m.bodyId)),
+      ...(await fastest(ctx, m)),
     })));
     // Judged over all maps, not this page: a page is only the latest changed.
     return { page, isDone: r.isDone, continueCursor: r.continueCursor, mostPlayed: await mostPlayed(ctx) };

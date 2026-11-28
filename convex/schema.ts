@@ -68,7 +68,7 @@ export default defineSchema({
   // Each player's fastest completion of each content of a map, for all time.
   mapTimes: defineTable({
     mapId: v.id('maps'), bodyId: v.id('mapBodies'), userId: v.id('users'), timeMs: v.number(), achievedAt: v.number(),
-  }).index('by_body_time', ['bodyId', 'timeMs']).index('by_body_user', ['bodyId', 'userId']),
+  }).index('by_body_time', ['bodyId', 'timeMs']).index('by_body_user', ['bodyId', 'userId']).index('by_map_body', ['mapId', 'bodyId']),
 
   // Runs started each day (KST date), for the admin page: runs themselves are cleared after a day.
   dailyStats: defineTable({ day: v.string(), plays: v.number() }).index('by_day', ['day']),

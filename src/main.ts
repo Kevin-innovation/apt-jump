@@ -520,7 +520,7 @@ function submitRun(): void {
         if (localId) maps.link(localId, r.mapId);
         // Running it again now is an ordinary timed run of the shared map.
         if (mode.kind === 'map' && mode.id === localId && mode.share) mode = { ...mode, share: undefined, shared: r.mapId };
-        const line = `${updating ? '공유한 맵을 새 내용으로 바꿨어요' : '공유 맵에 올렸어요'} · ${timeText(r.timeMs)} 기록 등록!`;
+        const line = `${updating ? '공유한 맵을 새 내용으로 바꿨어요' : '공유 맵에 올렸어요'} · 완주 확인 ${timeText(r.timeMs)} (확인용이라 기록에는 안 남아요)`;
         say(line);
         if (ui.screen === 'maps') { mapScreen.refresh(); mapScreen.message(line); }
       },

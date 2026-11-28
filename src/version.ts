@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.6.0', date: '2026-11-28', title: '인기순 · 이전 버전 기록',
+    notes: [
+      '공유 맵 정렬에 「인기순」(누적 완주가 많은 순)',
+      '공유할 때의 확인용 완주는 더 이상 기록 · 완주 횟수에 들어가지 않아요',
+      '맵 「기록」에서 내용이 바뀌기 전 버전의 기록도 따로 볼 수 있어요',
+    ],
+  },
+  {
     version: '3.5.1', date: '2026-11-28', title: '맵 기록에 달성 시각',
     notes: ['공유 맵의 「기록」에 기록을 세운 날짜와 시각(한국 시간, 초까지) 표시. 좁은 화면에서도 잘리지 않아요'],
   },

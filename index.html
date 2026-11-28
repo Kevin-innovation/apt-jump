@@ -151,8 +151,11 @@
         <h3 id="share-confirm-title">직접 완주하고 공유하기</h3>
         <div id="share-confirm-why">
           <p>끝까지 갈 수 있는 맵인지 직접 달려서 확인해요.</p>
-          <p>완주가 확인되면 맵이 공유되고, 그 기록이 내 첫 기록이 돼요.</p>
-          <p id="share-confirm-update" class="ye" hidden>그때까지는 이전 맵이 그대로 보여요.</p>
+          <p>완주가 확인되면 맵이 공유돼요. 이 확인용 완주는 기록에 남지 않아요.</p>
+          <div id="share-confirm-update" class="ye" hidden>
+            <p>그때까지는 이전 맵이 그대로 보여요.</p>
+            <p>내 기기에서 「테스트」로 충분히 고친 뒤, 마지막 버전만 공유 갱신해 주세요.</p>
+          </div>
         </div>
         <nav class="pair">
           <button type="button" id="share-confirm-go" class="primary">확인</button>
@@ -164,6 +167,15 @@
 
   <section class="screen paged" id="maptimes" hidden>
     <header class="screen-top"><h2>맵 기록</h2><nav><button type="button" data-act="maps" class="primary">맵 목록으로</button></nav></header>
+    <div class="tabs" id="mt-tabs" role="tablist" aria-label="기록 구분">
+      <button type="button" role="tab" id="mt-now" aria-selected="true">현재 기록</button>
+      <button type="button" role="tab" id="mt-old" aria-selected="false">이전 버전</button>
+    </div>
+    <div id="mt-version" hidden>
+      <button type="button" id="mt-newer" aria-label="더 최근 버전">◀</button>
+      <p id="mt-version-label" class="cy" aria-live="polite"></p>
+      <button type="button" id="mt-older" aria-label="더 이전 버전">▶</button>
+    </div>
     <p id="mt-title" class="cy"></p>
     <p id="mt-mine" class="ye"></p>
     <div id="mt-list" class="page-list"></div>
