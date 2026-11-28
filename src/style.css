@@ -102,7 +102,16 @@ nav.row { flex-flow: row wrap; justify-content: center; width: auto; }
 #rank-list, #mt-list { width: min(560px, 100%); display: grid; gap: 3px; }
 /* Room for its one-line rows (52em) where the screen's letters are large. */
 #rank-list { width: min(max(960px, 52em), 100%); }
-.rank.time { grid-template-columns: 2.6em minmax(17.6em, 1fr) auto; }
+/* Room for a map time's one-line row (42em: rank, name, time, date) where there is the width. */
+#mt-list { width: min(max(760px, 44em), 100%); }
+.rank.time { grid-template-columns: 2.6em minmax(17.6em, 1fr) 5.6em 10em; }
+.rank.time > .rank-record { overflow: visible; text-align: right; color: #cfc4ee; }
+.rank-date { white-space: nowrap; }
+/* The player's own record over the list: no wider than the list, wrapping within it, with the date on its own line.
+   The date may break between day and time only where even that is wider than the list. */
+#maptimes #mt-mine { width: min(760px, 100%); max-width: 100%; box-sizing: border-box; overflow-wrap: anywhere; word-break: keep-all; }
+#mt-mine > .rank-date { display: block; white-space: normal; }
+.rank.time > .rank-date { font-size: .85em; text-align: right; color: #cfc4ee; }
 #maptimes { justify-content: flex-start; background: #140c2ee6; }
 #mt-title:empty, #mt-mine:empty { display: none; }
 .rank { display: grid; grid-template-columns: 2.6em minmax(0, 1fr) auto 4.6em; gap: .6em; padding: .3em .6em; background: #2c2052; text-align: left; font-variant-numeric: tabular-nums; }
@@ -559,12 +568,15 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
   .rank:not(.time) > .rank-nick { font-size: min(1em, calc((100cqi - 4em) / 18)); }
   .rank:not(.time) > .rank-distance { text-align: left; }
 }
-/* Map times stay one line at any width: tighter columns, a fixed one for the time so names line up, and every name
-   sized to what is left for 16 full-width letters (this board has no runner picture). */
-@container (max-width: 540px) {
-  .rank.time { grid-template-columns: 1.9em minmax(0, 1fr) 5.2em; column-gap: .3em; padding-inline: .3em; }
-  .rank.time > .rank-nick { font-size: min(1em, calc((100cqi - 8.6em) / 16.2)); }
-  .rank.time > .rank-record { overflow: visible; font-size: .8em; }
+/* A narrower list of map times gives every date a second line of its own. The first line keeps tight columns, a fixed
+   one for the time so names line up, and every name sized to what is left for 16 full-width letters (this board has
+   no runner picture). */
+@container (max-width: 41.99em) {
+  .rank.time { grid-template-columns: 1.9em minmax(0, 1fr) 5.2em; grid-template-areas: 'rank nick record' 'rank date date'; grid-template-rows: 1.9em 1.4em; column-gap: .3em; row-gap: 0; padding-inline: .3em; }
+  .rank.time > .rank-place { grid-area: rank; }
+  .rank.time > .rank-nick { grid-area: nick; font-size: min(1em, calc((100cqi - 8.6em) / 16.2)); }
+  .rank.time > .rank-record { grid-area: record; font-size: .8em; }
+  .rank.time > .rank-date { grid-area: date; font-size: .8em; text-align: left; }
 }
 
 /* The same NEW as on a card, inside the button's own corner (the button clips what sticks out). */

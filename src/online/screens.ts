@@ -50,6 +50,19 @@ function tieBoard(top: readonly { rank: number; nickname: string }[], record: st
   return board;
 }
 
+const KOREA = new Intl.DateTimeFormat('en-US', { timeZone: 'Asia/Seoul', year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', second: '2-digit', hourCycle: 'h23' });
+/** When a record was set, in Korean time to the second: YYYY.MM.DD HH:mm:ss. Empty when unknown. */
+function recordedAt(at: number | undefined): HTMLTimeElement {
+  const el = document.createElement('time');
+  el.className = 'rank-date';
+  if (at === undefined) return el;
+  const p = Object.fromEntries(KOREA.formatToParts(at).map((x) => [x.type, x.value]));
+  el.textContent = `${p.year}.${p.month}.${p.day} ${p.hour}:${p.minute}:${p.second}`;
+  el.dateTime = new Date(at).toISOString();
+  el.title = `${el.textContent} (한국 시간)`;
+  return el;
+}
+
 /** The row of labels on a card's top left corner; the card's lines move down to make room for it. */
 function cardTags(card: HTMLElement): HTMLElement {
   let row = card.querySelector<HTMLElement>(':scope > .card-tags');
@@ -346,11 +359,14 @@ export class OnlineScreens {
           if (cls === 'rank-nick') s.title = t;
           row.append(s);
         }
+        row.append(recordedAt(r.achievedAt));
         return row;
       });
       this.timePages.set(b.top.length ? [...(tied ? [tied] : []), ...rows] : [note('아직 완주 기록이 없어요.')], true);
       mine.textContent = b.mine ? `내 기록 ${b.mine.rank === null ? '1000위 밖' : `${b.mine.rank}위`} · ${timeText(b.mine.timeMs)}`
         : this.signedIn ? '내 완주 기록이 없어요.' : '로그인하면 기록이 등록돼요.';
+      // Its date has a line of its own.
+      if (b.mine?.achievedAt !== undefined) mine.append(recordedAt(b.mine.achievedAt));
     } catch (e) {
       if (ticket !== this.timesTicket) return;
       this.timePages.set([note(errorText(e))]);

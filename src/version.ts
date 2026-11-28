@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.5.1', date: '2026-11-28', title: '맵 기록에 달성 시각',
+    notes: ['공유 맵의 「기록」에 기록을 세운 날짜와 시각(한국 시간, 초까지) 표시. 좁은 화면에서도 잘리지 않아요'],
+  },
+  {
     version: '3.5.0', date: '2026-11-28', title: '가장 많이 완주한 맵',
     notes: [
       '공유 맵 가운데 누적 완주가 가장 많은 맵에 BEST! 표시 (동률이면 모두)',

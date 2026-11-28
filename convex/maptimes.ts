@@ -98,12 +98,12 @@ export const finish = action({
   },
 });
 
-const entry = v.object({ rank: v.number(), nickname: v.string(), timeMs: v.number(), mine: v.boolean() });
+const entry = v.object({ rank: v.number(), nickname: v.string(), timeMs: v.number(), achievedAt: v.number(), mine: v.boolean() });
 
 /** The fastest runs of a map as it is now. Open to guests. */
 export const board = query({
   args: { mapId: v.id('maps') },
-  returns: v.union(v.null(), v.object({ title: v.string(), top: v.array(entry), mine: v.union(v.null(), v.object({ rank: v.union(v.null(), v.number()), timeMs: v.number() })) })),
+  returns: v.union(v.null(), v.object({ title: v.string(), top: v.array(entry), mine: v.union(v.null(), v.object({ rank: v.union(v.null(), v.number()), timeMs: v.number(), achievedAt: v.number() })) })),
   handler: async (ctx, { mapId }) => {
     const map = await ctx.db.get(mapId);
     if (!map) return null;
@@ -111,18 +111,18 @@ export const board = query({
     // Among equal times, whoever got there first is listed first.
     const rows = (await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', map.bodyId)).take(TOP))
       .sort((a, b) => a.timeMs - b.timeMs || a.achievedAt - b.achievedAt);
-    const top: { rank: number; nickname: string; timeMs: number; mine: boolean }[] = [];
+    const top: { rank: number; nickname: string; timeMs: number; achievedAt: number; mine: boolean }[] = [];
     for (const r of rows) {
       const user = await ctx.db.get(r.userId);
       // Equal times share a rank.
       const prev: (typeof top)[number] | undefined = top[top.length - 1];
-      top.push({ rank: prev && prev.timeMs === r.timeMs ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', timeMs: r.timeMs, mine: r.userId === me });
+      top.push({ rank: prev && prev.timeMs === r.timeMs ? prev.rank : top.length + 1, nickname: user?.nickname ?? '(탈퇴)', timeMs: r.timeMs, achievedAt: r.achievedAt, mine: r.userId === me });
     }
     const own = me && (await ctx.db.query('mapTimes').withIndex('by_body_user', (q) => q.eq('bodyId', map.bodyId).eq('userId', me)).first());
     let mine = null;
     if (own) {
       const faster = await ctx.db.query('mapTimes').withIndex('by_body_time', (q) => q.eq('bodyId', map.bodyId).lt('timeMs', own.timeMs)).take(RANK_CAP);
-      mine = { rank: faster.length < RANK_CAP ? faster.length + 1 : null, timeMs: own.timeMs };
+      mine = { rank: faster.length < RANK_CAP ? faster.length + 1 : null, timeMs: own.timeMs, achievedAt: own.achievedAt };
     }
     return { title: map.title, top, mine };
   },
