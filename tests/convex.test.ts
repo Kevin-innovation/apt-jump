@@ -321,7 +321,7 @@ describe('shared maps', () => {
   it('must be valid, playable and small', async () => {
     const { a } = await setup();
     const broken = structuredClone(PRACTICE);
-    broken.segments[0]!.gap = 39;
+    broken.segments.at(-1)!.road = true;
     for (const json of ['{', '[]', serializeMap(broken), ' '.repeat(70_000), serializeMap({ ...PRACTICE, title: '' })])
       await expect(a.as.mutation(api.maps.publish, { json })).rejects.toThrow();
     const id = await a.as.mutation(api.maps.publish, { json: JSON.stringify({ ...PRACTICE, extra: '<script>' }) });

@@ -1,7 +1,7 @@
 import type { Course } from './game';
 import { POWER_KINDS, POWER_NAMES, type PowerKind } from './items';
-import { jumpReach, paceSpeed, type Pace } from './physics';
-import { BAR_GAP, OBSTACLE_SIZE, passage, passageLength, RAMP_RUN, ROAD_DEPTH, SLIDE_SPACING, VENT_HEIGHT, type City, type Roof } from './world';
+import { paceSpeed, type Pace } from './physics';
+import { BAR_GAP, OBSTACLE_SIZE, passage, RAMP_RUN, ROAD_DEPTH, VENT_HEIGHT, type City, type Roof } from './world';
 
 /** Map files measure everything in units of 8 pixels. */
 export const UNIT = 8;
@@ -10,8 +10,9 @@ export const MAP_VERSION = 1;
 export const LIMITS = {
   bytes: 64 * 1024, title: 24, segments: 120, items: 600, length: 4000,
   w: [10, 250], h: [-12, 12], gap: [0, 40], itemY: [1, 24], base: [90, 200], gain: [0, 140],
-  firstW: 40, lastW: 20, spawnClear: 30, edgeClear: 8, hazardGap: 8,
 } as const;
+/** The narrowest gap that still leaves a column of rising air in it (it stops 4px short of both roofs). */
+export const VENT_MIN_GAP = 2;
 export const ITEM_TYPES = ['coin', 'gold', 'diamond', 'ac', 'tank', 'box', 'bar', 'puddle', 'line', 'drone', 'pigeon', ...POWER_KINDS] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 export const ITEM_NAMES: Record<ItemType, string> = {
@@ -20,12 +21,6 @@ export const ITEM_NAMES: Record<ItemType, string> = {
   ...POWER_NAMES,
 };
 export const isPower = (t: ItemType): t is PowerKind => (POWER_KINDS as readonly string[]).includes(t);
-/** Widths in units of things that can hurt. */
-const HAZARD_W: Partial<Record<ItemType, number>> = {
-  ac: OBSTACLE_SIZE.ac.w / UNIT, tank: OBSTACLE_SIZE.tank.w / UNIT, box: OBSTACLE_SIZE.box.w / UNIT, bar: OBSTACLE_SIZE.bar.w / UNIT, drone: 2, pigeon: 2,
-};
-/** Things a slide gets past: two in a row need the time one slide and its rest take between them. */
-const slid = (t: ItemType) => t === 'box' || t === 'bar';
 /** A puddle's width in units. */
 export const PUDDLE_W = 5;
 export const LINE_W = 5;
@@ -110,78 +105,38 @@ export function segmentStarts(m: GameMap): number[] {
 /** First building after i, where a street that starts at i has to end. */
 function roadEnd(m: GameMap, i: number): number { return m.segments.findIndex((s, k) => k > i && s.kind === 'building'); }
 
-/** Rules about play: everything that would make a map impossible or unfair. */
+/**
+ * Only what the game needs to build a course: the map's size, and segment settings that can actually be built.
+ * Where things stand is the author's choice; whether a map can be finished isn't checked.
+ */
 export function checkMap(m: GameMap): MapProblem[] {
   const out: MapProblem[] = [];
   const bad = (segment: number | null, text: string) => { if (out.length < 20) out.push({ segment, text }); };
   const segs = m.segments;
-  const first = segs[0], last = segs[segs.length - 1];
-  if (!first || !last || segs.length < 2) { bad(null, '구간이 2개 이상 필요합니다.'); return out; }
+  const last = segs[segs.length - 1];
+  if (!last || segs.length < 2) { bad(null, '구간이 2개 이상 필요합니다.'); return out; }
   const starts = segmentStarts(m);
   if (starts[segs.length - 1]! + last.w > LIMITS.length) bad(null, '맵이 너무 깁니다.');
-  if (first.kind !== 'building' || first.w < LIMITS.firstW) bad(0, `시작은 길이 ${LIMITS.firstW} 이상의 건물이어야 합니다.`);
-  if (last.kind !== 'building' || last.w < LIMITS.lastW) bad(segs.length - 1, `도착은 길이 ${LIMITS.lastW} 이상의 건물이어야 합니다.`);
   if (last.road) bad(segs.length - 1, '마지막 구간에는 도로를 놓을 수 없습니다.');
 
-  let streetUntil = -1;
   segs.forEach((s, i) => {
     const next = segs[i + 1];
     if (s.road && s.kind !== 'building') bad(i, '도로는 건물에서만 시작할 수 있습니다.');
-    else if (s.road) {
+    else if (s.road && next) {
+      // A street runs to the next building and climbs up to it.
       const e = roadEnd(m, i);
-      if (e > 0) {
-        streetUntil = e;
-        const length = (starts[e]! - starts[i]! - s.w) * UNIT;
-        const rise = ROAD_DEPTH + (segs[e]!.h - s.h) * UNIT;
-        if (rise < 40 || rise > 240) bad(i, '도로 끝 건물의 높이 차가 너무 큽니다.');
-        else if (length < rise * RAMP_RUN + 96) bad(i, `도로가 짧습니다. 간격과 발판을 더해 ${Math.ceil((rise * RAMP_RUN + 96) / UNIT)} 이상으로 늘리세요.`);
-        for (let k = i + 1; k < e; k++) if (ROAD_DEPTH + (segs[k]!.h - s.h) * UNIT < 48) bad(k, '발판이 도로에 너무 가깝습니다.');
-      }
-    }
-    if (next && i >= streetUntil && !s.road) {
-      const reach = jumpReach(paceSpeed(m.pace, (starts[i]! + s.w) * UNIT), (s.h - next.h) * UNIT);
-      if (reach <= 0 || s.gap * UNIT > reach * 0.9) bad(i, reach <= 0 ? '다음 구간이 너무 높습니다.' : `간격이 너무 넓습니다(최대 ${Math.floor((reach * 0.9) / UNIT)}).`);
+      if (e < 0) bad(i, '도로 뒤에는 도로가 끝날 건물이 필요합니다.');
+      else if (starts[e]! - starts[i]! - s.w <= 0) bad(i, '도로를 깔 자리가 없습니다. 간격이나 발판을 더하세요.');
+      else if (ROAD_DEPTH + (segs[e]!.h - s.h) * UNIT <= 0) bad(i, '도로 끝 건물이 도로보다 낮습니다. 끝 건물을 높이세요.');
     }
 
     if ((s.route || s.cracked) && s.kind !== 'building') bad(i, `${s.route ? '실내 통로' : '균열 옥상'}는 건물에만 둘 수 있습니다.`);
-    if (s.route) {
-      if (i === 0 || i === segs.length - 1) bad(i, '시작과 도착 건물에는 실내 통로를 둘 수 없습니다.');
-      const speed = paceSpeed(m.pace, starts[i]! * UNIT), need = Math.ceil((routeLead(speed) + passageLength(speed)) / UNIT);
+    else if (s.route) {
+      // The passage and its way back up have to fit inside the building.
+      const speed = paceSpeed(m.pace, starts[i]! * UNIT), need = Math.ceil(passage(routeLead(speed), 0, speed, () => 0).route.rampEnd / UNIT);
       if (s.w < need) bad(i, `실내 통로 건물은 길이 ${need} 이상이어야 합니다.`);
-      if (s.items.some((it) => HAZARD_W[it.t] !== undefined)) bad(i, '실내 통로 건물 옥상에는 장애물을 둘 수 없습니다.');
     }
-    if (s.vent && (!next || s.road || s.gap < 6)) bad(i, '상승 기류는 다음 구간이 있고 간격이 6 이상인 곳에만 둘 수 있습니다.');
-    const seen = new Set<string>();
-    const hazards: { x: number; w: number; t: ItemType }[] = [];
-    for (const it of s.items) {
-      const key = `${it.x},${it.y},${onFloor(it.t)}`;
-      if (seen.has(key)) bad(i, `${ITEM_NAMES[it.t]}이(가) 다른 물체와 겹칩니다.`);
-      seen.add(key);
-      const hw = HAZARD_W[it.t];
-      if (it.t === 'line' && (it.x < s.w || it.x + LINE_W > s.w + s.gap)) bad(i, '빨랫줄은 간격 안에 두어야 합니다.');
-      if ((onFloor(it.t)) && it.x + (it.t === 'puddle' ? PUDDLE_W : HAZARD_W[it.t] ?? 1) > s.w) bad(i, `${ITEM_NAMES[it.t]}은(는) 옥상 위에 두어야 합니다.`);
-      if (hw === undefined) continue;
-      hazards.push({ x: it.x, w: hw, t: it.t });
-      if (i === 0 && it.x < LIMITS.spawnClear) bad(i, `출발점 근처(${LIMITS.spawnClear} 이내)에는 장애물을 둘 수 없습니다.`);
-      if (it.x < LIMITS.edgeClear || it.x + hw > s.w - LIMITS.edgeClear) bad(i, `${ITEM_NAMES[it.t]}은(는) 구간 양끝에서 ${LIMITS.edgeClear} 이상 떨어져야 합니다.`);
-      if (it.t === 'drone' && (it.y < 3 || it.y > 6)) bad(i, '드론 높이는 3~6이어야 합니다.');
-    }
-    hazards.sort((a, b) => a.x - b.x);
-    for (let k = 1; k < hazards.length; k++) {
-      const a = hazards[k - 1]!, b = hazards[k]!;
-      if (b.x - (a.x + a.w) < LIMITS.hazardGap) bad(i, `${ITEM_NAMES[a.t]}와(과) ${ITEM_NAMES[b.t]} 사이를 ${LIMITS.hazardGap} 이상 띄우세요.`);
-      // Something overhead needs a longer look after whatever had to be jumped.
-      else if (b.t === 'bar' && !slid(a.t)) {
-        const need = Math.ceil((paceSpeed(m.pace, (starts[i]! + a.x) * UNIT) * 0.3) / UNIT);
-        if (b.x - (a.x + a.w) < need) bad(i, `뛰어넘은 뒤 배관까지는 ${need} 이상 띄우세요.`);
-      }
-    }
-    // Two things to slide past in a row: one slide and its rest have to fit between them.
-    const slides = hazards.filter((h) => slid(h.t));
-    for (let k = 1; k < slides.length; k++) {
-      const a = slides[k - 1]!, b = slides[k]!, need = Math.ceil((paceSpeed(m.pace, (starts[i]! + a.x) * UNIT) * SLIDE_SPACING + 50) / UNIT);
-      if (b.x - a.x < need) bad(i, `슬라이드로 지나는 물체끼리는 ${need} 이상 띄우세요.`);
-    }
+    if (s.vent && (!next || s.gap < VENT_MIN_GAP)) bad(i, `상승 기류는 다음 구간이 있고 간격이 ${VENT_MIN_GAP} 이상인 곳에만 둘 수 있습니다.`);
   });
   return out;
 }
@@ -194,7 +149,7 @@ class FixedCity implements City {
   ensure(): void { /* a made map is complete from the start */ }
 }
 
-/** Builds a playable course. Call only with a map that passed checkMap, or to preview. */
+/** Builds a course. Call only with a map that passed checkMap, or to preview. */
 export function buildCourse(m: GameMap): Course {
   const starts = segmentStarts(m);
   let id = 1;

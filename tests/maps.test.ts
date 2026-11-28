@@ -65,22 +65,32 @@ describe('map rules', () => {
     expect(checkMap(blankMap())).toEqual([]);
   });
   it.each<[string, (m: GameMap) => void, string]>([
-    ['a gap too wide', (m) => { m.segments[0]!.gap = 30; }, '간격이 너무 넓습니다'],
-    ['a roof too high', (m) => { m.segments[1]!.h = 12; }, '너무 높습니다'],
-    ['a touching roof far too high', (m) => { m.segments[0]!.gap = 0; m.segments[0]!.h = -12; m.segments[1]!.h = 12; }, '너무 높습니다'],
-    ['a short start', (m) => { m.segments[0]!.w = 12; m.segments[0]!.items = []; }, '시작은'],
-    ['a short finish', (m) => { m.segments.at(-1)!.w = 12; m.segments.at(-1)!.items = []; }, '도착은'],
-    ['a hazard at the start', (m) => { m.segments[0]!.items = [{ t: 'ac', x: 12, y: 0 }]; }, '출발점'],
-    ['a hazard at an edge', (m) => { m.segments[1]!.items = [{ t: 'tank', x: 1, y: 0 }]; }, '양끝'],
-    ['hazards too close', (m) => { m.segments[1]!.items = [{ t: 'ac', x: 20, y: 0 }, { t: 'pigeon', x: 24, y: 0 }]; }, '띄우세요'],
-    ['overlapping items', (m) => { m.segments[1]!.items = [{ t: 'coin', x: 20, y: 2 }, { t: 'diamond', x: 20, y: 2 }]; }, '겹칩니다'],
-    ['a drone out of reach', (m) => { m.segments[1]!.items = [{ t: 'drone', x: 30, y: 12 }]; }, '드론 높이'],
-    ['laundry on a roof', (m) => { m.segments[1]!.items = [{ t: 'line', x: 10, y: 4 }]; }, '빨랫줄'],
-    ['a street with no room for its ramp', (m) => { m.segments.splice(6, 3); }, '도로가 짧습니다'],
     ['a street at the finish', (m) => { m.segments.at(-1)!.road = true; }, '마지막 구간'],
     ['a street from a scaffold', (m) => { m.segments[6]!.road = true; }, '건물에서만'],
+    ['a street with no building to end at', (m) => { for (const s of m.segments.slice(6)) s.kind = 'scaffold'; }, '끝날 건물'],
+    ['a street with no length', (m) => { m.segments[0]!.road = true; m.segments[0]!.gap = 0; }, '자리가 없습니다'],
+    ['a street that would climb down', (m) => { m.segments[0]!.road = true; m.segments[0]!.h = 12; m.segments[1]!.h = -3; }, '도로보다 낮습니다'],
+    ['a passage longer than its building', (m) => { m.segments[1]!.route = true; m.segments[1]!.w = 30; }, '실내 통로 건물은 길이'],
+    ['a passage on a scaffold', (m) => { m.segments[6]!.route = true; }, '건물에만'],
+    ['rising air with no room', (m) => { m.segments[1]!.vent = true; m.segments[1]!.gap = 1; }, '상승 기류'],
     ['a map too long', (m) => { m.segments = [...m.segments, ...Array.from({ length: 30 }, () => ({ ...m.segments.at(-1)!, w: 150, items: [] }))]; }, '너무 깁니다'],
   ])('refuse %s', (_n, f, text) => { expect(problems(f)).toContain(text); });
+
+  it('leave placement to the author, and still build and run the course', () => {
+    // A short start and finish; hazards on the spawn, touching, stacked and off the roof; a gap no jump crosses.
+    const m = change((x) => {
+      x.segments = [
+        { kind: 'scaffold', w: 10, h: -12, gap: 40, road: false, items: [{ t: 'ac', x: 0, y: 0 }, { t: 'ac', x: 0, y: 0 }, { t: 'bar', x: 1, y: 0 }, { t: 'box', x: 2, y: 0 }] },
+        { kind: 'building', w: 60, h: 12, gap: 2, road: false, vent: true, items: [{ t: 'tank', x: 59, y: 0 }, { t: 'pigeon', x: 62, y: 0 }, { t: 'drone', x: 5, y: 24 }, { t: 'drone', x: 5, y: 1 }, { t: 'line', x: 3, y: 20 }, { t: 'puddle', x: 61, y: 0 }, { t: 'coin', x: 8, y: 2 }, { t: 'diamond', x: 8, y: 2 }] },
+        { kind: 'building', w: 10, h: 12, gap: 0, road: false, items: [] },
+      ];
+    });
+    expect(checkMap(m)).toEqual([]);
+    expect(parseMap(serializeMap(m))).toEqual({ map: m, problems: [] });
+    const g = new Game(buildCourse(m));
+    while (!g.over && g.time < 20) { g.step({ pressed: false, held: false }); g.drain(); }
+    expect(Number.isFinite(g.player.x) && Number.isFinite(g.player.y)).toBe(true);
+  });
 });
 
 describe('made maps play', () => {
@@ -185,6 +195,5 @@ describe('newer pieces in made maps', () => {
     expect(roofs[2]!.puddles).toHaveLength(1);
     expect(roofs[2]!.obstacles.map((o) => o.kind)).toEqual(['box', 'bar']);
     expect(parseMap(JSON.stringify(m)).map).toEqual(m);
-    expect(problems((m) => { m.segments[1]!.route = true; m.segments[1]!.w = 30; })).toMatch('실내 통로 건물은 길이');
   });
 });

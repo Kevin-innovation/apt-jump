@@ -15,10 +15,10 @@ const HELP: Record<Tool, string> = {
   ...POWER_TEXT,
   select: '구간을 눌러 선택, 끌어서 이동', erase: '지울 물체를 누르세요',
   coin: '놓을 자리를 누르세요', gold: '놓을 자리를 누르세요', diamond: '높이 120px(15칸)쯤이면 2단 점프로 닿습니다',
-  ac: '옥상 위를 누르세요', tank: '옥상 위를 누르세요', line: '건물 사이 간격을 누르세요',
-  box: '옥상 위를 누르세요 · ↓ 슬라이드로 부수고 지나가요', bar: '옥상 위를 누르세요 · ↓ 슬라이드로 밑을 지나가요',
-  puddle: '옥상 위를 누르세요 · ↓ 슬라이드로 지나가면 물보라 가속',
-  drone: '옥상 위 3~6칸 높이를 누르세요', pigeon: '옥상 위를 누르세요',
+  ac: '놓을 자리를 누르세요', tank: '놓을 자리를 누르세요', line: '놓을 자리를 누르세요',
+  box: '놓을 자리를 누르세요 · ↓ 슬라이드로 부수고 지나가요', bar: '놓을 자리를 누르세요 · ↓ 슬라이드로 밑을 지나가요',
+  puddle: '놓을 자리를 누르세요 · ↓ 슬라이드로 지나가면 물보라 가속',
+  drone: '놓을 자리를 누르세요', pigeon: '놓을 자리를 누르세요',
 };
 
 /** Pixel colours for the form's little icons. */
@@ -221,7 +221,7 @@ export class Editor {
 
   private get seg(): Segment { return this.map.segments[this.selected]!; }
   /** Items that no longer fit after a size change are removed with it. */
-  private trim(s: Segment): void { s.items = s.items.filter((it) => it.x <= s.w + s.gap && !(it.t === 'line' && (it.x < s.w || it.x + LINE_W > s.w + s.gap))); }
+  private trim(s: Segment): void { s.items = s.items.filter((it) => it.x <= s.w + s.gap); }
 
   private command(c: string): void {
     const segs = this.map.segments;
@@ -310,12 +310,7 @@ export class Editor {
     if (this.map.segments.reduce((n, q) => n + q.items.length, 0) >= LIMITS.items) { this.message(`물체는 ${LIMITS.items}개까지입니다.`); return; }
     let x = Math.round(ux - starts[i]! - (t === 'tank' ? 2 : t === 'line' ? LINE_W / 2 : t === 'ac' || t === 'drone' || t === 'pigeon' ? 1 : 0));
     let y = onFloor(t) ? 0 : clamp(Math.round((y0 - py) / UNIT), LIMITS.itemY);
-    if (t === 'drone') y = clamp(y, [3, 6]);
-    if (t === 'line') {
-      if (s.gap < LINE_W + 1) { this.message('빨랫줄을 놓으려면 간격이 6 이상이어야 합니다.'); return; }
-      x = clamp(x, [s.w, s.w + s.gap - LINE_W]);
-      y = clamp(y, [2, 8]);
-    } else x = clamp(x, [0, s.w + s.gap]);
+    x = clamp(x, [0, s.w + s.gap]);
     this.edit(() => { s.items.push({ t, x, y }); this.selected = i; });
   }
 
@@ -344,7 +339,7 @@ export class Editor {
       b.disabled = off && !s[key];
     };
     const last = this.selected === n - 1;
-    flag('route', '실내 통로', s.kind !== 'building' || this.selected === 0 || last);
+    flag('route', '실내 통로', s.kind !== 'building');
     flag('vent', '뒤에 상승 기류', last);
     flag('cracked', '균열 옥상', s.kind !== 'building');
     flag('golden', '골든 러시', false);
