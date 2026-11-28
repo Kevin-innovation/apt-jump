@@ -134,11 +134,13 @@ export function connect(url: string): Online {
     equip: async (titleId) => { await write(() => client.mutation(api.achievements.equip, { titleId })); },
     listMaps: (order, cursor) => client.query(api.maps.list, { order, paginationOpts: { numItems: 10, cursor } }),
     getMap: (id) => client.query(api.maps.get, { id: id as Id<'maps'> }),
+    newestMap: () => client.query(api.maps.newest, {}),
     mapStart: (id) => write(() => client.mutation(api.maptimes.start, { mapId: id as Id<'maps'>, version: SIM_VERSION })),
     mapFinish: (runId, replay) => write(() => client.action(api.maptimes.finish, { runId: runId as Id<'mapRuns'>, replay })),
     mapBoard: (id) => client.query(api.maptimes.board, { mapId: id as Id<'maps'> }),
-    publishMap: (json) => write(() => client.mutation(api.maps.publish, { json })),
-    updateMap: async (id, json) => { await write(() => client.mutation(api.maps.update, { id: id as Id<'maps'>, json })); },
+    shareStart: (json, mapId) => write(() => client.mutation(api.maps.shareStart, { json, version: SIM_VERSION, ...(mapId ? { mapId } : {}) })),
+    shareFinish: (runId, replay) => write(() => client.action(api.maps.shareFinish, { runId: runId as Id<'mapShares'>, replay })),
+    renameMap: (id, title) => write(() => client.mutation(api.maps.rename, { id: id as Id<'maps'>, title })),
     removeMap: async (id) => { await write(() => client.mutation(api.maps.remove, { id: id as Id<'maps'> })); },
   };
 }

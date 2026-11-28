@@ -21,6 +21,10 @@ export interface MapActions {
   playShared?(map: GameMap, sharedId: string): void;
   /** Opens a published map's ranking. */
   times?(sharedId: string): void;
+  /** Starts the run that shares one of the shelf's maps. */
+  share?(localId: string): void;
+  /** A shared map's name changed, and with it the shelf's copy. */
+  renamed?(): void;
 }
 
 /** A card's button, or null for an empty slot: every card of a list has the same slots, so buttons line up. */

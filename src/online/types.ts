@@ -11,7 +11,7 @@ export interface ShopState { coins: number; owned: string[]; costume: string }
 export interface BoardEntry { rank: number; nickname: string; title?: string | null; badge?: string | null; costume?: string; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
 /** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
-export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number }
+export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; /** Verified completions counted so far. */ plays?: number }
 export interface MapBoard { title: string; top: { rank: number; nickname: string; timeMs: number; mine: boolean }[]; mine: { rank: number | null; timeMs: number } | null }
 export interface SharedPage { page: SharedMapInfo[]; isDone: boolean; continueCursor: string }
 
@@ -82,13 +82,18 @@ export interface Online {
   /** Shows an earned achievement as a badge by the title, or clears it with null. */
   equipBadge(achievementId: string | null): Promise<void>;
   listMaps(order: 'new' | 'old', cursor: string | null): Promise<SharedPage>;
+  /** When the latest newly shared map went up, or null with none. */
+  newestMap(): Promise<number | null>;
   getMap(id: string): Promise<string | null>;
   /** A ranked run of a published map: the server fixes the content, returned to be played. */
   mapStart(id: string): Promise<{ runId: string; json: string }>;
   mapFinish(runId: string, replay: string): Promise<{ timeMs: number; best: boolean }>;
   mapBoard(id: string): Promise<MapBoard | null>;
-  publishMap(json: string): Promise<string>;
-  updateMap(id: string, json: string): Promise<void>;
+  /** The maker's run that shares a map (or, with `mapId`, a new version of it): finishing it is what publishes. */
+  shareStart(json: string, mapId: string | null): Promise<{ runId: string; json: string }>;
+  shareFinish(runId: string, replay: string): Promise<{ mapId: string; timeMs: number }>;
+  /** Resolves to the name as stored. */
+  renameMap(id: string, title: string): Promise<string>;
   removeMap(id: string): Promise<void>;
 }
 

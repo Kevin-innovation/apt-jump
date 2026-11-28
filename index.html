@@ -65,7 +65,7 @@
       <button type="button" data-act="achievements">도전과제</button>
       <button type="button" data-act="login" id="title-account">로그인</button>
       <button type="button" data-act="shop" id="title-shop">상점</button>
-      <button type="button" data-act="maps">유저 맵</button>
+      <button type="button" data-act="maps" id="title-maps">유저 맵<span class="new-tag" id="maps-new" aria-hidden="true" hidden>NEW</span></button>
       <button type="button" data-act="items">아이템 도감</button>
       <button type="button" data-act="settings">설정</button>
       <button type="button" data-act="credits">크레딧</button>
@@ -132,8 +132,19 @@
     </div>
     <input type="file" id="map-file" accept=".json,application/json" hidden />
     <p id="maps-msg" class="warn" role="status"></p>
-    <div id="shared-list" class="cards page-list" style="--slots: 3"></div>
+    <div id="shared-list" class="cards page-list" style="--slots: 4"></div>
     <nav id="shared-pager"></nav>
+    <form id="map-rename" aria-label="공유 맵 이름 변경" novalidate hidden>
+      <div class="welcome-card">
+        <label for="map-rename-title">새 맵 이름</label>
+        <input id="map-rename-title" type="text" autocomplete="off" />
+        <p id="map-rename-msg" class="warn" role="status"></p>
+        <nav class="pair">
+          <button type="submit" id="map-rename-save" class="primary">저장</button>
+          <button type="button" id="map-rename-cancel">취소</button>
+        </nav>
+      </div>
+    </form>
     <div id="map-list" class="cards page-list" style="--slots: 5" hidden></div>
     <nav id="maps-pager" hidden></nav>
   </section>

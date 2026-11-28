@@ -291,7 +291,8 @@ body:has(.screen:not([hidden])) #district { display: none; }
 .rank:not(.time) > .rank-title { padding: 2px .5em; font-size: .85em; text-align: center; }
 .rank:not(.time) > .rank-score { text-align: right; }
 @media (max-width: 600px) {
-  .rank:not(.time) { grid-template-columns: 2.4em minmax(0, 1fr) 1.6em minmax(0, 1fr) 6.2em; grid-template-areas: 'rank nick badge title score' 'rank nick badge title dist'; column-gap: .4em; row-gap: 0; padding-inline: .4em; }
+  /* The name has the first line to itself, up to the score; badge and title go under it. */
+  .rank:not(.time) { grid-template-columns: 2.4em 1.6em minmax(0, 1fr) 6.2em; grid-template-areas: 'rank nick nick score' 'rank badge title dist'; column-gap: .4em; row-gap: 2px; padding-inline: .4em; }
   .rank:not(.time) > .rank-place { grid-area: rank; }
   .rank:not(.time) > .rank-nick { grid-area: nick; }
   .rank:not(.time) > .rank-title { grid-area: title; }
@@ -435,10 +436,25 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #maps .card > button { width: 100%; padding: 0 .3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #maps .card > .slot { min-height: 42px; }
 #maps button.more { min-height: 44px; background: #2c2052; border: 2px dashed #7a68b8; }
+/* Renaming a shared map: a box over the list, near the top so a phone's keyboard leaves it in view. */
+#map-rename { position: fixed; inset: 0; z-index: 8; display: grid; align-content: start; justify-items: center; overflow: auto; padding: max(24px, env(safe-area-inset-top)) 12px 12px; background: #0a0618cc; }
+#map-rename[hidden] { display: none; }
+#map-rename .welcome-card { display: grid; gap: 8px; width: min(360px, 100%); }
+#map-rename input { width: 100%; box-sizing: border-box; min-height: 44px; padding: 0 .7em; font: inherit; font-size: 16px; color: #fff6e0; background: #140c2e; border: 2px solid #7a68b8; user-select: text; -webkit-user-select: text; }
+#map-rename input:focus-visible { outline: 3px solid #7dfff0; }
+#map-rename-msg:empty { display: none; }
 @media (max-width: 640px) {
   #maps .card { grid-template-columns: repeat(var(--slots, 4), minmax(0, 1fr)); }
   #maps .card > div { grid-column: 1 / -1; }
   .map-acts button { min-width: 0; }
+}
+
+/* A shared card has four slots (rename, take down, play, times): a little narrower, and on a phone two rows of two,
+   where another player's card, with only the last two, drops its empty ones. */
+#shared-list .card { grid-template-columns: minmax(0, 1fr) repeat(4, 5.8em); }
+@media (max-width: 640px) {
+  #shared-list .card { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  #shared-list .card > .slot { display: none; }
 }
 
 /* The editor: one even bar on top, the tools as a grid of same-size tiles with the thing itself, an even form. */
@@ -519,6 +535,15 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .admin-costume { display: grid; grid-template-columns: minmax(0, 1fr) auto auto; gap: 6px; align-items: center; padding: 4px 8px; background: #2c2052; text-align: left; }
 /* The runner in their costume, before each name on the weekly board. */
 .rank-runner { width: 1.1em; height: auto; margin-right: .4em; vertical-align: -.2em; image-rendering: pixelated; }
+
+/* Names are never cut: a long one takes a second line, on either board. */
+.rank > .rank-nick { overflow: visible; text-overflow: clip; white-space: normal; overflow-wrap: anywhere; min-width: 0; }
+
+/* The same NEW as on a card, inside the button's own corner (the button clips what sticks out). */
+#title-maps { position: relative; }
+#title-maps > .new-tag { top: 0; left: 0; line-height: 14px; pointer-events: none; }
+/* While it shows, the name sits below the label's line: they never share a row, however narrow the button. */
+#title-maps:has(> .new-tag:not([hidden])) { padding: 14px 4px 0; line-height: 1.2; }
 
 /* The title's chips: the version and, signed in, today's missions (a dot while attendance waits). */
 .title-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }

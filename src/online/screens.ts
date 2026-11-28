@@ -5,7 +5,7 @@ import { achievementById, achievementRank } from '../achievements';
 import { statIcon } from '../badges';
 import { costumeById } from '../shop';
 import { makeSprites } from '../sprites';
-import { parseMap, serializeMap, type GameMap } from '../maps';
+import { cleanTitle, LIMITS, parseMap, type GameMap } from '../maps';
 import { mapCard, type MapActions } from '../mapscreen';
 import type { MapStore } from '../mapstore';
 import { timeText } from '../mapreplay';
@@ -30,6 +30,8 @@ function runnerPicture(id: string | undefined): HTMLImageElement {
 }
 /** How long a newly shared map wears its NEW tag. */
 const NEW_FOR = 24 * 3_600_000;
+/** How often the title looks for a newly shared map. */
+const NEW_CHECK = 60_000;
 const note = (text: string) => { const p = document.createElement('p'); p.className = 'keys'; p.textContent = text; return p; };
 
 /** A scoreboard over a ranking whose first place is shared, naming everyone on it. Null otherwise. */
@@ -76,8 +78,15 @@ export class OnlineScreens {
     $('rank-logout').addEventListener('click', () => this.signOut());
     const form = $('nick-form') as HTMLFormElement;
     form.addEventListener('submit', (e) => { e.preventDefault(); void this.rename(); });
+    ($('map-rename-title') as HTMLInputElement).maxLength = LIMITS.title;
+    $('map-rename').addEventListener('submit', (e) => { e.preventDefault(); void this.saveName(); });
+    $('map-rename-cancel').addEventListener('click', () => this.closeName());
+    // Keys typed in the box are its own: not the pager's arrows, and Esc only closes the box.
+    $('map-rename').addEventListener('keydown', (e) => { e.stopPropagation(); if (e.key === 'Escape') { e.preventDefault(); this.closeName(); } });
     $('shared-order').addEventListener('click', () => { this.order = this.order === 'new' ? 'old' : 'new'; void this.refreshMaps(); });
     setInterval(() => { if (!$('ranking').hidden) this.countdown(); }, 1000);
+    // Someone else may share a map while the title waits: ask again now and then, only while it can be seen.
+    setInterval(() => { if (!$('title').hidden && !document.hidden) void this.refreshNewMaps(); }, NEW_CHECK);
     this.refresh();
   }
 
@@ -86,6 +95,29 @@ export class OnlineScreens {
     this.connecting = false;
     online.onAccount(() => this.refresh());
     this.refresh();
+    void this.refreshNewMaps();
+  }
+
+  private newTicket = 0;
+  private newTimer = 0;
+  /** The title's NEW on the user maps button: up while some map is as new as the cards' own NEW tag. */
+  async refreshNewMaps(): Promise<void> {
+    const online = this.online, ticket = ++this.newTicket;
+    if (!online) return;
+    try {
+      const at = await online.newestMap();
+      if (ticket === this.newTicket) this.showNewMaps(at === null ? 0 : at + NEW_FOR - online.now());
+    } catch { /* no answer: what shows stays, until its time is up */ }
+  }
+  /** Shows the label for `left` more milliseconds. */
+  private showNewMaps(left: number): void {
+    clearTimeout(this.newTimer);
+    const on = left > 0;
+    $('maps-new').hidden = !on;
+    if (on) $('title-maps').setAttribute('aria-label', '유저 맵, 새 공유 맵 있음');
+    else $('title-maps').removeAttribute('aria-label');
+    // A page left open takes it down when the day is over.
+    if (on) this.newTimer = window.setTimeout(() => this.showNewMaps(0), Math.min(left, NEW_FOR));
   }
 
   /** Signed in, with the nickname that ranking and maps show. */
@@ -279,9 +311,11 @@ export class OnlineScreens {
         if (tied && r.rank === 1) row.classList.add('tied');
         // Gold, silver and bronze for the first three places.
         if (r.rank <= 3) row.dataset.top = String(r.rank);
-        for (const t of [String(r.rank), r.nickname, timeText(r.timeMs)]) {
+        for (const [cls, t] of [['rank-place', String(r.rank)], ['rank-nick', r.nickname], ['rank-record', timeText(r.timeMs)]] as const) {
           const s = document.createElement('span');
+          s.className = cls;
           s.textContent = t;
+          if (cls === 'rank-nick') s.title = t;
           row.append(s);
         }
         return row;
@@ -299,6 +333,7 @@ export class OnlineScreens {
   // ---- Shared maps -------------------------------------------------------
 
   async refreshMaps(): Promise<void> {
+    this.closeName();
     $('shared-order').hidden = !this.online;
     $('shared-order').textContent = this.order === 'new' ? '최신순' : '오래된순';
     this.shelf();
@@ -335,6 +370,37 @@ export class OnlineScreens {
 
   private tell(text: string): void { $('maps-msg').textContent = text; }
 
+  /** The shared map being renamed. */
+  private naming = '';
+  private openName(id: string, title: string): void {
+    this.naming = id;
+    const box = $('map-rename-title') as HTMLInputElement;
+    box.value = title;
+    ($('map-rename-save') as HTMLButtonElement).disabled = false;
+    $('map-rename-msg').textContent = '';
+    $('map-rename').hidden = false;
+    box.focus();
+  }
+  private closeName(): void { this.naming = ''; $('map-rename').hidden = true; }
+  private async saveName(): Promise<void> {
+    const id = this.naming, online = this.online, save = $('map-rename-save') as HTMLButtonElement;
+    if (!id || !online || save.disabled) return;
+    const title = cleanTitle(($('map-rename-title') as HTMLInputElement).value);
+    if (!title) { $('map-rename-msg').textContent = '맵 이름을 입력해 주세요.'; return; }
+    save.disabled = true;
+    try {
+      const stored = await online.renameMap(id, title);
+      this.store.rename(id, stored);
+      // Rebuilds the shelf's cards too, then the shared list.
+      if (this.maps.renamed) this.maps.renamed(); else void this.refreshMaps();
+      this.tell('맵 이름을 바꿨어요.');
+    } catch (e) {
+      if (this.naming !== id) return;
+      $('map-rename-msg').textContent = errorText(e);
+      save.disabled = false;
+    }
+  }
+
   /** Runs f with the map, checked again here: nothing from the network is trusted as it is. */
   private async open(id: string, f: (m: GameMap) => void): Promise<void> {
     try {
@@ -351,9 +417,10 @@ export class OnlineScreens {
       ['플레이', () => void this.open(m.id, (map) => this.maps.playShared ? this.maps.playShared(map, m.id) : this.maps.play(map, null)), true],
       ['기록', () => this.maps.times?.(m.id)],
     ];
-    const buttons: Parameters<typeof mapCard>[2] = [null];
+    const buttons: Parameters<typeof mapCard>[2] = [null, null];
     if (m.mine) {
-      buttons[0] = ['공유 취소', (b) => {
+      buttons[0] = ['이름 변경', () => this.openName(m.id, m.title)];
+      buttons[1] = ['공유 취소', (b) => {
         if (!b.dataset.sure) {
           b.dataset.sure = '1';
           b.textContent = '정말 취소';
@@ -370,10 +437,12 @@ export class OnlineScreens {
     buttons.push(...play);
     // Who made it, and apart from that, who holds its record: never read as one person.
     const holder = m.bestBy ? ` ${m.bestBy}${(m.bestTied ?? 1) > 1 ? ` 외 ${(m.bestTied ?? 1) - 1}명` : ''}` : '';
+    // Maps with a record from before completions were counted say nothing rather than "0".
+    const plays = m.plays ? ` · 누적 완주 ${num(m.plays)}회` : '';
     // Two short lines, never cut: who made it, then the record and who holds it.
-    const card = mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}\n${m.best === null ? '아직 완주 기록 없음' : `최단 ${timeText(m.best)} ·${holder}`}`, buttons);
+    const card = mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${plays}${m.mine ? ' · 내 맵' : ''}\n${m.best === null ? '아직 완주 기록 없음' : `최단 ${timeText(m.best)} ·${holder}`}`, buttons);
     // New for a day after it was first shared.
-    if (m.createdAt !== undefined && Date.now() - m.createdAt < NEW_FOR) {
+    if (m.createdAt !== undefined && (this.online?.now() ?? Date.now()) - m.createdAt < NEW_FOR) {
       const tag = document.createElement('span');
       tag.className = 'new-tag';
       tag.textContent = 'NEW';
@@ -396,15 +465,7 @@ export class OnlineScreens {
       b.disabled = false;
       b.textContent = saved.sharedId ? '공유 갱신' : '공유';
       old.replaceWith(b);
-      b.addEventListener('click', () => {
-        b.disabled = true;
-        const updating = !!saved.sharedId;
-        const json = serializeMap(saved.map);
-        const done = saved.sharedId
-          ? this.online!.updateMap(saved.sharedId, json)
-          : this.online!.publishMap(json).then((id) => this.store.link(saved.id, id));
-        done.then(() => { this.tell(updating ? '공유한 맵을 지금 내용으로 바꿨어요.' : '공유 맵에 올렸어요.'); return this.refreshMaps(); }, (e) => { this.tell(errorText(e)); b.disabled = false; });
-      });
+      b.addEventListener('click', () => { b.disabled = true; this.maps.share?.(saved.id); });
     }
   }
 }

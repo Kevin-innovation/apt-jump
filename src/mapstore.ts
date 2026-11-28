@@ -64,6 +64,11 @@ export class MapStore {
     const m = this.get(id);
     if (m) { m.sharedId = sharedId; this.write(); }
   }
+  /** The shared copy was renamed: the shelf's map takes the name too, so sharing it again keeps it. Scores stay. */
+  rename(sharedId: string, title: string): void {
+    for (const m of this.maps) if (m.sharedId === sharedId) m.map.title = title;
+    this.write();
+  }
   unlink(sharedId: string): void {
     for (const m of this.maps) if (m.sharedId === sharedId) delete m.sharedId;
     this.write();

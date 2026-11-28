@@ -7,7 +7,7 @@ import { FirstVisit } from './entry';
 import { watchReleases } from './updates';
 import { Game, type GameEvent } from './game';
 import { Input } from './input';
-import { buildCourse, blankMap, PRACTICE, type GameMap, parseMap } from './maps';
+import { buildCourse, blankMap, PRACTICE, type GameMap, parseMap, serializeMap } from './maps';
 import { downloadMap, MapScreen } from './mapscreen';
 import { MapStore, MAX_MAPS } from './mapstore';
 import { PatchTest } from './patchtest';
@@ -28,7 +28,8 @@ import { UI, type Act, type ScreenName } from './ui';
 export type Phase = 'title' | 'playing' | 'countdown' | 'paused' | 'dying' | 'result' | 'editor' | 'issuing';
 /** What is being played, so a restart repeats it and scores never mix. */
 /** `shared` marks a published map: only its runs are ranked by time, never the shelf's or the editor's. */
-type Mode = { kind: 'endless' } | { kind: 'map'; map: GameMap; id: string | null; from: 'maps' | 'editor'; shared?: string };
+/** `share` marks the maker's run that publishes a map of the shelf (new, or a new version of `sharedId`). */
+type Mode = { kind: 'endless' } | { kind: 'map'; map: GameMap; id: string | null; from: 'maps' | 'editor'; shared?: string; share?: { sharedId: string | null } };
 declare global {
   interface Window { patch?: EventTarget & { quality?: 'low' | 'medium' | 'high' } }
 }
@@ -65,7 +66,7 @@ let lastCount = 0;
 let warnTick = -1;
 let leaving = false;
 /** The ranked run being played, when the server issued one. */
-let ranked: { runId: string; recorder: Recorder; map: boolean } | null = null;
+let ranked: { runId: string; recorder: Recorder; map: boolean; share?: { sharedId: string | null } } | null = null;
 /** A ranked city's stretch seeds known so far, fetched as the run goes; and when the run began, for the pause allowance. */
 let city: { runId: string; seeds: number[]; asking: boolean; lastAsk: number; startedAt: number } | null = null;
 /** Why this run counts for no ranking, shown while it starts (and again on the result). */
@@ -158,7 +159,7 @@ function title(): void {
   audio.stop();
   ui.hud(false); ui.hint(false); ui.count(null);
   ui.show('title');
-  if (booted) syncEntry();
+  if (booted) { syncEntry(); void onlineUi.refreshNewMaps(); }
 }
 
 function openMaps(): void {
@@ -186,12 +187,28 @@ function saveMap(): boolean {
   if (!s) { editor.message(`맵은 ${MAX_MAPS}개까지 보관할 수 있습니다. 파일로 내려받거나 다른 맵을 지우세요.`); return false; }
   editor.id = s.id;
   editor.dirty = false;
-  editor.message(maps.available ? '내 맵에 저장했어요. 다른 사람과 나누려면 유저 맵 › 내 맵에서 「공유」를 누르세요.' : '이 브라우저에는 저장할 수 없습니다. 내 맵 목록에서 내보내기로 파일을 받아 두세요.');
+  editor.message(maps.available ? '내 맵에 저장했어요. 다른 사람과 나누려면 유저 맵 › 내 맵에서 「공유」를 누르고 완주하세요.' : '이 브라우저에는 저장할 수 없습니다. 내 맵 목록에서 내보내기로 파일을 받아 두세요.');
   return true;
 }
 
 function playMap(map: GameMap, id: string | null, from: 'maps' | 'editor', shared?: string): void {
   mode = { kind: 'map', map: structuredClone(map), id, from, shared };
+  startRun();
+}
+
+/** A finished share run is being handed in: another would void it. */
+let sharing = false;
+/** Back to the shelf, saying why a share run didn't start. */
+function shelfNote(why: string): void {
+  openMaps();
+  mapScreen.tab('mine');
+  mapScreen.message(why);
+}
+/** Starts the run that shares a map of the shelf. Unlike other runs it never goes on without the server's ticket. */
+function shareMap(localId: string): void {
+  const saved = maps.get(localId);
+  if (!saved) return;
+  mode = { kind: 'map', map: structuredClone(saved.map), id: localId, from: 'maps', share: { sharedId: saved.sharedId ?? null } };
   startRun();
 }
 
@@ -214,9 +231,13 @@ function startRun(): void {
   const online = onlineUi.online;
   const ticket = ++starting;
   const shared = mode.kind === 'map' ? mode.shared : undefined;
-  if (testing || (mode.kind !== 'endless' && !shared) || !online) { begin(null, ''); return; }
-  const account = online.account();
-  if (!onlineUi.signedIn) {
+  const share = mode.kind === 'map' ? mode.share : undefined;
+  if (share) {
+    if (!online || !onlineUi.signedIn) { shelfNote('로그인하고 닉네임을 정하면 맵을 공유할 수 있어요.'); return; }
+    if (sharing) { shelfNote('앞서 완주한 맵을 올리는 중이에요. 잠시 뒤 다시 해 주세요.'); return; }
+  } else if (testing || (mode.kind !== 'endless' && !shared) || !online) { begin(null, ''); return; }
+  else if (!onlineUi.signedIn) {
+    const account = online.account();
     begin(null, account.status === 'in' ? '닉네임을 정하면 순위에 오릅니다. 이번 판은 순위에 오르지 않습니다.'
       : account.status === 'loading' ? '계정을 확인하는 중이라 이번 판은 순위에 오르지 않습니다.' : shared ? '로그인하면 맵 기록이 등록돼요.' : '');
     return;
@@ -231,9 +252,16 @@ function startRun(): void {
   const go = (run: Issued | null, why: string) => {
     if (settled || ticket !== starting || phase !== 'issuing') return;
     settled = true;
-    begin(run, why);
+    if (share && !run) shelfNote(why);
+    else begin(run, why);
   };
-  const issue: Promise<Issued> = shared
+  const issue: Promise<Issued> = share && mode.kind === 'map'
+    ? online.shareStart(serializeMap(mode.map), share.sharedId).then((r) => {
+        const map = parseMap(r.json).map;
+        if (!map) throw new Refusal('이 맵을 열 수 없습니다.');
+        return { runId: r.runId, map };
+      })
+    : shared
     ? online.mapStart(shared).then((r) => {
         const map = parseMap(r.json).map;
         if (!map) throw new Refusal('이 맵을 열 수 없습니다.');
@@ -241,7 +269,7 @@ function startRun(): void {
       })
     : online.start();
   issue.then((r) => go(r, ''), (e) => go(null, errorText(e)));
-  setTimeout(() => go(null, '온라인 응답이 늦어 이번 판은 순위에 오르지 않습니다.'), START_WAIT);
+  setTimeout(() => go(null, share ? '온라인 응답이 늦어 시작하지 못했어요. 「공유」를 다시 눌러 주세요.' : '온라인 응답이 늦어 이번 판은 순위에 오르지 않습니다.'), START_WAIT);
 }
 
 /** What the server issued: a city's seed, or a published map as it is now. */
@@ -250,7 +278,7 @@ interface Issued { runId: string; seed?: number; seeds?: number[]; map?: GameMap
 function begin(run: Issued | null, why: string): void {
   const away = phase === 'issuing' && awayAtStart;
   ui.wait('');
-  ranked = run && { runId: run.runId, recorder: new Recorder(), map: mode.kind === 'map' };
+  ranked = run && { runId: run.runId, recorder: new Recorder(), map: mode.kind === 'map', share: mode.kind === 'map' ? mode.share : undefined };
   if (!testing) track('run_start', { mode: mode.kind === 'map' ? 'map' : run ? 'ranked' : 'guest' });
   // The content the server fixed this run to is the one played.
   if (mode.kind === 'map' && run?.map) mode = { ...mode, map: run.map };
@@ -426,6 +454,8 @@ const onlineUi = new OnlineScreens(maps, {
   play: (map, id) => playMap(map, id, 'maps'),
   edit: (map, id) => openEditor(map, id),
   playShared: (map, shared) => playMap(map, null, 'maps', shared),
+  share: (localId) => shareMap(localId),
+  renamed: () => mapScreen.refresh(),
   times: (shared) => { ui.show('maptimes'); onlineUi.openTimes(shared); },
 });
 addEventListener('beforeunload', (event) => {
@@ -469,6 +499,29 @@ function submitRun(): void {
   if (!run || !online) return;
   const at = ++starting;
   const say = (t: string) => { if (at === starting) ui.onlineNote(t); };
+  if (run.share) {
+    if (!game.finished) { say('완주해야 공유돼요. 아직 올라가지 않았어요. 「다시 달리기」로 다시 도전하세요.'); return; }
+    const localId = mode.kind === 'map' ? mode.id : null, updating = run.share.sharedId !== null, replay = run.recorder.text();
+    say('완주를 확인하고 맵을 올리는 중…');
+    sharing = true;
+    // A lost answer is asked again: the server publishes a run once and answers the same after that.
+    const send = (left: number): Promise<{ mapId: string; timeMs: number }> => online.shareFinish(run.runId, replay).catch((e) => {
+      if (left <= 0 || typeof (e as { data?: unknown } | null)?.data === 'string') throw e;
+      return new Promise((r) => setTimeout(r, 2000)).then(() => send(left - 1));
+    });
+    send(2).then(
+      (r) => {
+        if (localId) maps.link(localId, r.mapId);
+        // Running it again now is an ordinary timed run of the shared map.
+        if (mode.kind === 'map' && mode.id === localId && mode.share) mode = { ...mode, share: undefined, shared: r.mapId };
+        const line = `${updating ? '공유한 맵을 새 내용으로 바꿨어요' : '공유 맵에 올렸어요'} · ${timeText(r.timeMs)} 기록 등록!`;
+        say(line);
+        if (ui.screen === 'maps') { mapScreen.refresh(); mapScreen.message(line); }
+      },
+      (e) => { const why = `${errorText(e)} 내 맵에서 「공유」를 눌러 다시 시도할 수 있어요.`; say(why); if (ui.screen === 'maps') mapScreen.message(why); },
+    ).finally(() => { sharing = false; });
+    return;
+  }
   if (run.map) {
     if (!game.finished) { say('완주해야 기록이 등록돼요.'); return; }
     say('기록을 등록하는 중…');
@@ -675,7 +728,7 @@ function frame(now: number): void {
         ui.result(game, isBest, best);
         // An update that waited for this run: after a moment to see the result and hand the run in.
         if (pendingUpdate) { const v = pendingUpdate; window.setTimeout(() => { if (phase !== 'playing' && phase !== 'countdown') offerUpdate(v); }, 7000); }
-        if (mode.kind === 'map' && mode.shared) ui.bestNote(game.finished ? `완주 시간 ${timeText(timeOf(Math.round(game.time / STEP)))}` : '완주하지 못했어요');
+        if (mode.kind === 'map' && (mode.shared || mode.share)) ui.bestNote(game.finished ? `완주 시간 ${timeText(timeOf(Math.round(game.time / STEP)))}` : '완주하지 못했어요');
         submitRun();
       }
       break;

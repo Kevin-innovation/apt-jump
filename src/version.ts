@@ -6,6 +6,15 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.4.0', date: '2026-11-28', title: '완주해야 맵 공유 · 이름 변경',
+    notes: [
+      '맵 공유는 「공유」를 누르고 직접 완주해야 올라가요. 그 기록이 첫 기록이 돼요 (갱신도 완주할 때까지 이전 맵 유지)',
+      '공유한 내 맵의 이름을 바꿀 수 있어요 (기록은 그대로)',
+      '순위표와 맵 기록에서 긴 닉네임이 잘리지 않아요',
+      '공유 맵 카드에 누적 완주 횟수(이번 버전부터 집계), 새 공유 맵이 있으면 타이틀 「유저 맵」에 NEW',
+    ],
+  },
+  {
     version: '3.3.1', date: '2026-11-28', title: '맵 제작: 길이 직접 입력',
     notes: ['맵 제작에서 건물 · 발판 길이를 숫자로 바로 입력해요 (10~250, Enter 또는 다른 곳 누르기). −/+ 버튼도 그대로'],
   },

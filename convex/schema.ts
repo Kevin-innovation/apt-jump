@@ -41,9 +41,22 @@ export default defineSchema({
   // What a list needs; the map itself is read one at a time.
   maps: defineTable({
     ownerId: v.id('users'), title: v.string(), segments: v.number(), bodyId: v.id('mapBodies'), updatedAt: v.number(),
+    // When the owner last renamed it: a rename changes the title shown, never the content or its times.
+    renamedAt: v.optional(v.number()),
+    // Verified completions over the map's whole life, whatever its content; counted from 3.4.0 on (absent: none yet).
+    plays: v.optional(v.number()),
   }).index('by_owner', ['ownerId']).index('by_updated', ['updatedAt']),
   // A map's content. A change makes a new one, so that times always belong to what was played.
   mapBodies: defineTable({ json: v.string() }),
+
+  // A map waiting to be shared: its maker has to finish exactly this content before anyone else can see it. Nothing
+  // here is read by any list, board or play. `json` is dropped once the run is over; `mapId`/`timeMs` keep what it
+  // published, so that handing the same run in again answers the same.
+  mapShares: defineTable({
+    userId: v.id('users'), targetId: v.optional(v.id('maps')), json: v.optional(v.string()), version: v.number(), startedAt: v.number(),
+    claimedAt: v.optional(v.number()), mapId: v.optional(v.id('maps')), timeMs: v.optional(v.number()),
+    status: v.union(v.literal('open'), v.literal('claimed'), v.literal('done'), v.literal('rejected')),
+  }).index('by_user_started', ['userId', 'startedAt']),
 
   // One issued run of a published map, fixed to a content; handed in once.
   mapRuns: defineTable({

@@ -38,7 +38,7 @@ export const start = mutation({
     for (const r of old) await ctx.db.delete(r._id);
     const runId = await ctx.db.insert('mapRuns', { userId, mapId, bodyId: map.bodyId, version, startedAt: now, status: 'open' });
     await touch(ctx, userId, true);
-    return { runId, json: serializeMap(parsed) };
+    return { runId, json: serializeMap({ ...parsed, title: map.title }) };
   },
 });
 
@@ -67,6 +67,9 @@ export const settle = internalMutation({
     if (!run || run.status !== 'claimed') return { best: false };
     await ctx.db.patch(runId, { status: steps === null ? 'rejected' : 'done' });
     if (steps === null) return { best: false };
+    // Every verified finish counts, a best or not; the status above lets each run in once.
+    const map = await ctx.db.get(run.mapId);
+    if (map) await ctx.db.patch(map._id, { plays: (map.plays ?? 0) + 1 });
     const row = { timeMs: timeOf(steps), achievedAt: Date.now() };
     const old = await ctx.db.query('mapTimes').withIndex('by_body_user', (q) => q.eq('bodyId', run.bodyId).eq('userId', run.userId)).first();
     if (old && old.timeMs <= row.timeMs) return { best: false };
