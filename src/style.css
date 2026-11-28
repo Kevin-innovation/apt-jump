@@ -100,7 +100,8 @@ nav.row { flex-flow: row wrap; justify-content: center; width: auto; }
 #auth-form button { min-height: 46px; }
 #auth-form .primary { background: #b8325c; border-color: #ffb3a0; }
 #rank-list, #mt-list { width: min(560px, 100%); display: grid; gap: 3px; }
-#rank-list { width: min(960px, 100%); }
+/* Room for its one-line rows (52em) where the screen's letters are large. */
+#rank-list { width: min(max(960px, 52em), 100%); }
 .rank.time { grid-template-columns: 2.6em minmax(17.6em, 1fr) auto; }
 #maptimes { justify-content: flex-start; background: #140c2ee6; }
 #mt-title:empty, #mt-mine:empty { display: none; }
@@ -286,7 +287,7 @@ body:has(.screen:not([hidden])) #district { display: none; }
 .screen-top nav { flex-direction: row; flex-wrap: nowrap; width: auto; gap: 6px; }
 .screen-top nav button { min-height: 40px; padding: 0 .7em; white-space: nowrap; font-size: clamp(12px, 3.4vw, 16px); }
 /* The weekly board: every row has the same columns. Map times keep their own. */
-.rank:not(.time) { grid-template-columns: 3em minmax(17.6em, 1fr) 1.7em minmax(0, 12em) 7.5em 5.5em; }
+.rank:not(.time) { grid-template-columns: 3em minmax(17.6em, 1fr) 1.7em 11em 7.5em 5.5em; }
 /* Every worn plaque fills its column: one size, whatever its name or rank. */
 .rank:not(.time) > .rank-title { padding: 2px .5em; font-size: .85em; text-align: center; }
 .rank:not(.time) > .rank-score { text-align: right; }
@@ -533,14 +534,24 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #rank-list, #mt-list { container-type: inline-size; }
 .rank { grid-template-rows: 1.9em; align-items: center; }
 .rank > .rank-nick { overflow: visible; text-overflow: clip; white-space: nowrap; }
-@container (max-width: 760px) {
-  .rank:not(.time) { grid-template-columns: 2.4em minmax(0, 1fr) 3.8em 5.8em; grid-template-areas: 'rank nick nick nick' 'badge title dist score'; grid-template-rows: 1.6em 1.9em; column-gap: .4em; row-gap: 2px; padding-inline: .4em; }
+/*
+ * The weekly board's layouts go by the list's width in its own letters, not pixels: zoom and screen size change both.
+ * From 52em a row is one line, with 11em kept for the title. Narrower, the title has a whole line to itself, so no
+ * name or number can take its room: under the name and numbers, or, under 32em, between the name and the numbers.
+ */
+@container (max-width: 51.99em) {
+  .rank:not(.time) { grid-template-columns: 2.4em minmax(0, 1fr) 3.8em 5.8em; grid-template-areas: 'rank nick dist score' 'badge title title title'; grid-template-rows: 1.9em 1.9em; column-gap: .4em; row-gap: 2px; padding-inline: .4em; }
   .rank:not(.time) > .rank-place { grid-area: rank; }
-  .rank:not(.time) > .rank-nick { grid-area: nick; font-size: min(1em, calc((100cqi - 4em) / 18)); }
+  .rank:not(.time) > .rank-nick { grid-area: nick; }
   .rank:not(.time) > .rank-badge { grid-area: badge; }
   .rank:not(.time) > .rank-title { grid-area: title; }
   .rank:not(.time) > .rank-distance { grid-area: dist; font-size: .85em; text-align: right; }
   .rank:not(.time) > .rank-score { grid-area: score; }
+}
+@container (max-width: 31.99em) {
+  .rank:not(.time) { grid-template-columns: 2.4em minmax(0, 1fr) 6.4em; grid-template-areas: 'rank nick nick' 'badge title title' '. dist score'; grid-template-rows: 1.6em 1.9em 1.5em; }
+  .rank:not(.time) > .rank-nick { font-size: min(1em, calc((100cqi - 4em) / 18)); }
+  .rank:not(.time) > .rank-distance { text-align: left; }
 }
 /* Map times stay one line at any width: tighter columns, a fixed one for the time so names line up, and every name
    sized to what is left for 16 full-width letters (this board has no runner picture). */

@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.4.3', date: '2026-11-28', title: '순위표 칭호 잘림 수정',
+    notes: ['화면을 확대하거나 좁은 화면에서도 주간 순위의 칭호가 잘리지 않게'],
+  },
+  {
     version: '3.4.2', date: '2026-11-28', title: '순위표 줄 맞춤',
     notes: ['주간 순위와 맵 기록에서 긴 닉네임도 잘림 없이 한 줄로, 줄 높이는 모두 같게'],
   },
