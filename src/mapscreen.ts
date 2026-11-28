@@ -21,7 +21,7 @@ export interface MapActions {
   playShared?(map: GameMap, sharedId: string): void;
   /** Opens a published map's ranking. */
   times?(sharedId: string): void;
-  /** Starts the run that shares one of the shelf's maps. */
+  /** Asks to share one of the shelf's maps: explains the run it takes, then starts it. */
   share?(localId: string): void;
   /** A shared map's name changed, and with it the shelf's copy. */
   renamed?(): void;
@@ -69,6 +69,10 @@ export class MapScreen {
   constructor(private store: MapStore, private act: MapActions) {
     $('tab-shared').addEventListener('click', () => this.tab('shared'));
     $('tab-mine').addEventListener('click', () => this.tab('mine'));
+    $('share-confirm-cancel').addEventListener('click', () => this.closeShare(true));
+    $('share-confirm-go').addEventListener('click', () => { const go = this.confirmed; this.closeShare(false); go?.(); });
+    // Arrows in the dialog don't turn the pages behind it.
+    $('share-confirm').addEventListener('keydown', (e) => { if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') e.stopPropagation(); });
     this.tab('shared');
     const file = $('map-file') as HTMLInputElement;
     file.addEventListener('change', () => {
@@ -86,6 +90,28 @@ export class MapScreen {
     for (const [id, on] of [['shared-list', 'shared'], ['shared-pager', 'shared'], ['map-list', 'mine'], ['maps-pager', 'mine']] as const) $(id).hidden = name !== on;
   }
 
+  /** What the open share dialog starts, and where the focus was before it opened. */
+  private confirmed: (() => void) | null = null;
+  private opener: HTMLElement | null = null;
+  /** Says why sharing takes a run, and starts it only on a yes. Everything behind is out of reach meanwhile. */
+  confirmShare(updating: boolean, go: () => void): void {
+    const box = $('share-confirm');
+    this.confirmed = go;
+    this.opener = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    $('share-confirm-update').hidden = !updating;
+    for (const el of $('maps').children) if (el !== box) (el as HTMLElement).inert = true;
+    box.hidden = false;
+    $('share-confirm-go').focus();
+  }
+  private closeShare(refocus: boolean): void {
+    if (!this.confirmed) return;
+    this.confirmed = null;
+    $('share-confirm').hidden = true;
+    for (const el of $('maps').children) (el as HTMLElement).inert = false;
+    if (refocus) this.opener?.focus({ preventScroll: true });
+    this.opener = null;
+  }
+
   message(text: string): void { $('maps-msg').textContent = text; }
   pickFile(): void { ($('map-file') as HTMLInputElement).click(); }
 
@@ -101,6 +127,7 @@ export class MapScreen {
   }
 
   refresh(): void {
+    this.closeShare(false);
     // Same five slots on every card: play, edit, share, export, delete.
     const cards = [mapCard(PRACTICE.title, '기본 제공 맵', [
       ['플레이', () => this.act.play(PRACTICE, null), true],

@@ -178,6 +178,7 @@ function showEditor(): void {
   ui.hud(false); ui.hint(false); ui.count(null);
   setPhase('editor');
   ui.show('editor');
+  editor.guide('맵을 공유하려면 직접 완주해야 해요.');
 }
 
 /** True when the map is safely on the shelf. */
@@ -187,7 +188,7 @@ function saveMap(): boolean {
   if (!s) { editor.message(`맵은 ${MAX_MAPS}개까지 보관할 수 있습니다. 파일로 내려받거나 다른 맵을 지우세요.`); return false; }
   editor.id = s.id;
   editor.dirty = false;
-  editor.message(maps.available ? '내 맵에 저장했어요. 다른 사람과 나누려면 유저 맵 › 내 맵에서 「공유」를 누르고 완주하세요.' : '이 브라우저에는 저장할 수 없습니다. 내 맵 목록에서 내보내기로 파일을 받아 두세요.');
+  editor.message(maps.available ? '저장했어요. 「내 맵」에서 「공유」를 누르고 완주하면 공유돼요.' : '이 브라우저에는 저장할 수 없습니다. 내 맵 목록에서 내보내기로 파일을 받아 두세요.');
   return true;
 }
 
@@ -204,8 +205,13 @@ function shelfNote(why: string): void {
   mapScreen.tab('mine');
   mapScreen.message(why);
 }
-/** Starts the run that shares a map of the shelf. Unlike other runs it never goes on without the server's ticket. */
+/** Asks first: sharing takes a run, and nothing starts without a yes. */
 function shareMap(localId: string): void {
+  const saved = maps.get(localId);
+  if (saved) mapScreen.confirmShare(saved.sharedId !== undefined, () => startShare(localId));
+}
+/** Starts the run that shares a map of the shelf. Unlike other runs it never goes on without the server's ticket. */
+function startShare(localId: string): void {
   const saved = maps.get(localId);
   if (!saved) return;
   mode = { kind: 'map', map: structuredClone(saved.map), id: localId, from: 'maps', share: { sharedId: saved.sharedId ?? null } };
@@ -500,7 +506,7 @@ function submitRun(): void {
   const at = ++starting;
   const say = (t: string) => { if (at === starting) ui.onlineNote(t); };
   if (run.share) {
-    if (!game.finished) { say('완주해야 공유돼요. 아직 올라가지 않았어요. 「다시 달리기」로 다시 도전하세요.'); return; }
+    if (!game.finished) { say('완주해야 공유돼요. 「다시 달리기」로 도전하세요.'); return; }
     const localId = mode.kind === 'map' ? mode.id : null, updating = run.share.sharedId !== null, replay = run.recorder.text();
     say('완주를 확인하고 맵을 올리는 중…');
     sharing = true;

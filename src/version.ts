@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.4.1', date: '2026-11-28', title: '맵 공유 안내',
+    notes: [
+      '「공유」를 누르면 왜 완주해야 하는지 먼저 알려 주고, 확인해야 달리기가 시작돼요',
+      '첫 화면 윗줄은 달리기 시작 · 유저 맵 · 주간 순위, 유저 맵 화면 위에 「맵 만들기」',
+      '맵 편집기에 들어오면 공유 조건을 한 줄로 안내해요',
+    ],
+  },
+  {
     version: '3.4.0', date: '2026-11-28', title: '완주해야 맵 공유 · 이름 변경',
     notes: [
       '맵 공유는 「공유」를 누르고 직접 완주해야 올라가요. 그 기록이 첫 기록이 돼요 (갱신도 완주할 때까지 이전 맵 유지)',

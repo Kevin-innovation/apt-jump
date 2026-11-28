@@ -61,11 +61,11 @@
     </ul>
     <nav>
       <button type="button" data-act="start" class="primary">달리기 시작</button>
+      <button type="button" data-act="maps" id="title-maps">유저 맵<span class="new-tag" id="maps-new" aria-hidden="true" hidden>NEW</span></button>
       <button type="button" data-act="ranking">주간 순위</button>
       <button type="button" data-act="achievements">도전과제</button>
       <button type="button" data-act="login" id="title-account">로그인</button>
       <button type="button" data-act="shop" id="title-shop">상점</button>
-      <button type="button" data-act="maps" id="title-maps">유저 맵<span class="new-tag" id="maps-new" aria-hidden="true" hidden>NEW</span></button>
       <button type="button" data-act="items">아이템 도감</button>
       <button type="button" data-act="settings">설정</button>
       <button type="button" data-act="credits">크레딧</button>
@@ -118,7 +118,7 @@
   </section>
 
   <section class="screen paged" id="maps" hidden>
-    <header class="screen-top"><h2>유저 맵</h2><nav><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
+    <header class="screen-top"><h2>유저 맵</h2><nav><button type="button" data-act="newmap">맵 만들기</button><button type="button" data-act="home" class="primary">타이틀로</button></nav></header>
     <div class="map-bar">
       <div class="tabs" role="tablist" aria-label="맵 목록">
         <button type="button" role="tab" id="tab-shared" aria-selected="true">공유 맵</button>
@@ -126,7 +126,6 @@
       </div>
       <div class="map-acts">
         <button type="button" id="shared-order" hidden></button>
-        <button type="button" data-act="newmap" data-tab="mine">새 맵 만들기</button>
         <button type="button" data-act="import" data-tab="mine">파일 불러오기</button>
       </div>
     </div>
@@ -147,6 +146,20 @@
     </form>
     <div id="map-list" class="cards page-list" style="--slots: 5" hidden></div>
     <nav id="maps-pager" hidden></nav>
+    <div id="share-confirm" role="dialog" aria-modal="true" aria-labelledby="share-confirm-title" aria-describedby="share-confirm-why" hidden>
+      <div class="welcome-card">
+        <h3 id="share-confirm-title">직접 완주하고 공유하기</h3>
+        <div id="share-confirm-why">
+          <p>끝까지 갈 수 있는 맵인지 직접 달려서 확인해요.</p>
+          <p>완주가 확인되면 맵이 공유되고, 그 기록이 내 첫 기록이 돼요.</p>
+          <p id="share-confirm-update" class="ye" hidden>그때까지는 이전 맵이 그대로 보여요.</p>
+        </div>
+        <nav class="pair">
+          <button type="button" id="share-confirm-go" class="primary">확인</button>
+          <button type="button" id="share-confirm-cancel" data-cancel>취소</button>
+        </nav>
+      </div>
+    </div>
   </section>
 
   <section class="screen paged" id="maptimes" hidden>

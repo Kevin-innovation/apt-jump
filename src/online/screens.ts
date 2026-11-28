@@ -465,7 +465,7 @@ export class OnlineScreens {
       b.disabled = false;
       b.textContent = saved.sharedId ? '공유 갱신' : '공유';
       old.replaceWith(b);
-      b.addEventListener('click', () => { b.disabled = true; this.maps.share?.(saved.id); });
+      b.addEventListener('click', () => this.maps.share?.(saved.id));
     }
   }
 }

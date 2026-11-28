@@ -425,7 +425,6 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 .tabs button[aria-selected='true'] { background: #3a2c6a; border-color: #7dfff0; color: #7dfff0; box-shadow: inset 0 -3px #7dfff0; }
 .map-acts { display: flex; gap: 8px; }
 .map-acts button { min-width: 9em; min-height: 42px; padding: 0 1em; background: #3a2c6a; border: 2px solid #7a68b8; }
-.map-acts button[data-act='newmap'] { background: #b8325c; border-color: #ffb3a0; }
 #maps[data-tab='shared'] .map-acts [data-tab='mine'], #maps[data-tab='mine'] #shared-order { display: none; }
 .tabs button:focus-visible, .map-acts button:focus-visible { outline: 3px solid #7dfff0; outline-offset: 2px; }
 #maps .cards { width: min(960px, 100%); }
@@ -544,6 +543,16 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #title-maps > .new-tag { top: 0; left: 0; line-height: 14px; pointer-events: none; }
 /* While it shows, the name sits below the label's line: they never share a row, however narrow the button. */
 #title-maps:has(> .new-tag:not([hidden])) { padding: 14px 4px 0; line-height: 1.2; }
+
+/* Why sharing takes a run, over the shelf. */
+#share-confirm { position: fixed; inset: 0; z-index: 8; display: grid; justify-items: center; overflow: auto; padding: max(16px, env(safe-area-inset-top)) 12px max(16px, env(safe-area-inset-bottom)); background: #0a0618cc; }
+#share-confirm .welcome-card { gap: 12px; width: min(420px, 100%); padding: 20px 16px; text-align: center; }
+#share-confirm h3 { margin: 0; font-size: 20px; color: #7dfff0; }
+#share-confirm-why { display: grid; gap: 6px; }
+/* Guidance is written as single lines: they wrap between words, in even rows, with no word left alone. */
+#share-confirm :is(h3, p), #maps-msg, #r-online, .ed-toast { word-break: keep-all; overflow-wrap: break-word; text-wrap: balance; }
+/* As wide as its words up to the screen's edges: centred from the middle, it would otherwise wrap at half the width. */
+.ed-toast { width: max-content; text-align: center; box-sizing: border-box; }
 
 /* The title's chips: the version and, signed in, today's missions (a dot while attendance waits). */
 .title-chips { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }

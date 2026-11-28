@@ -179,12 +179,18 @@ export class UI {
     if (n !== null) this.text('count', String(n));
   }
 
+  /** A dialog open over the screen: while it is, menus move and choose only within it. */
+  private dialog(): HTMLElement | null { return this.screen ? $(this.screen).querySelector<HTMLElement>('[role=dialog]:not([hidden])') : null; }
   private buttons(): HTMLButtonElement[] {
-    return this.screen ? [...$(this.screen).querySelectorAll<HTMLButtonElement>('button')].filter((b) => !b.disabled && b.checkVisibility()) : [];
+    const box = this.dialog() ?? (this.screen ? $(this.screen) : null);
+    return box ? [...box.querySelectorAll<HTMLButtonElement>('button')].filter((b) => !b.disabled && b.checkVisibility()) : [];
   }
 
   menu(a: MenuAction): boolean {
     if (!this.screen) return false;
+    // Back out of a dialog before the screen under it.
+    const cancel = a === 'back' ? this.dialog()?.querySelector<HTMLButtonElement>('[data-cancel]') : null;
+    if (cancel) { cancel.click(); return true; }
     const list = this.buttons();
     const i = list.indexOf(document.activeElement as HTMLButtonElement);
     if (a === 'up' || a === 'down') list[(i + (a === 'up' ? -1 : 1) + list.length * 2) % list.length]?.focus();

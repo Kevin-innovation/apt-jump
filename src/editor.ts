@@ -10,6 +10,7 @@ import { ROAD_DEPTH } from './world';
 type Tool = 'select' | 'erase' | ItemType;
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const clamp = (v: number, [a, b]: readonly [number, number]) => Math.max(a, Math.min(b, v));
+const GUIDE_MS = 7000;
 const TOOLS: Tool[] = ['select', 'erase', ...ITEM_TYPES];
 const HELP: Record<Tool, string> = {
   ...POWER_TEXT,
@@ -73,6 +74,8 @@ export class Editor {
   private drag: { id: number; x: number; cam: number; moved: boolean } | null = null;
   private course!: ReturnType<typeof buildCourse>;
   private toastTimer = 0;
+  /** Until when the guidance on entering stays, whatever edits would otherwise clear. */
+  private guideUntil = 0;
   private known = new Set<string>();
 
   /** The thing itself, as the game draws it, for a tool's button. */
@@ -136,7 +139,7 @@ export class Editor {
       el.addEventListener('pointerleave', help); el.addEventListener('focusout', help);
     });
     $('ed-issues').addEventListener('click', () => this.showProblems($('ed-problems').hidden === true));
-    $('ed-toast').addEventListener('click', () => this.message(''));
+    $('ed-toast').addEventListener('click', () => { this.guideUntil = 0; this.message(''); });
     // On a short screen the tools and the segment's settings share one side panel, a tab each.
     document.querySelectorAll<HTMLButtonElement>('[data-edtab]').forEach((b) => b.addEventListener('click', () => {
       $('editor').classList.toggle('tab-form', b.dataset.edtab === 'form');
@@ -201,13 +204,21 @@ export class Editor {
 
   get valid(): boolean { return this.problems.length === 0; }
   /** A short note that shows for a moment over the editor and goes away by itself (or on a tap). */
-  message(text: string, warn = false): void {
+  message(text: string, warn = false, stay = 2800 + text.length * 40): void {
+    // An empty message only clears; it leaves the guidance up for its time. Anything with words replaces it.
+    if (!text && Date.now() < this.guideUntil) return;
+    this.guideUntil = 0;
     const t = $('ed-toast');
     clearTimeout(this.toastTimer);
     if (text) t.textContent = text;
     t.classList.toggle('warn', warn);
     t.classList.toggle('show', !!text);
-    if (text) this.toastTimer = window.setTimeout(() => t.classList.remove('show'), 2800 + text.length * 40);
+    if (text) this.toastTimer = window.setTimeout(() => t.classList.remove('show'), stay);
+  }
+  /** A line shown on entering the editor, long enough to read even while editing starts; a tap puts it away. */
+  guide(text: string): void {
+    this.message(text, false, GUIDE_MS);
+    this.guideUntil = Date.now() + GUIDE_MS;
   }
   /** The list of problems, opened over the map from the ⚠ button; each one takes you to its segment. */
   showProblems(open = true): void {
