@@ -45,6 +45,8 @@ export default defineSchema({
     renamedAt: v.optional(v.number()),
     // Verified completions over the map's whole life, whatever its content; counted from 3.4.0 on (absent: none yet).
     plays: v.optional(v.number()),
+    // Times a public run of the map was started, finished or not (absent on older maps: read as at least `plays`).
+    attempts: v.optional(v.number()),
     // When a verified update last changed the content (and so began its times anew); absent if it never has.
     contentUpdatedAt: v.optional(v.number()),
   }).index('by_owner', ['ownerId']).index('by_updated', ['updatedAt']).index('by_plays', ['plays']),

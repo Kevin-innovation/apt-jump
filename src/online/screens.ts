@@ -66,6 +66,20 @@ function recordedAt(at: number | undefined): HTMLTimeElement {
   return el;
 }
 
+/** A shared map's counts in one row: starts, then completions, and at the far right the share that finished. */
+function playStats(m: SharedMapInfo): HTMLElement {
+  const done = m.plays ?? 0, started = Math.max(m.attempts ?? 0, done);
+  const row = document.createElement('div');
+  row.className = 'map-stats';
+  for (const [cls, text] of [['starts', `누적 플레이 ${num(started)}회`], ['done', `누적 완주 ${num(done)}회`], ['rate', `완주율 ${started ? `${Math.floor((done / started) * 100)}%` : '-'}`]] as const) {
+    const s = document.createElement('span');
+    s.className = cls;
+    s.textContent = text;
+    row.append(s);
+  }
+  return row;
+}
+
 /** The row of labels on a card's top left corner; the card's lines move down to make room for it. */
 function cardTags(card: HTMLElement): HTMLElement {
   let row = card.querySelector<HTMLElement>(':scope > .card-tags');
@@ -527,11 +541,10 @@ export class OnlineScreens {
     buttons.push(...play);
     // Who made it, and apart from that, who holds its record: never read as one person.
     const holder = m.bestBy ? ` ${m.bestBy}${(m.bestTied ?? 1) > 1 ? ` 외 ${(m.bestTied ?? 1) - 1}명` : ''}` : '';
-    // Maps with a record from before completions were counted say nothing rather than "0".
-    const plays = m.plays ? ` · 누적 완주 ${num(m.plays)}회` : '';
     // Two short lines, never cut: who made it, then the record and who holds it.
-    const card = mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${plays}${m.mine ? ' · 내 맵' : ''}\n${m.best === null ? '아직 완주 기록 없음' : `최단 ${timeText(m.best)} ·${holder}`}`, buttons);
+    const card = mapCard(m.title, `제작 ${m.author} · 구간 ${m.segments}개${m.mine ? ' · 내 맵' : ''}\n${m.best === null ? '아직 완주 기록 없음' : `최단 ${timeText(m.best)} ·${holder}`}`, buttons);
     card.dataset.mapId = m.id;
+    card.firstElementChild!.append(playStats(m));
     // For a day: UPDATE after its content changed (so its times began again with the maker's), else NEW after it was
     // first shared.
     const now = this.online?.now() ?? Date.now();

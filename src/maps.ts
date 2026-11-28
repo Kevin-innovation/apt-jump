@@ -1,4 +1,4 @@
-import type { Course } from './game';
+import { START_X, type Course } from './game';
 import { POWER_KINDS, POWER_NAMES, type PowerKind } from './items';
 import { paceSpeed, type Pace } from './physics';
 import { BAR_GAP, OBSTACLE_SIZE, passage, RAMP_RUN, ROAD_DEPTH, SPIKE_SIZE, VENT_HEIGHT, type City, type Roof } from './world';
@@ -141,6 +141,10 @@ export function checkMap(m: GameMap): MapProblem[] {
   return out;
 }
 
+/** The finish flag stands this far before the last segment's end. */
+const GOAL_INSET = 56;
+/** Units a test run keeps before the flag at least, so that it never starts finished. */
+const TEST_MARGIN = 4;
 /** Clear roof before a passage's glass: a landing first, as in the endless city. */
 const routeLead = (speed: number) => Math.round(speed * 0.54) + 70;
 
@@ -193,7 +197,34 @@ export function buildCourse(m: GameMap): Course {
     r.road = { id: id++, x, y, rampEnd: end.x, rampY: end.y, rampStart: Math.max(x, Math.round(end.x - (y - end.y) * RAMP_RUN)) };
   });
   const last = roofs[roofs.length - 1]!;
-  return { city: new FixedCity(roofs, last.x + last.w - 56), pace: m.pace, startY: roofs[0]!.y };
+  return { city: new FixedCity(roofs, last.x + last.w - GOAL_INSET), pace: m.pace, startY: roofs[0]!.y };
+}
+
+/** Where an editor's test run begins: a segment, and units along it. Never part of a map or its file. */
+export interface TestStart { segment: number; x: number }
+/** The furthest a test run may start along a segment: on it, and on the last one short of the finish flag. */
+export function maxTestStart(m: GameMap, segment: number): number {
+  const s = m.segments[segment]!;
+  const end = segment === m.segments.length - 1 ? s.w - Math.ceil(GOAL_INSET / UNIT) - TEST_MARGIN : s.w - 2;
+  return Math.max(0, end);
+}
+/**
+ * The map's course with its start moved to `at`: the same course shifted so that this spot lies where runs begin, so
+ * the runner sets off there at the map's own starting speed (and gains from there). Only for trying a map out.
+ */
+export function testCourse(m: GameMap, at: TestStart): Course {
+  const course = buildCourse(m), s = m.segments[at.segment];
+  if (!s) return course;
+  const dx = (segmentStarts(m)[at.segment]! + Math.max(0, Math.min(at.x, maxTestStart(m, at.segment)))) * UNIT - START_X;
+  const move = (o: { x: number }) => { o.x -= dx; };
+  for (const r of course.city.roofs) {
+    move(r);
+    [...r.obstacles, ...r.lines, ...r.coins, ...r.powers, ...r.enemies, ...(r.puddles ?? []), ...(r.spikes ?? [])].forEach(move);
+    if (r.vent) move(r.vent);
+    if (r.road) { move(r.road); r.road.rampStart -= dx; r.road.rampEnd -= dx; }
+    if (r.route) { move(r.route); r.route.rampStart -= dx; r.route.rampEnd -= dx; }
+  }
+  return { city: new FixedCity(course.city.roofs, course.city.goalX! - dx), pace: course.pace, startY: -s.h * UNIT };
 }
 
 const seg = (w: number, gap: number, items: MapItem[] = [], more: Partial<Segment> = {}): Segment =>

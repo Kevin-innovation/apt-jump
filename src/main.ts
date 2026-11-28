@@ -7,7 +7,7 @@ import { FirstVisit } from './entry';
 import { watchReleases } from './updates';
 import { Game, type GameEvent } from './game';
 import { Input } from './input';
-import { buildCourse, blankMap, PRACTICE, type GameMap, parseMap, serializeMap } from './maps';
+import { buildCourse, blankMap, PRACTICE, type GameMap, parseMap, serializeMap, testCourse, type TestStart } from './maps';
 import { downloadMap, MapScreen } from './mapscreen';
 import { MapStore, MAX_MAPS } from './mapstore';
 import { PatchTest } from './patchtest';
@@ -29,7 +29,7 @@ export type Phase = 'title' | 'playing' | 'countdown' | 'paused' | 'dying' | 're
 /** What is being played, so a restart repeats it and scores never mix. */
 /** `shared` marks a published map: only its runs are ranked by time, never the shelf's or the editor's. */
 /** `share` marks the maker's run that publishes a map of the shelf (new, or a new version of `sharedId`). */
-type Mode = { kind: 'endless' } | { kind: 'map'; map: GameMap; id: string | null; from: 'maps' | 'editor'; shared?: string; share?: { sharedId: string | null } };
+type Mode = { kind: 'endless' } | { kind: 'map'; map: GameMap; id: string | null; from: 'maps' | 'editor'; shared?: string; share?: { sharedId: string | null }; /** An editor test that begins partway. */ start?: TestStart };
 declare global {
   interface Window { patch?: EventTarget & { quality?: 'low' | 'medium' | 'high' } }
 }
@@ -243,6 +243,8 @@ function startRun(): void {
     if (sharing) { shelfNote('앞서 완주한 맵을 올리는 중이에요. 잠시 뒤 다시 해 주세요.'); return; }
   } else if (testing || (mode.kind !== 'endless' && !shared) || !online) { begin(null, ''); return; }
   else if (!onlineUi.signedIn) {
+    // No run is issued here, so the map's start is counted by itself; nothing waits for it.
+    if (shared) void online.countMapStart(shared).catch(() => {});
     const account = online.account();
     begin(null, account.status === 'in' ? '닉네임을 정하면 순위에 오릅니다. 이번 판은 순위에 오르지 않습니다.'
       : account.status === 'loading' ? '계정을 확인하는 중이라 이번 판은 순위에 오르지 않습니다.' : shared ? '로그인하면 맵 기록이 등록돼요.' : '');
@@ -292,7 +294,7 @@ function begin(run: Issued | null, why: string): void {
   unrankedNote = why;
   const c = run?.seeds ? { runId: run.runId, seeds: [...run.seeds], asking: false, lastAsk: 0, startedAt: performance.now() } : null;
   city = c;
-  game = mode.kind === 'map' ? new Game(buildCourse(mode.map))
+  game = mode.kind === 'map' ? new Game(mode.start ? testCourse(mode.map, mode.start) : buildCourse(mode.map))
     : c ? new Game((k) => c.seeds[k] ?? null)
     : new Game(run?.seed !== undefined ? run.seed : testing ? TEST_SEED : Math.floor(Math.random() * 2 ** 31));
   ui.homeLabel(mode.kind === 'endless' ? '타이틀로' : mode.from === 'editor' ? '편집기로' : '맵 목록으로');
@@ -423,7 +425,10 @@ function act(a: Act): void {
     case 'ed-save': saveMap(); break;
     case 'ed-test':
       editor.flush();
-      if (editor.valid) playMap(editor.map, null, 'editor');
+      if (editor.valid) {
+        mode = { kind: 'map', map: structuredClone(editor.map), id: null, from: 'editor', start: editor.testStart ?? undefined };
+        startRun();
+      }
       else { editor.message('⚠ 문제를 먼저 고쳐 주세요. 목록에서 누르면 그 구간으로 가요.', true); editor.showProblems(); }
       break;
     case 'ed-back':

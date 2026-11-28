@@ -136,6 +136,7 @@ export function connect(url: string): Online {
     getMap: (id) => client.query(api.maps.get, { id: id as Id<'maps'> }),
     newestMap: () => client.query(api.maps.newest, {}),
     mapStart: (id) => write(() => client.mutation(api.maptimes.start, { mapId: id as Id<'maps'>, version: SIM_VERSION })),
+    countMapStart: async (id) => { await client.mutation(api.maptimes.countStart, { mapId: id as Id<'maps'> }); },
     mapFinish: (runId, replay) => write(() => client.action(api.maptimes.finish, { runId: runId as Id<'mapRuns'>, replay })),
     mapBoard: (id, bodyId) => client.query(api.maptimes.board, { mapId: id as Id<'maps'>, ...(bodyId ? { bodyId } : {}) }),
     mapVersions: (id) => client.query(api.maptimes.versions, { mapId: id as Id<'maps'> }),

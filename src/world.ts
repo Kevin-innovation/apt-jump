@@ -7,7 +7,7 @@ import { mixSeed, Rng } from './rng';
 export interface Obstacle { id: number; kind: 'ac' | 'tank' | 'box' | 'bar'; x: number; y: number; w: number; h: number }
 export interface Line { id: number; x: number; w: number; y: number; style: number }
 export type CoinKind = 'coin' | 'gold' | 'diamond';
-/** Floor spikes: touching them ends the run. Only made maps have them; the endless city never does. */
+/** Floor spikes: touching them ends the run. */
 export interface Spike { id: number; x: number; y: number; w: number; h: number }
 export const SPIKE_SIZE = { w: 16, h: 6 } as const;
 export interface Coin { x: number; y: number; kind: CoinKind; taken: boolean }
@@ -73,6 +73,14 @@ export const ROUTE_DEPTH = 48;
 export const HATCH_W = 44;
 /** How high above the lower roof an updraft carries. */
 export const VENT_HEIGHT = 90;
+/** The endless city's spikes start here (about 200 m). */
+export const SPIKE_START = 3300;
+/**
+ * Seconds of running kept clear around endless-city spikes: after a roof's edge (to land and see them), and from
+ * anything else that could hurt or is slid at, on either side (to jump them without meeting something else).
+ */
+export const SPIKE_CLEAR = 0.9;
+export function spikeChance(x: number): number { return x < SPIKE_START ? 0 : 0.2 + 0.25 * ease(x - SPIKE_START, 6000); }
 
 export function difficulty(x: number): number { return ease(x, 2600); }
 
@@ -345,6 +353,35 @@ export class World implements City {
         const start = r.x + this.rng.range(30, Math.max(31, r.w - n * 14 - 30));
         for (let i = 0; i < n; i++) this.coin(r, start + i * 14, r.y - 10);
       }
+    }
+    this.maybeSpikes(r, speed, z.event, z.rest);
+  }
+
+  /**
+   * Now and then one patch of spikes on a plain roof, placed after everything else so it can keep its distance: past
+   * the landing, before the run-up to the next jump, and far from anything else to be dealt with. Never in a district's
+   * breather, a blackout (they wouldn't show) or on a roof that gives way.
+   */
+  private maybeSpikes(r: Roof, speed: number, event: LapEvent, rest: boolean): void {
+    if (rest || event === 'night' || r.cracked || !this.rng.chance(spikeChance(r.x))) return;
+    const clear = Math.round(speed * SPIKE_CLEAR);
+    const from = r.x + clear, to = r.x + r.w - runupZone(r.x + r.w) - SPIKE_SIZE.w;
+    if (to < from) return;
+    const taken: [number, number][] = [
+      ...r.obstacles.map((o): [number, number] => [o.x, o.x + o.w]),
+      ...r.enemies.filter((e) => !e.over).map((e): [number, number] => [e.x, e.x + 16]),
+      ...(r.puddles ?? []).map((p): [number, number] => [p.x, p.x + p.w]),
+    ];
+    const free = (x: number) => taken.every(([a, b]) => b + clear <= x || x + SPIKE_SIZE.w + clear <= a);
+    // A few tries from the city's own numbers; a roof with no room goes without.
+    for (let i = 0; i < 4; i++) {
+      const x = Math.round(this.rng.range(from, to));
+      if (!free(x)) continue;
+      r.spikes = [{ id: this.nextId++, x, y: r.y - SPIKE_SIZE.h, ...SPIKE_SIZE }];
+      // No coin lures into them: low ones nearby give way to an arc over the top, which shows the jump.
+      r.coins = r.coins.filter((c) => c.kind === 'diamond' || c.y < r.y - 22 || c.x < x - 24 || c.x > x + SPIKE_SIZE.w + 24);
+      for (let k = 0; k < 3; k++) this.coin(r, x - 8 + k * 16, r.y - (k === 1 ? 34 : 27));
+      return;
     }
   }
 

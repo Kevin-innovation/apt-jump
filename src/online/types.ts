@@ -11,7 +11,7 @@ export interface ShopState { coins: number; owned: string[]; costume: string }
 export interface BoardEntry { rank: number; nickname: string; title?: string | null; badge?: string | null; costume?: string; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
 /** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
-export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; /** When an update last changed its content; absent if none has. */ contentUpdatedAt?: number; /** Verified completions counted so far. */ plays?: number }
+export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; /** When an update last changed its content; absent if none has. */ contentUpdatedAt?: number; /** Verified completions counted so far. */ plays?: number; /** Public runs started, finished or not. */ attempts?: number }
 export type MapOrder = 'new' | 'old' | 'popular';
 export interface MapVersion { bodyId: string; title: string; sharedAt: number }
 /** `achievedAt` is when that time was set (epoch ms); absent from a server of before it was sent. */
@@ -90,6 +90,8 @@ export interface Online {
   getMap(id: string): Promise<string | null>;
   /** A ranked run of a published map: the server fixes the content, returned to be played. */
   mapStart(id: string): Promise<{ runId: string; json: string }>;
+  /** Counts a start of a public map that gets no ranked run. */
+  countMapStart(id: string): Promise<void>;
   mapFinish(runId: string, replay: string): Promise<{ timeMs: number; best: boolean }>;
   /** The current content's times, or an earlier one's. */
   mapBoard(id: string, bodyId?: string): Promise<MapBoard | null>;

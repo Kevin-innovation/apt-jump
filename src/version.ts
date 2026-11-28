@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.7.0', date: '2026-11-28', title: '무한 달리기 가시 · 테스트 시작 위치',
+    notes: [
+      '무한 달리기에도 「가시」가 약 200m부터 가끔 나와요. 닿으면 바로 끝나니 점프로 넘으세요',
+      '맵 편집기 도구 「시작 위치」: 원하는 곳에서 테스트를 시작해요 (「처음부터」로 되돌리기, 맵에는 저장되지 않음)',
+      '공유 맵 카드에 누적 플레이 · 누적 완주 · 완주율 (플레이는 이번 버전부터 집계)',
+    ],
+  },
+  {
     version: '3.6.0', date: '2026-11-28', title: '인기순 · 이전 버전 기록',
     notes: [
       '공유 맵 정렬에 「인기순」(누적 완주가 많은 순)',

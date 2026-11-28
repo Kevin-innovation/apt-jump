@@ -432,6 +432,10 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #maps .card > div { min-width: 0; }
 #maps .card > div span { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 #maps .card small { white-space: pre-line; line-height: 1.45; }
+/* Starts, completions, and the completion rate pushed to the right end; a narrow card wraps between them, never inside. */
+#maps .card .map-stats { display: flex; flex-wrap: wrap; column-gap: 1em; font-size: .85em; line-height: 1.45; color: #cfc4ee; }
+#maps .card .map-stats > span { display: inline; overflow: visible; white-space: nowrap; }
+#maps .card .map-stats > .rate { margin-left: auto; color: #7dfff0; }
 #maps .card > button { width: 100%; padding: 0 .3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #maps .card > .slot { min-height: 42px; }
 #maps button.more { min-height: 44px; background: #2c2052; border: 2px dashed #7a68b8; }

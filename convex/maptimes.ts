@@ -1,9 +1,10 @@
 import { getAuthUserId } from '@convex-dev/auth/server';
+import { MINUTE, RateLimiter } from '@convex-dev/rate-limiter';
 import { ConvexError, v } from 'convex/values';
 import { timeOf, verifyMapReplay } from '../src/mapreplay';
 import { parseMap, serializeMap } from '../src/maps';
 import { MAX_REPLAY, SIM_VERSION } from '../src/replay';
-import { internal } from './_generated/api';
+import { components, internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { action, internalMutation, mutation, query, type QueryCtx } from './_generated/server';
 import { requirePlayer, touch } from './users';
@@ -37,6 +38,28 @@ async function ownRow(ctx: QueryCtx, bodyId: Id<'mapBodies'>, userId: Id<'users'
   return null;
 }
 
+// Starts without an account can't be tied to anyone: a map takes only so many of them a minute.
+const limiter = new RateLimiter(components.rateLimiter, {
+  guestMapStart: { kind: 'token bucket', rate: 30, period: MINUTE, capacity: 60 },
+});
+/** A map's starts so far. One shared before they were counted had at least as many as it has completions. */
+export const startsOf = (map: { attempts?: number; plays?: number }) => Math.max(map.attempts ?? 0, map.plays ?? 0);
+
+/**
+ * Counts a start of a public map by someone the server issues no run to (a guest, or an account without a nickname).
+ * Their finishes are never verified, so they add to starts only. Quietly does nothing past the limit.
+ */
+export const countStart = mutation({
+  args: { mapId: v.id('maps') },
+  returns: v.null(),
+  handler: async (ctx, { mapId }) => {
+    const map = await ctx.db.get(mapId);
+    if (!map || !(await limiter.limit(ctx, 'guestMapStart', { key: mapId })).ok) return null;
+    await ctx.db.patch(mapId, { attempts: startsOf(map) + 1 });
+    return null;
+  },
+});
+
 /** Issues a run of a published map, fixed to the content it has now, which is returned to be played. */
 export const start = mutation({
   args: { mapId: v.id('maps'), version: v.number() },
@@ -57,6 +80,8 @@ export const start = mutation({
     const old = await ctx.db.query('mapRuns').withIndex('by_user_started', (q) => q.eq('userId', userId).lt('startedAt', now - 24 * 3_600_000)).take(5);
     for (const r of old) await ctx.db.delete(r._id);
     const runId = await ctx.db.insert('mapRuns', { userId, mapId, bodyId: map.bodyId, version, startedAt: now, status: 'open' });
+    // Every run issued counts as a start, whether or not it is ever finished.
+    await ctx.db.patch(mapId, { attempts: startsOf(map) + 1 });
     await touch(ctx, userId, true);
     return { runId, json: serializeMap({ ...parsed, title: map.title }) };
   },

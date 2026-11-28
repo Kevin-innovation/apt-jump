@@ -1,20 +1,21 @@
 import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoute, drawScaffold, drawSpikes, drawTank } from './art';
 import { POWER_KINDS, POWER_TEXT, type PowerKind } from './items';
 import {
-  buildCourse, checkMap, cleanTitle, ITEM_NAMES, ITEM_TYPES, LIMITS, LINE_W, onFloor, segmentStarts, UNIT,
-  type GameMap, type ItemType, type MapProblem, type Segment,
+  buildCourse, checkMap, cleanTitle, ITEM_NAMES, ITEM_TYPES, LIMITS, LINE_W, onFloor, segmentStarts, UNIT, maxTestStart,
+  type GameMap, type ItemType, type MapProblem, type Segment, type TestStart,
 } from './maps';
 import { makeSprites, type Sprites } from './sprites';
 import { ROAD_DEPTH } from './world';
 
-type Tool = 'select' | 'erase' | ItemType;
+type Tool = 'select' | 'erase' | 'start' | ItemType;
 const $ = (id: string) => document.getElementById(id) as HTMLElement;
 const clamp = (v: number, [a, b]: readonly [number, number]) => Math.max(a, Math.min(b, v));
 const GUIDE_MS = 7000;
-const TOOLS: Tool[] = ['select', 'erase', ...ITEM_TYPES];
+const TOOLS: Tool[] = ['select', 'erase', 'start', ...ITEM_TYPES];
 const HELP: Record<Tool, string> = {
   ...POWER_TEXT,
   select: '구간을 눌러 선택, 끌어서 이동', erase: '지울 물체를 누르세요',
+  start: '건물 · 발판을 누르면 「테스트」가 거기서 시작해요 (맵에는 저장되지 않아요)',
   coin: '놓을 자리를 누르세요', gold: '놓을 자리를 누르세요', diamond: '높이 120px(15칸)쯤이면 2단 점프로 닿습니다',
   ac: '놓을 자리를 누르세요', tank: '놓을 자리를 누르세요', line: '놓을 자리를 누르세요',
   box: '놓을 자리를 누르세요 · ↓ 슬라이드로 부수고 지나가요', bar: '놓을 자리를 누르세요 · ↓ 슬라이드로 밑을 지나가요',
@@ -74,6 +75,8 @@ export class Editor {
   private drag: { id: number; x: number; cam: number; moved: boolean } | null = null;
   private course!: ReturnType<typeof buildCourse>;
   private toastTimer = 0;
+  /** Where the next test run begins, or null for the map's own start. Kept only while this map is being edited. */
+  private start: TestStart | null = null;
   /** Until when the guidance on entering stays, whatever edits would otherwise clear. */
   private guideUntil = 0;
   private known = new Set<string>();
@@ -92,6 +95,7 @@ export class Editor {
     if (!g) return c;
     const ink = (rows: string[]) => rows.forEach((r, y) => [...r].forEach((ch, x) => { if (ch !== '.') { g.fillStyle = ch === '#' ? '#fff6e0' : '#1a1230'; g.fillRect(x, y, 1, 1); } }));
     switch (tool) {
+      case 'start': g.fillStyle = '#fff6e0'; g.fillRect(2, 1, 1, 10); g.fillStyle = '#7dfff0'; g.fillRect(3, 1, 6, 2); g.fillRect(3, 3, 4, 2); break;
       case 'select': ink(['#..........', '##.........', '#o#........', '#oo#.......', '#ooo#......', '#oooo#.....', '#ooooo#....', '#ooo###....', '#o#o#......', '##.#o#.....', '....##.....']); break;
       case 'erase': ink(['...........', '#.......#..', '.#.....#...', '..#...#....', '...#.#.....', '....#......', '...#.#.....', '..#...#....', '.#.....#...', '#.......#..', '...........']); break;
       case 'coin': g.drawImage(this.sprites.coin[0]!, 1, 1); break;
@@ -117,7 +121,7 @@ export class Editor {
       b.type = 'button';
       b.dataset.tool = tool;
       const name = document.createElement('span');
-      name.textContent = tool === 'select' ? '선택' : tool === 'erase' ? '지우개' : ITEM_NAMES[tool];
+      name.textContent = tool === 'select' ? '선택' : tool === 'erase' ? '지우개' : tool === 'start' ? '시작 위치' : ITEM_NAMES[tool];
       b.title = name.textContent;
       b.append(this.icon(tool), name);
       b.addEventListener('click', () => { this.tool = tool; this.refresh(); });
@@ -139,6 +143,7 @@ export class Editor {
       el.addEventListener('pointerleave', help); el.addEventListener('focusout', help);
     });
     $('ed-issues').addEventListener('click', () => this.showProblems($('ed-problems').hidden === true));
+    $('ed-start-reset').addEventListener('click', () => { this.start = null; this.refresh(); this.message('테스트를 처음부터 시작해요.'); });
     $('ed-toast').addEventListener('click', () => { this.guideUntil = 0; this.message(''); });
     // On a short screen the tools and the segment's settings share one side panel, a tab each.
     document.querySelectorAll<HTMLButtonElement>('[data-edtab]').forEach((b) => b.addEventListener('click', () => {
@@ -192,6 +197,7 @@ export class Editor {
     this.id = id;
     this.dirty = false;
     this.selected = 0;
+    this.start = null;
     this.tool = 'select';
     this.undoStack = [];
     this.redoStack = [];
@@ -203,6 +209,8 @@ export class Editor {
   }
 
   get valid(): boolean { return this.problems.length === 0; }
+  /** Where a test run should begin; null for the map's own start. */
+  get testStart(): TestStart | null { return this.start && { ...this.start }; }
   /** A short note that shows for a moment over the editor and goes away by itself (or on a tap). */
   message(text: string, warn = false, stay = 2800 + text.length * 40): void {
     // An empty message only clears; it leaves the guidance up for its time. Anything with words replaces it.
@@ -283,6 +291,8 @@ export class Editor {
       case 'clear': this.edit(() => { this.seg.items = []; }); return;
       case 'add': case 'copy':
         if (segs.length >= LIMITS.segments) { this.message(`구간은 ${LIMITS.segments}개까지입니다.`); return; }
+        // The test start stays with its segment as others come and go.
+        if (this.start && this.start.segment > i) this.start.segment++;
         this.edit((m) => {
           const s = this.seg;
           m.segments.splice(i + 1, 0, name === 'copy' ? structuredClone(s) : { kind: 'building', w: 40, h: s.h, gap: 8, road: false, items: [] });
@@ -292,11 +302,15 @@ export class Editor {
         return;
       case 'del':
         if (segs.length <= 2) { this.message('구간은 2개 이상 필요합니다.'); return; }
+        if (this.start?.segment === i) this.start = null;
+        else if (this.start && this.start.segment > i) this.start.segment--;
         this.edit((m) => { m.segments.splice(i, 1); this.selected = Math.min(i, m.segments.length - 1); });
         return;
       case 'left': case 'right': {
         const to = i + (name === 'left' ? -1 : 1);
         if (to < 0 || to >= segs.length) return;
+        if (this.start?.segment === i) this.start.segment = to;
+        else if (this.start?.segment === to) this.start.segment = i;
         this.edit((m) => { const [s] = m.segments.splice(i, 1); m.segments.splice(to, 0, s!); this.selected = to; });
         return;
       }
@@ -331,6 +345,13 @@ export class Editor {
     if (this.tool === 'select') { this.select(i, false); return; }
     const s = this.map.segments[i]!;
     const x0 = starts[i]! * UNIT, y0 = -s.h * UNIT;
+    if (this.tool === 'start') {
+      this.start = { segment: i, x: clamp(Math.round(ux - starts[i]!), [0, maxTestStart(this.map, i)]) };
+      this.selected = i;
+      this.refresh();
+      this.message('여기서 테스트를 시작해요. 「처음부터」로 되돌릴 수 있어요.');
+      return;
+    }
     if (this.tool === 'erase') {
       let best = -1, near = 26;
       s.items.forEach((it, k) => {
@@ -352,6 +373,10 @@ export class Editor {
   // ---- View --------------------------------------------------------------
 
   private refresh(): void {
+    // A test start follows its segment through size changes and undo, or goes with it.
+    const at = this.start && this.map.segments[this.start.segment];
+    if (this.start) this.start = at ? { segment: this.start.segment, x: Math.min(this.start.x, maxTestStart(this.map, this.start.segment)) } : null;
+    $('ed-start-reset').hidden = !this.start;
     this.problems = checkMap(this.map);
     this.course = buildCourse(this.map);
     const s = this.seg, n = this.map.segments.length;
@@ -489,6 +514,17 @@ export class Editor {
     }
     const last = roofs[roofs.length - 1]!;
     drawFlag(g, (this.course.city.goalX ?? 0) - cx, last.y - cy, this.t);
+    // The map's own start, faded while a test starts elsewhere; there, a runner under a flag that says so.
+    g.globalAlpha = this.start ? 0.35 : 1;
     g.drawImage(this.sprites.run[0]!, 60 - cx - 2, roofs[0]!.y - cy - 15);
+    g.globalAlpha = 1;
+    if (this.start) {
+      const s = this.map.segments[this.start.segment]!;
+      const x = (segmentStarts(this.map)[this.start.segment]! + this.start.x) * UNIT - cx, y = -s.h * UNIT - cy;
+      g.fillStyle = '#1a1230'; g.fillRect(x - 5, y - 46, 4, 46); g.fillRect(x - 4, y - 47, 66, 15);
+      g.fillStyle = '#7dfff0'; g.fillRect(x - 4, y - 46, 2, 46); g.fillRect(x - 3, y - 46, 64, 13);
+      g.fillStyle = '#1a1230'; g.font = '11px Galmuri11, sans-serif'; g.textBaseline = 'top'; g.fillText('테스트 시작', x + 1, y - 45);
+      g.drawImage(this.sprites.run[0]!, x - 2, y - 15);
+    }
   }
 }
