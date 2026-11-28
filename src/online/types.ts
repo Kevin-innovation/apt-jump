@@ -11,12 +11,12 @@ export interface ShopState { coins: number; owned: string[]; costume: string }
 export interface BoardEntry { rank: number; nickname: string; title?: string | null; badge?: string | null; costume?: string; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
 /** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
-export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; /** When an update last changed its content; absent if none has. */ contentUpdatedAt?: number; /** Verified completions over the map's life: what 인기순 and BEST! go by. */ plays?: number; /** The card's counts, both from 3.7.1: public runs started, finished or not, and those verified clear. */ rateAttempts?: number; rateCompletions?: number }
+export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; updatedAt?: number; /** When an update last changed its content; absent if none has. */ contentUpdatedAt?: number; /** Verified completions over the map's life: what 인기순 goes by. */ plays?: number; /** The card's counts, both from 3.7.1: public runs started, finished or not, and those verified clear. */ rateAttempts?: number; rateCompletions?: number }
 export type MapOrder = 'new' | 'old' | 'popular';
 export interface MapVersion { bodyId: string; title: string; sharedAt: number }
 /** `achievedAt` is when that time was set (epoch ms); absent from a server of before it was sent. */
 export interface MapBoard { title: string; top: { rank: number; nickname: string; timeMs: number; achievedAt?: number; mine: boolean }[]; mine: { rank: number | null; timeMs: number; achievedAt?: number } | null }
-export interface SharedPage { page: SharedMapInfo[]; isDone: boolean; continueCursor: string; /** Ids of all maps, on any page, with the most completions. */ mostPlayed?: string[] }
+export interface SharedPage { page: SharedMapInfo[]; isDone: boolean; continueCursor: string; /** Ids of all maps, on any page, with the most tracked starts (BEST!) and with the next lower count (HOT). */ bestIds?: string[]; hotIds?: string[] }
 
 export interface Account {
   status: 'loading' | 'out' | 'in';
@@ -85,6 +85,8 @@ export interface Online {
   /** Shows an earned achievement as a badge by the title, or clears it with null. */
   equipBadge(achievementId: string | null): Promise<void>;
   listMaps(order: MapOrder, cursor: string | null): Promise<SharedPage>;
+  /** Cards of the maps named, at most 20 a call; ones taken down are left out. */
+  mapCards(ids: string[]): Promise<SharedMapInfo[]>;
   /** When the latest newly shared map went up, or null with none. */
   newestMap(): Promise<number | null>;
   getMap(id: string): Promise<string | null>;

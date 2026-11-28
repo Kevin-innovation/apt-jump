@@ -12,8 +12,8 @@ import { requirePlayer, touch } from './users';
 
 export const MAPS_PER_PLAYER = 20;
 export const PAGE = 20;
-/** The most maps named as tied for most completed: far above any real tie, it keeps the read bounded. */
-const TOP_TIES = 1000;
+/** The most maps named as tied for a badge: far above any real tie, it keeps the read bounded. */
+const BADGE_TIES = 1000;
 const MIN_UPDATE_GAP = 3000;
 const RUN_LIFE = 2 * 3_600_000;
 const START_WINDOW = 10 * 60_000;
@@ -235,12 +235,41 @@ async function fastest(ctx: QueryCtx, map: Doc<'maps'>): Promise<{ best: number 
   return { best, bestBy: (await ctx.db.get(first.userId))?.nickname ?? '(탈퇴)', bestTied: tied.length };
 }
 
-/** Every map sharing the highest count of completions among all shared maps; none while nothing has been finished. */
-async function mostPlayed(ctx: QueryCtx): Promise<Id<'maps'>[]> {
-  const most = (await ctx.db.query('maps').withIndex('by_plays').order('desc').first())?.plays ?? 0;
-  if (most <= 0) return [];
-  return (await ctx.db.query('maps').withIndex('by_plays', (q) => q.eq('plays', most)).take(TOP_TIES)).map((m) => m._id);
+/**
+ * The badges, over all shared maps by tracked starts: every map at the highest count, and every map at the next lower
+ * count. A count of zero (or none yet) earns neither.
+ */
+async function mostStarted(ctx: QueryCtx): Promise<{ bestIds: Id<'maps'>[]; hotIds: Id<'maps'>[] }> {
+  const at = async (count: number) => (await ctx.db.query('maps').withIndex('by_rateAttempts', (q) => q.eq('rateAttempts', count)).take(BADGE_TIES)).map((m) => m._id);
+  const most = (await ctx.db.query('maps').withIndex('by_rateAttempts').order('desc').first())?.rateAttempts ?? 0;
+  if (most <= 0) return { bestIds: [], hotIds: [] };
+  const next = (await ctx.db.query('maps').withIndex('by_rateAttempts', (q) => q.lt('rateAttempts', most)).order('desc').first())?.rateAttempts ?? 0;
+  return { bestIds: await at(most), hotIds: next > 0 ? await at(next) : [] };
 }
+
+/** A shared map as a list card shows it. */
+async function listed(ctx: QueryCtx, m: Doc<'maps'>, me: string | null) {
+  return {
+    id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, createdAt: m._creationTime, mine: m.ownerId === me, plays: m.plays ?? 0, rateAttempts: m.rateAttempts ?? 0, rateCompletions: m.rateCompletions ?? 0,
+    ...(m.contentUpdatedAt === undefined ? {} : { contentUpdatedAt: m.contentUpdatedAt }),
+    author: (await ctx.db.get(m.ownerId))?.nickname ?? '(탈퇴)',
+    ...(await fastest(ctx, m)),
+  };
+}
+
+/** The cards of the maps named (the badge holders, wherever they are in the list), a page's worth at most. Open to guests. */
+export const cards = query({
+  args: { ids: v.array(v.string()) },
+  handler: async (ctx, args) => {
+    const me = await getAuthUserId(ctx);
+    const found = await Promise.all(args.ids.slice(0, PAGE).map(async (raw) => {
+      const id = ctx.db.normalizeId('maps', raw);
+      const m = id && (await ctx.db.get(id));
+      return m ? listed(ctx, m, me) : null;
+    }));
+    return found.filter((m) => m !== null);
+  },
+});
 
 export const list = query({
   args: { paginationOpts: paginationOptsValidator, order: v.union(v.literal('new'), v.literal('old'), v.literal('popular')) },
@@ -251,14 +280,9 @@ export const list = query({
     const r = args.order === 'popular'
       ? await ctx.db.query('maps').withIndex('by_plays').order('desc').paginate(opts)
       : await ctx.db.query('maps').withIndex('by_updated').order(args.order === 'new' ? 'desc' : 'asc').paginate(opts);
-    const page = await Promise.all(r.page.map(async (m) => ({
-      id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, createdAt: m._creationTime, mine: m.ownerId === me, plays: m.plays ?? 0, rateAttempts: m.rateAttempts ?? 0, rateCompletions: m.rateCompletions ?? 0,
-      ...(m.contentUpdatedAt === undefined ? {} : { contentUpdatedAt: m.contentUpdatedAt }),
-      author: (await ctx.db.get(m.ownerId))?.nickname ?? '(탈퇴)',
-      ...(await fastest(ctx, m)),
-    })));
+    const page = await Promise.all(r.page.map((m) => listed(ctx, m, me)));
     // Judged over all maps, not this page: a page is only the latest changed.
-    return { page, isDone: r.isDone, continueCursor: r.continueCursor, mostPlayed: await mostPlayed(ctx) };
+    return { page, isDone: r.isDone, continueCursor: r.continueCursor, ...(await mostStarted(ctx)) };
   },
 });
 

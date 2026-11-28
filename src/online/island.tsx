@@ -133,6 +133,7 @@ export function connect(url: string): Online {
     wear: (id) => write(() => client.mutation(api.shop.wear, { id })),
     equip: async (titleId) => { await write(() => client.mutation(api.achievements.equip, { titleId })); },
     listMaps: (order, cursor) => client.query(api.maps.list, { order, paginationOpts: { numItems: 10, cursor } }),
+    mapCards: (ids) => client.query(api.maps.cards, { ids }),
     getMap: (id) => client.query(api.maps.get, { id: id as Id<'maps'> }),
     newestMap: () => client.query(api.maps.newest, {}),
     mapStart: (id) => write(() => client.mutation(api.maptimes.start, { mapId: id as Id<'maps'>, version: SIM_VERSION })),

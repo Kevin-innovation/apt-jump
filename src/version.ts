@@ -6,6 +6,13 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.7.2', date: '2026-11-28', title: 'BEST! · HOT',
+    notes: [
+      '공유 맵의 BEST!는 누적 플레이가 가장 많은 맵, HOT은 그다음으로 많은 맵에 (동률이면 모두)',
+      '최신순 화면: 위에 BEST! · HOT 맵, 아래에 최신 맵 3개와 「5개 더 보기」',
+    ],
+  },
+  {
     version: '3.7.1', date: '2026-11-28', title: '완주율 바로잡기',
     notes: ['공유 맵의 누적 플레이 · 누적 완주 · 완주율을 이번 버전부터 새로 셉니다 (이전의 실패한 판은 저장되지 않아 100%로 보였어요)'],
   },

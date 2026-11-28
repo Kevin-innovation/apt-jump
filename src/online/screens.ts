@@ -28,6 +28,21 @@ function runnerPicture(id: string | undefined): HTMLImageElement {
   img.title = c.name;
   return img;
 }
+/** How many maps the latest view opens with, how many each press adds, and cards asked for per call. */
+const FEED_FIRST = 3;
+const FEED_MORE = 5;
+const CARD_BATCH = 20;
+const emptyLatest = () => ({
+  loaded: [] as SharedMapInfo[], featured: [] as SharedMapInfo[], best: new Set<string>(), hot: new Set<string>(),
+  cursor: null as string | null, done: false, shown: FEED_FIRST,
+});
+/** A section's name in the latest view. */
+function heading(text: string): HTMLElement {
+  const h = document.createElement('h3');
+  h.className = 'feed-head';
+  h.textContent = text;
+  return h;
+}
 /** The shared list's orders: each press of the button moves to the next. */
 const ORDER_NAMES: Record<MapOrder, string> = { new: '최신순', old: '오래된순', popular: '인기순' };
 const NEXT_ORDER: Record<MapOrder, MapOrder> = { new: 'old', old: 'popular', popular: 'new' };
@@ -93,21 +108,24 @@ function cardTags(card: HTMLElement): HTMLElement {
   return row;
 }
 
-/** Puts BEST! on a card, after NEW where there is one, or takes it off. */
-function markBest(card: HTMLElement, on: boolean): void {
-  const had = card.querySelector('.best-tag');
-  card.classList.toggle('is-best', on);
-  if (on && !had) {
-    const tag = document.createElement('span');
-    tag.className = 'best-tag';
-    tag.textContent = 'BEST!';
-    tag.title = '전체 기간 완주가 가장 많은 맵';
-    cardTags(card).append(tag);
-  } else if (!on && had) {
+/** The badges by tracked starts: what each says on hover. */
+const BADGES = { best: ['BEST!', '플레이가 가장 많은 맵'], hot: ['HOT', '플레이가 두 번째로 많은 맵'] } as const;
+
+/** Puts a card's badge on, after NEW or UPDATE where there is one, changes it, or (null) takes it off. */
+function markBadge(card: HTMLElement, badge: keyof typeof BADGES | null): void {
+  const had = card.querySelector('.best-tag, .hot-tag');
+  if (had && had.className !== `${badge}-tag`) {
     const row = had.parentElement!;
     had.remove();
     if (!row.childElementCount) row.remove();
   }
+  card.classList.toggle('is-best', badge === 'best');
+  card.classList.toggle('is-hot', badge === 'hot');
+  if (!badge || card.querySelector(`.${badge}-tag`)) return;
+  const tag = document.createElement('span');
+  tag.className = `${badge}-tag`;
+  [tag.textContent, tag.title] = BADGES[badge];
+  cardTags(card).append(tag);
 }
 
 /** Account, weekly ranking and shared maps. Works, with a plain notice, when nothing is connected. */
@@ -132,6 +150,8 @@ export class OnlineScreens {
   private timePages = new Pager($('mt-list'), $('mt-pager'), 10);
   private sharedPages = new Pager($('shared-list'), $('shared-pager'));
   private sharedItems: HTMLElement[] = [];
+  /** The latest view: every map read so far in list order, the badge holders' cards, and how far the feed is open. */
+  private latest = emptyLatest();
   /** The player's own map cards, from the shelf: each has a share button to bring to life. */
   myCards: () => HTMLElement[] = () => [];
 
@@ -441,12 +461,93 @@ export class OnlineScreens {
     $('shared-order').textContent = ORDER_NAMES[this.order];
     this.shelf();
     if (!this.online) {
+      this.sharedPages.scroll(false);
       this.sharedPages.set([note(this.connecting ? '온라인에 연결하는 중입니다.' : '온라인 공유는 준비하고 있습니다. 맵 파일을 내려받아 주고받을 수 있어요.')]);
       return;
     }
     const ticket = ++this.mapTicket;
+    // The latest view is one scrolling list under the badge holders; the other orders keep their pages.
+    const latest = this.order === 'new';
+    this.sharedPages.scroll(latest);
     this.sharedPages.set([note('불러오는 중입니다.')]);
-    await this.page(null, ticket);
+    if (!latest) { await this.page(null, ticket); return; }
+    this.latest = emptyLatest();
+    try {
+      await this.fill(ticket);
+      if (ticket === this.mapTicket) this.showLatest(false);
+    } catch (e) {
+      if (ticket === this.mapTicket) this.sharedPages.set([note(errorText(e))]);
+    }
+  }
+
+  /** The feed: every map read that holds no badge, in the order read. */
+  private feed(): SharedMapInfo[] {
+    const s = this.latest;
+    return s.loaded.filter((m) => !s.best.has(m.id) && !s.hot.has(m.id));
+  }
+
+  /** Reads pages until the feed has as many maps as are open (or there are no more), then the badge holders' cards. */
+  private async fill(ticket: number): Promise<void> {
+    const s = this.latest, online = this.online!;
+    let read = false;
+    while (!s.done && (!read || this.feed().length < s.shown)) {
+      const r = await online.listMaps('new', s.cursor);
+      if (ticket !== this.mapTicket) return;
+      read = true;
+      const had = new Set(s.loaded.map((m) => m.id));
+      s.loaded.push(...r.page.filter((m) => !had.has(m.id)));
+      // Counts move: the latest answer says who holds the badges now. One who lost it is back in the feed by itself.
+      s.best = new Set(r.bestIds ?? []);
+      s.hot = new Set(r.hotIds ?? []);
+      s.cursor = r.continueCursor;
+      s.done = r.isDone;
+    }
+    // Every holder is shown, however many tie, wherever in the list they are; asked for in small batches.
+    const ids = [...s.best, ...s.hot], cards: SharedMapInfo[] = [];
+    for (let i = 0; i < ids.length; i += CARD_BATCH) {
+      cards.push(...await online.mapCards(ids.slice(i, i + CARD_BATCH)));
+      if (ticket !== this.mapTicket) return;
+    }
+    s.featured = cards;
+  }
+
+  /** The badge holders (BEST! first, then HOT, the latest changed first), then the newest maps and the way to more. */
+  private showLatest(keep: boolean): void {
+    const s = this.latest;
+    const card = (m: SharedMapInfo) => {
+      const el = this.card(m);
+      markBadge(el, s.best.has(m.id) ? 'best' : s.hot.has(m.id) ? 'hot' : null);
+      return el;
+    };
+    const rank = (m: SharedMapInfo) => (s.best.has(m.id) ? 0 : 1);
+    const top = [...s.featured].sort((a, b) => rank(a) - rank(b) || (b.updatedAt ?? 0) - (a.updatedAt ?? 0)).map(card);
+    const all = this.feed(), feed = all.slice(0, s.shown).map(card);
+    const items = [...(top.length ? [heading('인기 맵'), ...top, ...(feed.length ? [heading('최신 맵')] : [])] : []), ...feed];
+    if (all.length > s.shown || !s.done) {
+      const more = document.createElement('button');
+      more.type = 'button';
+      more.className = 'more';
+      more.textContent = `${FEED_MORE}개 더 보기`;
+      more.addEventListener('click', () => { more.disabled = true; void this.openMore(more); });
+      items.push(more);
+    }
+    this.sharedItems = items;
+    this.sharedPages.set(items.length ? items : [note('아직 공유된 맵이 없습니다.')], keep);
+  }
+
+  private async openMore(button: HTMLButtonElement): Promise<void> {
+    const ticket = this.mapTicket, s = this.latest, before = s.shown;
+    s.shown += FEED_MORE;
+    try {
+      // What is already read is enough unless the feed runs short of it.
+      if (this.feed().length < s.shown && !s.done) await this.fill(ticket);
+      if (ticket === this.mapTicket) this.showLatest(true);
+    } catch (e) {
+      if (ticket !== this.mapTicket) return;
+      s.shown = before;
+      button.disabled = false;
+      this.tell(errorText(e));
+    }
   }
 
   private async page(cursor: string | null, ticket: number): Promise<void> {
@@ -457,8 +558,11 @@ export class OnlineScreens {
       const items = cursor === null ? [] : this.sharedItems.slice(0, -1);
       items.push(...r.page.map((m) => this.card(m)));
       // Each answer carries the leaders as they are now: cards already loaded follow it too.
-      const best = new Set(r.mostPlayed ?? []);
-      for (const item of items) if (item.dataset.mapId) markBest(item, best.has(item.dataset.mapId));
+      const best = new Set(r.bestIds ?? []), hot = new Set(r.hotIds ?? []);
+      for (const item of items) {
+        const id = item.dataset.mapId;
+        if (id) markBadge(item, best.has(id) ? 'best' : hot.has(id) ? 'hot' : null);
+      }
       if (!r.isDone) {
         const more = document.createElement('button');
         more.type = 'button';

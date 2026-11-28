@@ -51,7 +51,7 @@ export default defineSchema({
     rateAttempts: v.optional(v.number()), rateCompletions: v.optional(v.number()),
     // When a verified update last changed the content (and so began its times anew); absent if it never has.
     contentUpdatedAt: v.optional(v.number()),
-  }).index('by_owner', ['ownerId']).index('by_updated', ['updatedAt']).index('by_plays', ['plays']),
+  }).index('by_owner', ['ownerId']).index('by_updated', ['updatedAt']).index('by_plays', ['plays']).index('by_rateAttempts', ['rateAttempts']),
   // A map's content. A change makes a new one, so that times always belong to what was played.
   mapBodies: defineTable({ json: v.string() }),
 

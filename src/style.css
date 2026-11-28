@@ -439,6 +439,10 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #maps .card > button { width: 100%; padding: 0 .3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #maps .card > .slot { min-height: 42px; }
 #maps button.more { min-height: 44px; background: #2c2052; border: 2px dashed #7a68b8; }
+/* The latest view scrolls as one list: the badge holders, then the newest maps. */
+#maps #shared-list.scrolls { overflow-y: auto; overscroll-behavior: contain; grid-auto-rows: max-content; }
+#shared-list > .feed-head { margin: 4px 0 0; font-size: 1em; font-weight: normal; text-align: left; color: #ffd85a; }
+#shared-list.scrolls > button.more { flex: none; }
 /* Renaming a shared map: a box over the list, near the top so a phone's keyboard leaves it in view. */
 #map-rename { position: fixed; inset: 0; z-index: 8; display: grid; align-content: start; justify-items: center; overflow: auto; padding: max(24px, env(safe-area-inset-top)) 12px 12px; background: #0a0618cc; }
 #map-rename[hidden] { display: none; }
@@ -531,13 +535,14 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 /* A map shared within the last day: a NEW tag on the card's top left corner. */
 #maps .card { position: relative; }
 .new-tag { position: absolute; top: -2px; left: -2px; z-index: 1; padding: 0 6px; font-size: 11px; line-height: 16px; color: #1a1230; background: #ffd85a; box-shadow: 2px 2px #140c2e; letter-spacing: .05em; }
-#maps .card.is-new, #maps .card.is-best { padding-top: 18px; }
+#maps .card.is-new, #maps .card.is-best, #maps .card.is-hot { padding-top: 18px; }
 /* A card's labels side by side in its corner: NEW, then BEST! for the most completed. */
 .card-tags { position: absolute; top: -2px; left: -2px; z-index: 1; display: flex; gap: 4px; pointer-events: none; }
 .card-tags > .new-tag { position: static; }
-.card-tags > .best-tag, .card-tags > .update-tag { pointer-events: auto; }
-.best-tag, .update-tag { padding: 0 6px; font-size: 11px; line-height: 16px; color: #1a1230; background: #7dfff0; box-shadow: 2px 2px #140c2e; letter-spacing: .05em; }
+.card-tags > .best-tag, .card-tags > .hot-tag, .card-tags > .update-tag { pointer-events: auto; }
+.best-tag, .hot-tag, .update-tag { padding: 0 6px; font-size: 11px; line-height: 16px; color: #1a1230; background: #7dfff0; box-shadow: 2px 2px #140c2e; letter-spacing: .05em; }
 .update-tag { background: #9be36b; }
+.hot-tag { background: #ff9b3d; }
 @media (prefers-reduced-motion: no-preference) { .new-tag { animation: new-blink 1.4s steps(2, jump-none) infinite; } }
 @keyframes new-blink { 50% { background: #ff9be6; } }
 .admin-costumes { display: grid; gap: 4px; width: 100%; }
