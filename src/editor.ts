@@ -145,11 +145,22 @@ export class Editor {
     const title = $('ed-title') as HTMLInputElement;
     title.maxLength = LIMITS.title;
     title.addEventListener('change', () => this.edit((m) => { m.title = cleanTitle(title.value) || '이름 없는 맵'; }));
+    // A typed length is applied when it is finished (Enter or leaving the field), not at each digit: the "1" on the
+    // way to "120" would otherwise shrink the segment and drop what stands on it.
+    const width = $('ed-w') as HTMLInputElement;
+    [width.min, width.max] = [String(LIMITS.w[0]), String(LIMITS.w[1])];
+    width.addEventListener('change', () => this.typeWidth(width));
+    width.addEventListener('blur', () => { width.value = String(this.seg.w); });
+    width.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); width.blur(); } });
+    // Scrolling the panel past a focused number field must not change it.
+    width.addEventListener('wheel', () => width.blur(), { passive: true });
     const scroll = $('ed-scroll') as HTMLInputElement;
     scroll.addEventListener('input', () => { this.camX = Number(scroll.value); });
 
     this.el.addEventListener('pointerdown', (e) => {
       if (this.drag) return;
+      // Before a tap can select another segment, what is being typed goes to the one it was typed for.
+      this.flush();
       this.drag = { id: e.pointerId, x: e.clientX, cam: this.camX, moved: false };
       try { this.el.setPointerCapture(e.pointerId); } catch { /* pointer already gone */ }
     });
@@ -204,8 +215,8 @@ export class Editor {
     list.hidden = !open || !this.problems.length;
     $('ed-issues').setAttribute('aria-expanded', String(!list.hidden));
   }
-  /** Commits a title still being typed, before saving or testing. */
-  flush(): void { ($('ed-title') as HTMLInputElement).blur(); }
+  /** Commits a title or length still being typed, before anything saves, tests or moves on. */
+  flush(): void { ($('ed-title') as HTMLInputElement).blur(); ($('ed-w') as HTMLInputElement).blur(); }
 
   // ---- Changes -----------------------------------------------------------
 
@@ -222,10 +233,20 @@ export class Editor {
   }
 
   private get seg(): Segment { return this.map.segments[this.selected]!; }
+  /** Takes a typed length if it is a whole number in range; anything else leaves the segment as it was. */
+  private typeWidth(box: HTMLInputElement): void {
+    const w = box.value.trim() === '' ? NaN : Number(box.value);
+    const [min, max] = LIMITS.w;
+    if (Number.isInteger(w) && w >= min && w <= max) this.edit(() => { this.seg.w = w; this.trim(this.seg); });
+    else this.message(`길이는 ${min}~${max} 사이의 정수로 입력해 주세요.`, true);
+    box.value = String(this.seg.w);
+  }
   /** Items that no longer fit after a size change are removed with it. */
   private trim(s: Segment): void { s.items = s.items.filter((it) => it.x <= s.w + s.gap); }
 
   private command(c: string): void {
+    // Not every browser moves the focus to a pressed button.
+    this.flush();
     const segs = this.map.segments;
     const i = this.selected;
     const [name, amount] = c.split(':') as [string, string | undefined];
@@ -282,6 +303,7 @@ export class Editor {
   }
 
   private select(i: number, center: boolean): void {
+    this.flush();
     this.selected = clamp(i, [0, this.map.segments.length - 1]);
     if (center) {
       const s = this.seg, x = segmentStarts(this.map)[this.selected]! * UNIT;
@@ -326,7 +348,9 @@ export class Editor {
     const title = $('ed-title') as HTMLInputElement;
     if (document.activeElement !== title) title.value = this.map.title;
     text('ed-seg', `구간 ${this.selected + 1}/${n}`);
-    text('ed-w', String(s.w)); text('ed-gap', String(s.gap)); text('ed-h', String(s.h));
+    const width = $('ed-w') as HTMLInputElement;
+    if (document.activeElement !== width) width.value = String(s.w);
+    text('ed-gap', String(s.gap)); text('ed-h', String(s.h));
     text('ed-base', String(this.map.pace.base)); text('ed-gain', String(this.map.pace.gain));
     const kind = document.querySelector('[data-ed=kind]')!, road = document.querySelector<HTMLButtonElement>('[data-ed=road]')!;
     const label = (b: Element, v: string) => { (b.querySelector('span') ?? b).textContent = v; };

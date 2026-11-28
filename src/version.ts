@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.3.1', date: '2026-11-28', title: '맵 제작: 길이 직접 입력',
+    notes: ['맵 제작에서 건물 · 발판 길이를 숫자로 바로 입력해요 (10~250, Enter 또는 다른 곳 누르기). −/+ 버튼도 그대로'],
+  },
+  {
     version: '3.3.0', date: '2026-11-28', title: '맵 제작: 가시 · 자유 배치',
     notes: [
       '맵 제작에 새 장애물 「가시」: 닿으면 바로 끝나요. 안전모로 막을 수 없으니 점프로 넘으세요 (무한 달리기에는 나오지 않아요)',
