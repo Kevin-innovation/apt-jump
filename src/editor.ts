@@ -1,4 +1,4 @@
-import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoute, drawScaffold, drawTank } from './art';
+import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoute, drawScaffold, drawSpikes, drawTank } from './art';
 import { POWER_KINDS, POWER_TEXT, type PowerKind } from './items';
 import {
   buildCourse, checkMap, cleanTitle, ITEM_NAMES, ITEM_TYPES, LIMITS, LINE_W, onFloor, segmentStarts, UNIT,
@@ -17,6 +17,7 @@ const HELP: Record<Tool, string> = {
   coin: '놓을 자리를 누르세요', gold: '놓을 자리를 누르세요', diamond: '높이 120px(15칸)쯤이면 2단 점프로 닿습니다',
   ac: '놓을 자리를 누르세요', tank: '놓을 자리를 누르세요', line: '놓을 자리를 누르세요',
   box: '놓을 자리를 누르세요 · ↓ 슬라이드로 부수고 지나가요', bar: '놓을 자리를 누르세요 · ↓ 슬라이드로 밑을 지나가요',
+  spike: '놓을 자리를 누르세요 · 닿으면 바로 끝나요(안전모도 못 막음). 점프로 넘으세요',
   puddle: '놓을 자리를 누르세요 · ↓ 슬라이드로 지나가면 물보라 가속',
   drone: '놓을 자리를 누르세요', pigeon: '놓을 자리를 누르세요',
 };
@@ -78,7 +79,7 @@ export class Editor {
   private icon(tool: Tool): HTMLCanvasElement {
     const sizes: Partial<Record<Tool, [number, number]>> = {
       coin: [9, 9], gold: [9, 9], diamond: [13, 11], ac: [18, 13], tank: [38, 33], line: [24, 22], drone: [26, 12], pigeon: [18, 15],
-      box: [16, 14], bar: [26, 20], puddle: [22, 6],
+      box: [16, 14], bar: [26, 20], spike: [18, 9], puddle: [22, 6],
     };
     const [w, h] = sizes[tool] ?? (POWER_KINDS.includes(tool as PowerKind) ? [19, 19] : [11, 11]);
     const c = document.createElement('canvas');
@@ -100,6 +101,7 @@ export class Editor {
       case 'pigeon': drawPigeon(g, 3, 6, 0.1); break;
       case 'box': drawBox(g, 1, 1); break;
       case 'bar': drawBar(g, 1, 0, 24, 18, 0); break;
+      case 'spike': drawSpikes(g, 1, 1); break;
       case 'puddle': g.fillStyle = '#2d5f8a'; g.fillRect(1, 2, 20, 3); g.fillStyle = '#5fb7e6'; g.fillRect(2, 2, 18, 1); g.fillStyle = '#bff6ff'; g.fillRect(6, 2, 3, 1); break;
       default: drawPower(g, tool as PowerKind, 9, 9, 0.5);
     }
@@ -308,7 +310,7 @@ export class Editor {
     }
     const t = this.tool;
     if (this.map.segments.reduce((n, q) => n + q.items.length, 0) >= LIMITS.items) { this.message(`물체는 ${LIMITS.items}개까지입니다.`); return; }
-    let x = Math.round(ux - starts[i]! - (t === 'tank' ? 2 : t === 'line' ? LINE_W / 2 : t === 'ac' || t === 'drone' || t === 'pigeon' ? 1 : 0));
+    let x = Math.round(ux - starts[i]! - (t === 'tank' ? 2 : t === 'line' ? LINE_W / 2 : t === 'ac' || t === 'spike' || t === 'drone' || t === 'pigeon' ? 1 : 0));
     let y = onFloor(t) ? 0 : clamp(Math.round((y0 - py) / UNIT), LIMITS.itemY);
     x = clamp(x, [0, s.w + s.gap]);
     this.edit(() => { s.items.push({ t, x, y }); this.selected = i; });
@@ -428,6 +430,7 @@ export class Editor {
         else if (o.kind === 'box') drawBox(g, o.x - cx, o.y - cy);
         else drawBar(g, o.x - cx, o.y - cy, o.w, o.h, this.t);
       }
+      for (const s of r.spikes ?? []) drawSpikes(g, s.x - cx, s.y - cy);
       for (const p of r.puddles ?? []) { g.fillStyle = '#2d5f8a'; g.fillRect(p.x - cx, r.y - cy - 1, p.w, 3); g.fillStyle = '#5fb7e6'; g.fillRect(p.x - cx + 2, r.y - cy - 1, p.w - 4, 1); }
       // Rising air in the gap: streaks up to where it carries.
       if (r.vent) {

@@ -351,7 +351,7 @@ export class UI {
   /** best is null for a test play, which keeps no record. */
   result(g: Game, isBest: boolean, best: number | null): void {
     $('r-title').classList.toggle('new', isBest || g.finished);
-    this.text('r-title', g.finished ? (isBest ? '완주! 신기록' : '완주!') : g.deathCause === 'traffic' ? '차량 충돌!' : isBest ? '신기록!' : '추락!');
+    this.text('r-title', g.finished ? (isBest ? '완주! 신기록' : '완주!') : g.deathCause === 'traffic' ? '차량 충돌!' : g.deathCause === 'spike' ? '가시에 찔림!' : isBest ? '신기록!' : '추락!');
     this.text('r-score', num(g.score));
     this.text('r-best', best === null ? '이 판은 기록을 남기지 않습니다' : `최고 점수 ${num(best)}`);
     this.text('r-dist', `${Math.floor(g.distance)}m`);

@@ -27,6 +27,16 @@ export function drawTank(g: Ctx, x: number, y: number): void {
   box('#b9562b', 14, 11, 8, 5); box('#fff0b8', 16, 12, 4, 3);
 }
 
+/** Floor spikes, 16 wide and 6 tall: pale steel teeth with red tips on a dark base. */
+export function drawSpikes(g: Ctx, x: number, y: number): void {
+  const box = (c: string, a: number, b: number, w: number, h: number) => { g.fillStyle = c; g.fillRect(x + a, y + b, w, h); };
+  for (let k = 0; k < 16; k += 4) {
+    box(INK, k, -1, 4, 3); box(INK, k - 1, 2, 6, 3);
+    box('#ff4d5e', k + 1, 0, 2, 2); box('#f4f1f8', k + 1, 2, 2, 2); box('#bdb6d2', k, 4, 4, 1);
+  }
+  box(INK, -1, 5, 18, 2); box('#5a5480', 0, 5, 16, 1);
+}
+
 /** A crate: slide into it or land on it to break it. */
 export function drawBox(g: Ctx, x: number, y: number): void {
   const box = (c: string, a: number, b: number, w: number, h: number) => { g.fillStyle = c; g.fillRect(x + a, y + b, w, h); };

@@ -7,6 +7,9 @@ import { mixSeed, Rng } from './rng';
 export interface Obstacle { id: number; kind: 'ac' | 'tank' | 'box' | 'bar'; x: number; y: number; w: number; h: number }
 export interface Line { id: number; x: number; w: number; y: number; style: number }
 export type CoinKind = 'coin' | 'gold' | 'diamond';
+/** Floor spikes: touching them ends the run. Only made maps have them; the endless city never does. */
+export interface Spike { id: number; x: number; y: number; w: number; h: number }
+export const SPIKE_SIZE = { w: 16, h: 6 } as const;
 export interface Coin { x: number; y: number; kind: CoinKind; taken: boolean }
 /** x is where the runner meets it; y the middle of its movement (top of its box). */
 export interface Enemy { id: number; kind: 'drone' | 'pigeon'; x: number; y: number; amp: number; phase: number; over?: boolean }
@@ -25,7 +28,7 @@ export interface Puddle { id: number; x: number; w: number }
 export interface Roof {
   id: number; kind: 'building' | 'scaffold'; x: number; w: number; y: number; style: number; seed: number; number: number;
   obstacles: Obstacle[]; lines: Line[]; coins: Coin[]; powers: Power[]; enemies: Enemy[]; road: Road | null; route?: Route;
-  vent?: Vent; puddles?: Puddle[];
+  vent?: Vent; puddles?: Puddle[]; spikes?: Spike[];
   /** Gives way under a runner who stays on it too long. */
   cracked?: boolean;
   /** Part of a golden rush: points ×3 over it and its gap. */

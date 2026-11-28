@@ -1,5 +1,5 @@
 import { START_X, type Game, type GameEvent } from './game';
-import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawRoute, drawScaffold, drawTank, drawWarning, powerColor } from './art';
+import { drawAc, drawBar, drawBox, drawDiamond, drawDrone, drawFlag, drawPigeon, drawPower, drawQuilt, drawRoad, drawRoadSign, drawRoute, drawSpikes, drawScaffold, drawTank, drawWarning, powerColor } from './art';
 import { GLIDE_FALL, MAGNET_RANGE, POWER_NAMES } from './items';
 import { missionText } from './missions';
 import { BOOST_SPEED, canAirJump, enemyBox, gearFactor, HOLD_MAX, paceSpeed, PX_PER_M, roofEnd, SLIDE_TIME, timeRate } from './physics';
@@ -648,6 +648,7 @@ export class Renderer {
       case 'risk': pop(e.x, e.y - 6, `${RISK_NAMES[e.kind]} +${e.points}`, '#ff9be6'); break;
       case 'stumble': this.shake = 4; burst(14, p.x + 10, p.y - 8, ['#fff', '#ff5566', '#ffcf4a'], 120, 40); pop(p.x, p.y - 22, '쿵!', '#ff7a7a'); break;
       case 'wall': this.shake = 5; burst(12, p.x + 10, p.y - 8, ['#e9dcd0', '#b98a7c'], 110, 20); break;
+      case 'spiked': this.shake = 9; burst(30, e.x, e.y - 6, ['#ff5566', '#f4f1f8', '#fff'], 170, 60); pop(e.x - 20, e.y - 30, '가시에 찔림!', '#ff7a7a'); break;
       case 'fell': this.shake = 6; break;
       case 'comboLost': if (e.combo >= 3) pop(p.x, p.y - 34, '콤보 끊김', '#b7b0d8'); break;
       case 'comboSaved': this.shake = Math.max(this.shake, 2); burst(18, p.x + 5, p.y - 10, ['#ff6b81', '#fff6e0', '#ffd85a'], 120, 30); pop(p.x - 14, p.y - 40, `콤보 세이브! ${e.combo}콤보 유지`, '#ff8fa3'); break;
@@ -771,6 +772,12 @@ export class Renderer {
         const s = (c.kind === 'gold' ? this.sprites.gold : this.sprites.coin)[f]!;
         g.drawImage(s, Math.round(c.x - cx - 3), Math.round(c.y - cy - 3 + Math.sin(this.t * 4 + c.x * 0.05)));
       }
+    }
+
+    // Every roof: spikes placed past a roof's end must show wherever they can kill.
+    for (const r of game.world.roofs) for (const s of r.spikes ?? []) {
+      const x = Math.round(s.x - cx);
+      if (x < this.W + 4 && x + s.w > -4) drawSpikes(g, x, Math.round(s.y - cy));
     }
 
     for (const r of seen) for (const w of r.powers) {

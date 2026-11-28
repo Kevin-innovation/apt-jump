@@ -95,7 +95,7 @@ export class Game {
   world: City;
   player: Player;
   dead = false;
-  deathCause: 'fall' | 'traffic' | null = null;
+  deathCause: 'fall' | 'traffic' | 'spike' | null = null;
   finished = false;
   time = 0;
   bonus = 0;
@@ -498,6 +498,7 @@ export class Game {
       case 'land': this.stompChain = 0; this.onLand(e.surface.kind, e.surface.id); break;
       case 'stumble': case 'wall': this.loseCombo(); break;
       case 'trafficHit': this.loseCombo(true); this.deathCause = 'traffic'; this.dead = true; break;
+      case 'spiked': this.loseCombo(true); this.deathCause = 'spike'; this.dead = true; break;
       case 'fell': this.deathCause = 'fall'; this.dead = true; break;
     }
   }

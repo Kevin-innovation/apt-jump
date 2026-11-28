@@ -1,7 +1,7 @@
 import type { Course } from './game';
 import { POWER_KINDS, POWER_NAMES, type PowerKind } from './items';
 import { paceSpeed, type Pace } from './physics';
-import { BAR_GAP, OBSTACLE_SIZE, passage, RAMP_RUN, ROAD_DEPTH, VENT_HEIGHT, type City, type Roof } from './world';
+import { BAR_GAP, OBSTACLE_SIZE, passage, RAMP_RUN, ROAD_DEPTH, SPIKE_SIZE, VENT_HEIGHT, type City, type Roof } from './world';
 
 /** Map files measure everything in units of 8 pixels. */
 export const UNIT = 8;
@@ -13,10 +13,10 @@ export const LIMITS = {
 } as const;
 /** The narrowest gap that still leaves a column of rising air in it (it stops 4px short of both roofs). */
 export const VENT_MIN_GAP = 2;
-export const ITEM_TYPES = ['coin', 'gold', 'diamond', 'ac', 'tank', 'box', 'bar', 'puddle', 'line', 'drone', 'pigeon', ...POWER_KINDS] as const;
+export const ITEM_TYPES = ['coin', 'gold', 'diamond', 'ac', 'tank', 'box', 'bar', 'spike', 'puddle', 'line', 'drone', 'pigeon', ...POWER_KINDS] as const;
 export type ItemType = (typeof ITEM_TYPES)[number];
 export const ITEM_NAMES: Record<ItemType, string> = {
-  coin: '동전', gold: '분홍 동전', diamond: '다이아', ac: '실외기', tank: '물탱크', box: '상자', bar: '배관', puddle: '물웅덩이',
+  coin: '동전', gold: '분홍 동전', diamond: '다이아', ac: '실외기', tank: '물탱크', box: '상자', bar: '배관', spike: '가시', puddle: '물웅덩이',
   line: '빨랫줄', drone: '드론', pigeon: '비둘기',
   ...POWER_NAMES,
 };
@@ -25,7 +25,7 @@ export const isPower = (t: ItemType): t is PowerKind => (POWER_KINDS as readonly
 export const PUDDLE_W = 5;
 export const LINE_W = 5;
 /** These stand on the roof; everything else has a height above it. */
-export const onFloor = (t: ItemType) => t === 'ac' || t === 'tank' || t === 'pigeon' || t === 'box' || t === 'bar' || t === 'puddle';
+export const onFloor = (t: ItemType) => t === 'ac' || t === 'tank' || t === 'pigeon' || t === 'box' || t === 'bar' || t === 'spike' || t === 'puddle';
 
 export interface MapItem { t: ItemType; x: number; y: number }
 /**
@@ -166,6 +166,7 @@ export function buildCourse(m: GameMap): Course {
       const ix = x + it.x * UNIT, iy = y - it.y * UNIT;
       if (it.t === 'ac' || it.t === 'tank' || it.t === 'box') { const z = OBSTACLE_SIZE[it.t]; r.obstacles.push({ id: id++, kind: it.t, x: ix, y: y - z.h, ...z }); }
       else if (it.t === 'bar') { const z = OBSTACLE_SIZE.bar; r.obstacles.push({ id: id++, kind: 'bar', x: ix, y: y - BAR_GAP - z.h, ...z }); }
+      else if (it.t === 'spike') (r.spikes ??= []).push({ id: id++, x: ix, y: y - SPIKE_SIZE.h, ...SPIKE_SIZE });
       else if (it.t === 'puddle') (r.puddles ??= []).push({ id: id++, x: ix, w: PUDDLE_W * UNIT });
       else if (it.t === 'line') r.lines.push({ id: id++, x: ix, w: LINE_W * UNIT, y: iy, style: it.x % 4 });
       else if (it.t === 'drone') r.enemies.push({ id: id++, kind: 'drone', x: ix, y: iy, amp: 8, phase: (it.x % 8) / 8 });

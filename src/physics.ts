@@ -147,6 +147,7 @@ export type PhysEvent =
   | { type: 'breakout'; x: number; y: number }
   | { type: 'wall' }
   | { type: 'trafficHit'; x: number; y: number }
+  | { type: 'spiked'; x: number; y: number }
   | { type: 'hooked'; x: number; y: number; tx: number; ty: number }
   | { type: 'fell' };
 
@@ -424,6 +425,8 @@ export function stepPlayer(p: Player, input: JumpInput, roofs: readonly Roof[], 
   }
 
   if (!p.crashed) passage(p, roofs, emit);
+  // Spikes come first and end the step: no shield, stumble or wire hook saves the runner from them.
+  if (!p.crashed && spiked(p, roofs, emit)) return;
   if (!p.crashed) touchHazards(p, prevFeet, prevX, roofs, emit, bounce, remove);
   if (!p.crashed) traffic(p, roofs, emit);
   if (p.hook) hook(p, roofs, emit);
@@ -463,6 +466,17 @@ function passage(p: Player, roofs: readonly Roof[], emit: (e: PhysEvent) => void
       emit({ type: 'breakin', id: w.id, x: c, y: r.y });
     }
   }
+}
+
+/** Whether the body touches any spikes: lethal from every side, standing, sliding or falling. */
+function spiked(p: Player, roofs: readonly Roof[], emit: (e: PhysEvent) => void): boolean {
+  for (const r of roofs) for (const s of r.spikes ?? []) {
+    if (!overlaps(p, s.x, s.x + s.w) || p.y <= s.y || p.y - bodyHeight(p) >= s.y + s.h) continue;
+    p.crashed = true; p.vx = 0; p.jumping = false;
+    emit({ type: 'spiked', x: p.x + PW / 2, y: p.y });
+    return true;
+  }
+  return false;
 }
 
 function traffic(p: Player, roofs: readonly Roof[], emit: (e: PhysEvent) => void): void {

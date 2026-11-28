@@ -4,7 +4,7 @@ import { SEGMENT, World } from './world';
 import { STEP, type JumpInput } from './physics';
 
 /** Raise whenever a change makes an old replay play differently. */
-export const SIM_VERSION = 11;
+export const SIM_VERSION = 12;
 export const MAX_STEPS = Math.round((30 * 60) / STEP);
 export const MAX_REPLAY = 120_000;
 /**

@@ -588,6 +588,7 @@ function onEvent(e: GameEvent): void {
     case 'stumble': audio.play('stumble'); input.rumble(120, 0.5); break;
     case 'wall': audio.play('stumble'); input.rumble(160, 0.7); break;
     case 'trafficHit':
+    case 'spiked':
     case 'fell':
       audio.stop();
       audio.play('fall');

@@ -6,6 +6,14 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.3.0', date: '2026-11-28', title: '맵 제작: 가시 · 자유 배치',
+    notes: [
+      '맵 제작에 새 장애물 「가시」: 닿으면 바로 끝나요. 안전모로 막을 수 없으니 점프로 넘으세요 (무한 달리기에는 나오지 않아요)',
+      '맵 제작의 간격 제한 삭제: 장애물을 붙이거나 겹쳐 놓고, 넓은 간격 · 높은 건물도 저장 · 테스트 · 공유할 수 있어요',
+      '끝까지 갈 수 있는 맵인지는 검사하지 않으니 「테스트」로 직접 달려 확인하세요',
+    ],
+  },
+  {
     version: '3.2.2', date: '2026-11-27', title: '폰 화면 정리 · 미션 목표 조정',
     notes: [
       '폰 가로 화면의 맵 제작: 왼쪽 맵, 오른쪽 「도구 | 구간 설정」 탭으로 화면 넘김 없이',
