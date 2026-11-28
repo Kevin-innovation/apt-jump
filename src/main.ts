@@ -197,9 +197,13 @@ function playMap(map: GameMap, id: string | null, from: 'maps' | 'editor', share
 
 /** Where leaving a run goes. */
 function leave(): void {
+  // Quitting from the pause menu ends the run too: an update that waited for it comes now. From the result screen
+  // its own timer offers it, after the run is handed in.
+  const quit = phase === 'paused';
   if (mode.kind === 'endless') title();
   else if (mode.from === 'editor') showEditor();
   else openMaps();
+  if (quit && pendingUpdate) offerUpdate(pendingUpdate);
 }
 
 /** How long a run waits to be issued: longer than the server's wait for the release manifest (ranking.ts). */
