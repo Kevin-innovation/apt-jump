@@ -10,8 +10,6 @@ export class Pager {
   private prev: HTMLButtonElement;
   private next: HTMLButtonElement;
   private label: HTMLElement;
-  /** Set to show everything in one scrolling list instead of pages. */
-  private flow = false;
 
   /** `max` caps a page however much room there is: a ranking reads 1 to 10, then 11 on. */
   constructor(private list: HTMLElement, nav: HTMLElement, private max = Infinity) {
@@ -38,31 +36,16 @@ export class Pager {
     new ResizeObserver(() => this.fit()).observe(list);
   }
 
-  /** One scrolling list (true) or pages. Call before `set`. */
-  scroll(on: boolean): void {
-    this.flow = on;
-    this.list.classList.toggle('scrolls', on);
-  }
-
   /** New contents; `keep` stays on the page that showed the same first item, where it still exists. */
   set(items: HTMLElement[], keep = false): void {
     this.items = items;
-    if (!keep) { this.page = 0; this.starts = [0]; this.list.scrollTop = 0; }
+    if (!keep) { this.page = 0; this.starts = [0]; }
     this.fit();
   }
 
   /** Splits the items into pages that fit, keeping the first item now in view on screen. Only while visible. */
   fit(): void {
     const list = this.list;
-    if (this.flow) {
-      // Everything, where the reader left it: more is added under what is already there.
-      const at = list.scrollTop;
-      this.starts = [0]; this.page = 0;
-      list.replaceChildren(...this.items);
-      list.scrollTop = at;
-      for (const el of [this.prev, this.label, this.next]) el.hidden = true;
-      return;
-    }
     if (!list.clientHeight) { list.replaceChildren(...this.items); return; }
     const first = this.starts[this.page] ?? 0, starts = [0];
     for (const item of this.items) { item.style.maxHeight = ''; item.style.overflowY = ''; }

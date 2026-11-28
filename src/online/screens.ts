@@ -461,14 +461,12 @@ export class OnlineScreens {
     $('shared-order').textContent = ORDER_NAMES[this.order];
     this.shelf();
     if (!this.online) {
-      this.sharedPages.scroll(false);
       this.sharedPages.set([note(this.connecting ? '온라인에 연결하는 중입니다.' : '온라인 공유는 준비하고 있습니다. 맵 파일을 내려받아 주고받을 수 있어요.')]);
       return;
     }
     const ticket = ++this.mapTicket;
-    // The latest view is one scrolling list under the badge holders; the other orders keep their pages.
+    // The latest view has the badge holders over the newest maps; every view is shown a page at a time.
     const latest = this.order === 'new';
-    this.sharedPages.scroll(latest);
     this.sharedPages.set([note('불러오는 중입니다.')]);
     if (!latest) { await this.page(null, ticket); return; }
     this.latest = emptyLatest();

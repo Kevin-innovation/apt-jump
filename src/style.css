@@ -439,10 +439,8 @@ nav.pager button:disabled { opacity: .35; cursor: default; }
 #maps .card > button { width: 100%; padding: 0 .3em; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 #maps .card > .slot { min-height: 42px; }
 #maps button.more { min-height: 44px; background: #2c2052; border: 2px dashed #7a68b8; }
-/* The latest view scrolls as one list: the badge holders, then the newest maps. */
-#maps #shared-list.scrolls { overflow-y: auto; overscroll-behavior: contain; grid-auto-rows: max-content; }
+/* The latest view's sections: the badge holders, then the newest maps. */
 #shared-list > .feed-head { margin: 4px 0 0; font-size: 1em; font-weight: normal; text-align: left; color: #ffd85a; }
-#shared-list.scrolls > button.more { flex: none; }
 /* Renaming a shared map: a box over the list, near the top so a phone's keyboard leaves it in view. */
 #map-rename { position: fixed; inset: 0; z-index: 8; display: grid; align-content: start; justify-items: center; overflow: auto; padding: max(24px, env(safe-area-inset-top)) 12px 12px; background: #0a0618cc; }
 #map-rename[hidden] { display: none; }
