@@ -7,7 +7,7 @@ import { MAX_REPLAY, SIM_VERSION } from '../src/replay';
 import { internal } from './_generated/api';
 import type { Doc, Id } from './_generated/dataModel';
 import { action, internalMutation, mutation, query, type MutationCtx, type QueryCtx } from './_generated/server';
-import { isValidation, startsOf } from './maptimes';
+import { isValidation } from './maptimes';
 import { requirePlayer, touch } from './users';
 
 export const MAPS_PER_PLAYER = 20;
@@ -167,7 +167,7 @@ export const shareSettle = internalMutation({
       await ctx.db.patch(mapId, { title, segments: map.segments.length, bodyId, updatedAt: now, ...(bodyId === target.bodyId ? {} : { contentUpdatedAt: now }) });
     } else {
       const bodyId = await ctx.db.insert('mapBodies', { json });
-      mapId = await ctx.db.insert('maps', { ownerId: userId, title: map.title, segments: map.segments.length, bodyId, updatedAt: now, plays: 0, attempts: 0 });
+      mapId = await ctx.db.insert('maps', { ownerId: userId, title: map.title, segments: map.segments.length, bodyId, updatedAt: now, plays: 0, rateAttempts: 0, rateCompletions: 0 });
     }
     const timeMs = timeOf(steps);
     await ctx.db.patch(runId, { status: 'done', mapId, timeMs, json: undefined });
@@ -252,7 +252,7 @@ export const list = query({
       ? await ctx.db.query('maps').withIndex('by_plays').order('desc').paginate(opts)
       : await ctx.db.query('maps').withIndex('by_updated').order(args.order === 'new' ? 'desc' : 'asc').paginate(opts);
     const page = await Promise.all(r.page.map(async (m) => ({
-      id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, createdAt: m._creationTime, mine: m.ownerId === me, plays: m.plays ?? 0, attempts: startsOf(m),
+      id: m._id, title: m.title, segments: m.segments, updatedAt: m.updatedAt, createdAt: m._creationTime, mine: m.ownerId === me, plays: m.plays ?? 0, rateAttempts: m.rateAttempts ?? 0, rateCompletions: m.rateCompletions ?? 0,
       ...(m.contentUpdatedAt === undefined ? {} : { contentUpdatedAt: m.contentUpdatedAt }),
       author: (await ctx.db.get(m.ownerId))?.nickname ?? '(탈퇴)',
       ...(await fastest(ctx, m)),

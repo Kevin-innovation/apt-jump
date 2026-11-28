@@ -42,9 +42,6 @@ async function ownRow(ctx: QueryCtx, bodyId: Id<'mapBodies'>, userId: Id<'users'
 const limiter = new RateLimiter(components.rateLimiter, {
   guestMapStart: { kind: 'token bucket', rate: 30, period: MINUTE, capacity: 60 },
 });
-/** A map's starts so far. One shared before they were counted had at least as many as it has completions. */
-export const startsOf = (map: { attempts?: number; plays?: number }) => Math.max(map.attempts ?? 0, map.plays ?? 0);
-
 /**
  * Counts a start of a public map by someone the server issues no run to (a guest, or an account without a nickname).
  * Their finishes are never verified, so they add to starts only. Quietly does nothing past the limit.
@@ -55,7 +52,7 @@ export const countStart = mutation({
   handler: async (ctx, { mapId }) => {
     const map = await ctx.db.get(mapId);
     if (!map || !(await limiter.limit(ctx, 'guestMapStart', { key: mapId })).ok) return null;
-    await ctx.db.patch(mapId, { attempts: startsOf(map) + 1 });
+    await ctx.db.patch(mapId, { rateAttempts: (map.rateAttempts ?? 0) + 1 });
     return null;
   },
 });
@@ -79,9 +76,9 @@ export const start = mutation({
     for (const r of recent) if (r.status === 'open') await ctx.db.patch(r._id, { status: 'rejected' });
     const old = await ctx.db.query('mapRuns').withIndex('by_user_started', (q) => q.eq('userId', userId).lt('startedAt', now - 24 * 3_600_000)).take(5);
     for (const r of old) await ctx.db.delete(r._id);
-    const runId = await ctx.db.insert('mapRuns', { userId, mapId, bodyId: map.bodyId, version, startedAt: now, status: 'open' });
+    const runId = await ctx.db.insert('mapRuns', { userId, mapId, bodyId: map.bodyId, version, startedAt: now, status: 'open', rated: true });
     // Every run issued counts as a start, whether or not it is ever finished.
-    await ctx.db.patch(mapId, { attempts: startsOf(map) + 1 });
+    await ctx.db.patch(mapId, { rateAttempts: (map.rateAttempts ?? 0) + 1 });
     await touch(ctx, userId, true);
     return { runId, json: serializeMap({ ...parsed, title: map.title }) };
   },
@@ -114,7 +111,8 @@ export const settle = internalMutation({
     if (steps === null) return { best: false };
     // Every verified finish counts, a best or not; the status above lets each run in once.
     const map = await ctx.db.get(run.mapId);
-    if (map) await ctx.db.patch(map._id, { plays: (map.plays ?? 0) + 1 });
+    // The card's rate only takes a clear whose start it counted.
+    if (map) await ctx.db.patch(map._id, { plays: (map.plays ?? 0) + 1, ...(run.rated ? { rateCompletions: (map.rateCompletions ?? 0) + 1 } : {}) });
     const row = { timeMs: timeOf(steps), achievedAt: Date.now() };
     // An old verification row neither blocks the maker's real time nor is overwritten by it.
     const old = await ownRow(ctx, run.bodyId, run.userId, map?.ownerId);

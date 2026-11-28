@@ -112,7 +112,7 @@ npx convex deploy --env-file .env.convex-prod.local --codegen disable
 
 ## 3.x 게임 흐름과 운영 (SIM_VERSION 13)
 
-- 공유 맵 횟수(`maps`): `plays`는 확인된 완주(`maptimes.settle`), 인기순·BEST 기준. `attempts`(3.7.0)는 화면의 「누적 플레이」(시작 횟수, 중간에 그만둔 판 포함)로 회원은 `maptimes.start`가 발급할 때, 게스트·닉네임 없는 계정은 `maptimes.countStart`(로그인 없음, 맵당 분당 30회·최대 60회 누적 제한)가 더합니다. 게스트 완주는 `plays`에 없습니다. `shareStart`/`shareFinish`는 둘 다 바꾸지 않습니다. 값이 없는 옛 맵은 `max(attempts, plays)`(`startsOf`)로 읽어 완주율이 100%를 넘지 않습니다.
+- 공유 맵 횟수(`maps`): `plays`는 전체 기간의 확인된 완주(`maptimes.settle`)로 인기순·BEST 기준이며 지우거나 초기화하지 않습니다. 카드의 누적 플레이·누적 완주·완주율은 3.7.1부터의 `rateAttempts`/`rateCompletions`(없으면 0)입니다. `rateAttempts`는 회원은 `maptimes.start`가 발급할 때, 게스트·닉네임 없는 계정은 `maptimes.countStart`(로그인 없음, 맵당 분당 30회·최대 60회 누적 제한)가 더합니다. `rateCompletions`는 `rated` 표시가 있는 `mapRuns`가 완주 확인될 때만 더하므로, 배포 전에 시작해 뒤에 끝난 판은 `plays`에만 들어갑니다. 게스트 완주는 확인하지 않아 어느 완주에도 없습니다. `shareStart`/`shareFinish`는 이 값들을 바꾸지 않습니다. 3.7.0의 `attempts`는 쓰지 않지만 저장된 값 때문에 스키마에 남깁니다.
 
 - 무한 모드 가시(3.7.0, SIM_VERSION 13, `world.ts` `maybeSpikes`): `SPIKE_START`(약 200m)부터 일반 옥상에 확률적으로 한 곳. 옥상 시작 뒤 `SPIKE_CLEAR`(0.9초) 이후, 다음 점프 도움닫기 전, 장애물·방해꾼·물웅덩이와 0.9초 이상 떨어진 곳에만 놓습니다. 구역 후반 휴식·정전 랩·균열 옥상 제외. 시드에서 결정되므로 서버 재생과 같습니다.
 - 편집기 테스트 시작 위치(`maps.ts` `testCourse`): 만든 코스를 통째로 평행 이동해 고른 지점이 출발선이 되게 합니다(속도는 맵의 시작 속도부터). 맵 형식·공유·순위에는 영향이 없습니다.

@@ -6,6 +6,10 @@ export interface PatchNote { version: string; date: string; title: string; notes
 
 export const PATCH_NOTES: readonly PatchNote[] = [
   {
+    version: '3.7.1', date: '2026-11-28', title: '완주율 바로잡기',
+    notes: ['공유 맵의 누적 플레이 · 누적 완주 · 완주율을 이번 버전부터 새로 셉니다 (이전의 실패한 판은 저장되지 않아 100%로 보였어요)'],
+  },
+  {
     version: '3.7.0', date: '2026-11-28', title: '무한 달리기 가시 · 테스트 시작 위치',
     notes: [
       '무한 달리기에도 「가시」가 약 200m부터 가끔 나와요. 닿으면 바로 끝나니 점프로 넘으세요',

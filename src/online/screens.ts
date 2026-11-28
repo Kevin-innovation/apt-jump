@@ -68,9 +68,11 @@ function recordedAt(at: number | undefined): HTMLTimeElement {
 
 /** A shared map's counts in one row: starts, then completions, and at the far right the share that finished. */
 function playStats(m: SharedMapInfo): HTMLElement {
-  const done = m.plays ?? 0, started = Math.max(m.attempts ?? 0, done);
+  // One period for all three, so the rate means something (the lifetime count has no record of old failed runs).
+  const started = m.rateAttempts ?? 0, done = m.rateCompletions ?? 0;
   const row = document.createElement('div');
   row.className = 'map-stats';
+  row.title = '3.7.1부터 센 값이에요';
   for (const [cls, text] of [['starts', `누적 플레이 ${num(started)}회`], ['done', `누적 완주 ${num(done)}회`], ['rate', `완주율 ${started ? `${Math.floor((done / started) * 100)}%` : '-'}`]] as const) {
     const s = document.createElement('span');
     s.className = cls;
@@ -99,7 +101,7 @@ function markBest(card: HTMLElement, on: boolean): void {
     const tag = document.createElement('span');
     tag.className = 'best-tag';
     tag.textContent = 'BEST!';
-    tag.title = '누적 완주가 가장 많은 맵';
+    tag.title = '전체 기간 완주가 가장 많은 맵';
     cardTags(card).append(tag);
   } else if (!on && had) {
     const row = had.parentElement!;

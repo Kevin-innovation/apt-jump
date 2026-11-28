@@ -11,7 +11,7 @@ export interface ShopState { coins: number; owned: string[]; costume: string }
 export interface BoardEntry { rank: number; nickname: string; title?: string | null; badge?: string | null; costume?: string; score: number; distance: number; mine: boolean }
 export interface Board { top: BoardEntry[]; mine: { rank: number | null; score: number; distance: number } | null }
 /** `bestBy` holds the best time (the first to reach it), shared by `bestTied` players in all. */
-export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; /** When an update last changed its content; absent if none has. */ contentUpdatedAt?: number; /** Verified completions counted so far. */ plays?: number; /** Public runs started, finished or not. */ attempts?: number }
+export interface SharedMapInfo { id: string; title: string; author: string; segments: number; mine: boolean; best: number | null; bestBy?: string | null; bestTied?: number; createdAt?: number; /** When an update last changed its content; absent if none has. */ contentUpdatedAt?: number; /** Verified completions over the map's life: what 인기순 and BEST! go by. */ plays?: number; /** The card's counts, both from 3.7.1: public runs started, finished or not, and those verified clear. */ rateAttempts?: number; rateCompletions?: number }
 export type MapOrder = 'new' | 'old' | 'popular';
 export interface MapVersion { bodyId: string; title: string; sharedAt: number }
 /** `achievedAt` is when that time was set (epoch ms); absent from a server of before it was sent. */

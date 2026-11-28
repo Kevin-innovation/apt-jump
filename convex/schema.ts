@@ -45,8 +45,10 @@ export default defineSchema({
     renamedAt: v.optional(v.number()),
     // Verified completions over the map's whole life, whatever its content; counted from 3.4.0 on (absent: none yet).
     plays: v.optional(v.number()),
-    // Times a public run of the map was started, finished or not (absent on older maps: read as at least `plays`).
+    // 3.7.0's start counter, seeded from completions; no longer read or written. Kept because stored maps have it.
     attempts: v.optional(v.number()),
+    // The card's counts, both from 3.7.1 on (absent: none yet): public runs started, and those of them verified clear.
+    rateAttempts: v.optional(v.number()), rateCompletions: v.optional(v.number()),
     // When a verified update last changed the content (and so began its times anew); absent if it never has.
     contentUpdatedAt: v.optional(v.number()),
   }).index('by_owner', ['ownerId']).index('by_updated', ['updatedAt']).index('by_plays', ['plays']),
@@ -65,6 +67,8 @@ export default defineSchema({
   // One issued run of a published map, fixed to a content; handed in once.
   mapRuns: defineTable({
     userId: v.id('users'), mapId: v.id('maps'), bodyId: v.id('mapBodies'), version: v.number(), startedAt: v.number(),
+    // Its start is in the map's rateAttempts, so its clear may count too. Absent on runs from before 3.7.1.
+    rated: v.optional(v.boolean()),
     status: v.union(v.literal('open'), v.literal('claimed'), v.literal('done'), v.literal('rejected')),
   }).index('by_user_started', ['userId', 'startedAt']),
   // Each player's fastest completion of each content of a map, for all time.
